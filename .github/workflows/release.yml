@@ -17,9 +17,12 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          vcpkgJsonGlob: "vcpkg.json"
+        shell: pwsh
+        run: |
+          $vcpkgDir = Join-Path $env:RUNNER_TEMP "vcpkg"
+          git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
+          & "$vcpkgDir\bootstrap-vcpkg.bat"
+          "VCPKG_ROOT=$vcpkgDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
