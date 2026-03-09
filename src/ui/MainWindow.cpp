@@ -40,6 +40,7 @@
 #include "communication/MultiPortManager.h"
 #include "transfer/FileTransfer.h"
 #include "upgrade/IAPUpgrader.h"
+#include "upgrade/AppUpdateChecker.h"
 #include "version.h"
 
 #include <QMenuBar>
@@ -63,6 +64,7 @@
 #include <QStyle>
 #include <QSettings>
 #include <QFont>
+#include <QDesktopServices>
 
 namespace ComAssistant {
 
@@ -79,10 +81,30 @@ MainWindow::MainWindow(QWidget* parent)
     // 加载语言设置（必须在 UI 创建后）
     loadLanguage(m_currentLanguage);
 
+    m_appUpdateChecker = new AppUpdateChecker(this);
+    m_appUpdateChecker->setRepository(APP_REPOSITORY_OWNER, APP_REPOSITORY_NAME);
+    m_appUpdateChecker->setCurrentVersion(APP_VERSION);
+    connect(m_appUpdateChecker, &AppUpdateChecker::updateAvailable, this, [this](const ReleaseInfo& info, bool manualTriggered) {
+        handleUpdateAvailable(info.versionTag,
+                              info.versionNumber,
+                              info.body,
+                              info.htmlUrl,
+                              info.downloadUrl,
+                              manualTriggered);
+    });
+    connect(m_appUpdateChecker, &AppUpdateChecker::alreadyLatest, this, [this](const ReleaseInfo& info, bool manualTriggered) {
+        handleAlreadyLatest(info.versionTag, manualTriggered);
+    });
+    connect(m_appUpdateChecker, &AppUpdateChecker::checkFailed, this, &MainWindow::handleUpdateCheckFailed);
+
     setWindowTitle(QString("%1 v%2").arg(APP_NAME).arg(APP_VERSION));
     if (!m_hasRestoredWindowGeometry) {
         resize(1200, 800);
     }
+
+    QTimer::singleShot(3000, this, [this]() {
+        scheduleAutoUpdateCheck();
+    });
 
     LOG_INFO("MainWindow initialized");
 }
@@ -286,6 +308,14 @@ void MainWindow::setupMenuBar()
     // 帮助菜单
     QMenu* helpMenu = menuBar->addMenu(tr("帮助(&H)"));
     helpMenu->addAction(tr("帮助文档(&D)"), this, &MainWindow::onHelp, QKeySequence::HelpContents);
+    helpMenu->addAction(tr("检查更新(&U)..."), this, &MainWindow::onCheckForUpdates);
+    QAction* autoCheckUpdateAction = helpMenu->addAction(tr("启动时自动检查更新"));
+    autoCheckUpdateAction->setCheckable(true);
+    autoCheckUpdateAction->setChecked(QSettings().value("Updates/AutoCheckEnabled", true).toBool());
+    connect(autoCheckUpdateAction, &QAction::toggled, this, [](bool checked) {
+        QSettings settings;
+        settings.setValue("Updates/AutoCheckEnabled", checked);
+    });
     helpMenu->addSeparator();
     helpMenu->addAction(tr("关于(&A)"), this, &MainWindow::onAbout);
     helpMenu->addAction(tr("关于 Qt(&Q)"), qApp, &QApplication::aboutQt);
@@ -1119,6 +1149,124 @@ void MainWindow::onSettings()
     SettingsDialog dialog(this);
     connect(&dialog, &SettingsDialog::settingsApplied, this, &MainWindow::applyDialogSettings);
     dialog.exec();
+}
+
+void MainWindow::onCheckForUpdates()
+{
+    checkForAppUpdates(true);
+}
+
+void MainWindow::scheduleAutoUpdateCheck()
+{
+    QSettings settings;
+    if (!settings.value("Updates/AutoCheckEnabled", true).toBool()) {
+        return;
+    }
+
+    const QDateTime nowUtc = QDateTime::currentDateTimeUtc();
+    const QString lastCheckText = settings.value("Updates/LastCheckUtc").toString();
+    const QDateTime lastCheckUtc = QDateTime::fromString(lastCheckText, Qt::ISODate);
+
+    // 自动检查默认每天一次，避免频繁请求 GitHub API。
+    if (lastCheckUtc.isValid() && lastCheckUtc.secsTo(nowUtc) < 24 * 3600) {
+        return;
+    }
+
+    checkForAppUpdates(false);
+}
+
+void MainWindow::checkForAppUpdates(bool manualTriggered)
+{
+    if (!m_appUpdateChecker) {
+        if (manualTriggered) {
+            QMessageBox::warning(this, tr("检查更新"), tr("更新模块未初始化。"));
+        }
+        return;
+    }
+
+    QSettings settings;
+    settings.setValue("Updates/LastCheckUtc", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    m_appUpdateChecker->setCurrentVersion(APP_VERSION);
+    m_appUpdateChecker->checkForUpdates(manualTriggered);
+}
+
+void MainWindow::handleUpdateAvailable(const QString& latestTag,
+                                       const QString& latestVersion,
+                                       const QString& releaseNotes,
+                                       const QUrl& releaseUrl,
+                                       const QUrl& downloadUrl,
+                                       bool manualTriggered)
+{
+    QSettings settings;
+    const QString ignoredTag = settings.value("Updates/IgnoredVersion").toString().trimmed();
+    if (!manualTriggered && !ignoredTag.isEmpty() &&
+        QString::compare(ignoredTag, latestTag, Qt::CaseInsensitive) == 0) {
+        return;
+    }
+
+    QString notePreview = releaseNotes.trimmed();
+    if (notePreview.length() > 600) {
+        notePreview = notePreview.left(600) + tr("\n...（更多内容请查看发布页面）");
+    }
+
+    QMessageBox msgBox(this);
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setWindowTitle(tr("发现新版本"));
+    msgBox.setText(tr("检测到新版本 %1（当前版本 %2）").arg(latestTag, APP_VERSION));
+    msgBox.setInformativeText(tr("是否立即打开下载页面？"));
+
+    if (!notePreview.isEmpty()) {
+        msgBox.setDetailedText(notePreview);
+    }
+
+    QPushButton* downloadButton = msgBox.addButton(tr("下载更新"), QMessageBox::AcceptRole);
+    QPushButton* ignoreButton = msgBox.addButton(tr("忽略此版本"), QMessageBox::DestructiveRole);
+    QPushButton* laterButton = msgBox.addButton(tr("稍后提醒"), QMessageBox::RejectRole);
+    Q_UNUSED(laterButton);
+
+    msgBox.exec();
+
+    if (msgBox.clickedButton() == downloadButton) {
+        const QUrl targetUrl = downloadUrl.isValid() ? downloadUrl : releaseUrl;
+        if (targetUrl.isValid()) {
+            QDesktopServices::openUrl(targetUrl);
+        } else {
+            QMessageBox::warning(this, tr("下载更新"), tr("未找到可用的下载链接。"));
+        }
+        return;
+    }
+
+    if (msgBox.clickedButton() == ignoreButton) {
+        settings.setValue("Updates/IgnoredVersion", latestTag);
+    }
+
+    // 如果检测到更高版本，则清除旧的忽略标记，避免用户永远看不到更新提示。
+    if (!ignoredTag.isEmpty() && AppUpdateChecker::compareVersions(latestVersion, ignoredTag) > 0) {
+        settings.remove("Updates/IgnoredVersion");
+    }
+}
+
+void MainWindow::handleAlreadyLatest(const QString& latestTag, bool manualTriggered)
+{
+    if (!manualTriggered) {
+        return;
+    }
+
+    if (latestTag.isEmpty()) {
+        QMessageBox::information(this, tr("检查更新"), tr("当前已是最新版本（%1）。").arg(APP_VERSION));
+    } else {
+        QMessageBox::information(this,
+                                 tr("检查更新"),
+                                 tr("当前已是最新版本（本地 %1，最新 %2）。").arg(APP_VERSION, latestTag));
+    }
+}
+
+void MainWindow::handleUpdateCheckFailed(const QString& error, bool manualTriggered)
+{
+    LOG_WARN(QString("Update check failed: %1").arg(error));
+    if (manualTriggered) {
+        QMessageBox::warning(this, tr("检查更新"), error);
+    }
 }
 
 void MainWindow::onAbout()

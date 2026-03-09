@@ -20,6 +20,9 @@
 
 #define APP_ORGANIZATION "ComAssistant"
 #define APP_DOMAIN "comassistant.github.io"
+#define APP_REPOSITORY_OWNER "wsmcfr"
+#define APP_REPOSITORY_NAME "uart_assistant"
+#define APP_REPOSITORY_URL "https://github.com/wsmcfr/uart_assistant"
 
 #define APP_COPYRIGHT "Copyright (c) 2026 ComAssistant Team"
 #define APP_LICENSE "GPL v3"

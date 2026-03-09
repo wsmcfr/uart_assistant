@@ -1,0 +1,70 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.2"
+          arch: "win64_msvc2022_64"
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --target ComAssistant --parallel
+
+      - name: Deploy Qt Runtime
+        shell: pwsh
+        run: |
+          $exePath = Join-Path $PWD "build\Release\ComAssistant.exe"
+          if (-not (Test-Path $exePath)) { throw "ComAssistant.exe not found: $exePath" }
+          & windeployqt --release --no-translations $exePath
+
+      - name: Prepare Portable Package
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $packageRoot = Join-Path $PWD "artifacts\ComAssistant_Portable"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+
+          Copy-Item -Path "build\Release\*" -Destination $packageRoot -Recurse -Force
+          if (Test-Path "build\*.qm") {
+            $translationsDir = Join-Path $packageRoot "translations"
+            New-Item -ItemType Directory -Force -Path $translationsDir | Out-Null
+            Copy-Item -Path "build\*.qm" -Destination $translationsDir -Force
+          }
+          if (Test-Path "CHANGELOG.md") { Copy-Item "CHANGELOG.md" $packageRoot -Force }
+          if (Test-Path "README.md") { Copy-Item "README.md" $packageRoot -Force }
+
+          $zipName = "ComAssistant_${tag}_Windows_x64_Portable.zip"
+          $zipPath = Join-Path $PWD "artifacts\$zipName"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "$packageRoot\*" -DestinationPath $zipPath -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path (Join-Path $PWD "artifacts\SHA256SUMS.txt") -Value "$hash  $zipName"
+
+      - name: Upload GitHub Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*.zip
+            artifacts/SHA256SUMS.txt

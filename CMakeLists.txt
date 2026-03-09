@@ -74,6 +74,7 @@ set(CORE_SOURCES
     src/core/macro/MacroRecorder.cpp
     src/core/transfer/FileTransfer.cpp
     src/core/upgrade/IAPUpgrader.cpp
+    src/core/upgrade/AppUpdateChecker.cpp
 )
 
 set(CORE_HEADERS
@@ -97,6 +98,7 @@ set(CORE_HEADERS
     src/core/macro/MacroRecorder.h
     src/core/transfer/FileTransfer.h
     src/core/upgrade/IAPUpgrader.h
+    src/core/upgrade/AppUpdateChecker.h
 )
 
 # 通信模块源文件

@@ -20,6 +20,7 @@
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QTranslator>
+#include <QUrl>
 #include <memory>
 
 #include "communication/ICommunication.h"
@@ -63,6 +64,7 @@ class DataWindowManager;
 class DataWindowConfigDialog;
 class ControlPanel;
 class DataTableWidget;
+class AppUpdateChecker;
 
 // 模式组件前向声明
 class SerialModeWidget;
@@ -110,6 +112,7 @@ private slots:
 
     // 设置
     void onSettings();
+    void onCheckForUpdates();
     void onAbout();
     void onHelp();
     void onToolbox();
@@ -170,6 +173,18 @@ private:
     // 语言切换
     void loadLanguage(const QString& language);
     void retranslateUi();
+
+    // 应用更新
+    void scheduleAutoUpdateCheck();
+    void checkForAppUpdates(bool manualTriggered);
+    void handleUpdateAvailable(const QString& latestTag,
+                               const QString& latestVersion,
+                               const QString& releaseNotes,
+                               const QUrl& releaseUrl,
+                               const QUrl& downloadUrl,
+                               bool manualTriggered);
+    void handleAlreadyLatest(const QString& latestTag, bool manualTriggered);
+    void handleUpdateCheckFailed(const QString& error, bool manualTriggered);
 
 private:
     // 通信相关
@@ -268,6 +283,9 @@ private:
     // 翻译器
     QTranslator* m_translator = nullptr;
     bool m_hasRestoredWindowGeometry = false;
+
+    // 应用更新
+    AppUpdateChecker* m_appUpdateChecker = nullptr;
 };
 
 } // namespace ComAssistant
