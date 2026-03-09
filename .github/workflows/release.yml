@@ -76,10 +76,69 @@ jobs:
           $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
           Set-Content -Path (Join-Path $PWD "artifacts\SHA256SUMS.txt") -Value "$hash  $zipName"
 
+      - name: Generate Release Notes
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          $repo = "${{ github.repository }}"
+          $changelogPath = Join-Path $PWD "CHANGELOG.md"
+          $notesPath = Join-Path $PWD "artifacts\RELEASE_NOTES.md"
+
+          if (-not (Test-Path $changelogPath)) {
+            throw "CHANGELOG.md not found: $changelogPath"
+          }
+
+          $lines = Get-Content -Path $changelogPath -Encoding UTF8
+          $start = -1
+          for ($i = 0; $i -lt $lines.Length; $i++) {
+            if ($lines[$i] -match "^## \[$([regex]::Escape($version))\]\s*-") {
+              $start = $i
+              break
+            }
+          }
+
+          $section = ""
+          if ($start -ge 0) {
+            $end = $lines.Length
+            for ($j = $start + 1; $j -lt $lines.Length; $j++) {
+              if ($lines[$j] -match "^## \[") {
+                $end = $j
+                break
+              }
+            }
+            if ($end -gt ($start + 1)) {
+              $section = ($lines[($start + 1)..($end - 1)] -join "`n").Trim()
+            }
+          }
+
+          if ([string]::IsNullOrWhiteSpace($section)) {
+            $section = @"
+- 本版本详细说明暂未同步到 CHANGELOG。
+- 维护者可在 CHANGELOG.md 增加对应的版本段落后重新发布。
+"@
+          }
+
+          $body = @"
+# ComAssistant $tag
+
+## 下载
+- Windows x64 便携版：`ComAssistant_${tag}_Windows_x64_Portable.zip`
+- 完整性校验：`SHA256SUMS.txt`
+
+## 本版本更新
+$section
+
+## 反馈
+- 问题反馈与建议：https://github.com/$repo/issues
+"@
+
+          Set-Content -Path $notesPath -Value $body -Encoding UTF8
+
       - name: Upload GitHub Release Assets
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: artifacts/RELEASE_NOTES.md
           files: |
             artifacts/*.zip
             artifacts/SHA256SUMS.txt

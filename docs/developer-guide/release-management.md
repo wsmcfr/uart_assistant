@@ -16,11 +16,12 @@
 
 - 主资产命名：`ComAssistant_<tag>_Windows_x64_Portable.zip`
 - 同时发布 `SHA256SUMS.txt` 供校验完整性
-- 建议在 Release 描述中说明：
+- Release 描述必须说明：
   - 新增功能
   - 修复问题
   - 兼容性变更
   - 升级注意事项
+- Release 正文来源于 `CHANGELOG.md` 对应版本段落（由 CI 自动提取）
 
 ## 自动构建发布
 
@@ -54,3 +55,27 @@
 5. 推送标签：`git push origin vX.Y.Z`
 6. 等待 GitHub Actions 完成发布
 7. 在 Release 页面核对资产可下载性
+
+## CHANGELOG 编写模板（每个版本必填）
+
+建议按以下结构维护对应版本段落，便于用户快速判断是否需要升级：
+
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+### 新增与恢复
+- ...
+
+### 性能优化
+- ...
+
+### 修复
+- ...
+
+### 升级说明（可选）
+- ...
+```
+
+注意：
+- 标题必须是 `## [X.Y.Z] - YYYY-MM-DD` 格式，`X.Y.Z` 需与标签 `vX.Y.Z` 一致。
+- 若未找到对应段落，CI 会在 Release 中提示“未同步 CHANGELOG 说明”。

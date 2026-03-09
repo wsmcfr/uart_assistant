@@ -8,6 +8,7 @@
 - 所有历史版本：<https://github.com/wsmcfr/uart_assistant/releases>
 
 下载时优先选择发布资产中的 `ComAssistant_*_Windows_x64_Portable.zip`，解压后可直接运行。
+每个版本的更新内容、修复项与升级说明可在对应 Release 正文中查看。
 
 ## 版本策略
 
@@ -28,6 +29,7 @@
 3. 提交代码并创建标签：`git tag vX.Y.Z`
 4. 推送标签：`git push origin vX.Y.Z`
 5. GitHub Actions 自动构建并创建 Release 资产
+6. CI 自动从 `CHANGELOG.md` 提取本版本说明写入 Release 正文
 
 详细规则见：
 

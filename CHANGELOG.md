@@ -2,6 +2,31 @@
 
 本文档记录 ComAssistant 的版本更新历史。
 
+## [1.1.1] - 2026-03-10
+
+### 新增与恢复
+- 新增应用内版本检查能力，支持从 GitHub Releases 检查最新稳定版
+- 新增“帮助 -> 检查更新...”入口，支持手动触发更新检查
+- 新增“帮助 -> 启动时自动检查更新”开关，默认按天自动检查
+- 恢复并完善曲线对比能力，支持双曲线对比与差值曲线展示
+
+### 性能优化
+- 优化大数据量场景下的波形刷新策略，降低高频重绘导致的卡顿
+- 优化滚动窗口与实时绘图协同逻辑，减少数据显示与渲染竞争
+- 优化绘图路径在长时间运行下的响应稳定性
+
+### 修复
+- 修复部分绘图功能在升级后缺失的问题（含对比/差值相关能力）
+- 修复自定义 X 数据路径与实时更新链路中的异常行为
+- 修复发布流水线缺失 Qt 组件导致构建失败的问题
+
+### 发布与版本管理
+- 建立 GitHub Releases 标准化发布流程（标签触发自动构建与上传资产）
+- 发布资产统一为 `ComAssistant_<tag>_Windows_x64_Portable.zip` 与 `SHA256SUMS.txt`
+- 支持用户在 Releases 页面直接下载可运行版本，无需下载源码
+
+---
+
 ## [1.2.0] - 2026-01-21
 
 ### 新增功能
@@ -145,7 +170,7 @@
 
 如果您发现 Bug 或有功能建议，请通过以下方式反馈：
 
-- GitHub Issues: https://github.com/comassistant/comassistant/issues
+- GitHub Issues: https://github.com/wsmcfr/uart_assistant/issues
 - Email: feedback@comassistant.com
 
 感谢您的支持！
