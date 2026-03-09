@@ -57,6 +57,90 @@ QPen createCurvePen(const QColor& color, double width, Qt::PenStyle style = Qt::
     return pen;
 }
 
+const QCPGraph* findReferenceGraphForScroll(const QCustomPlot* plot)
+{
+    if (!plot) {
+        return nullptr;
+    }
+
+    const QCPGraph* reference = nullptr;
+    double latestKey = std::numeric_limits<double>::lowest();
+    int bestSize = 0;
+
+    for (int i = 0; i < plot->graphCount(); ++i) {
+        QCPGraph* graph = plot->graph(i);
+        if (!graph || !graph->visible() || graph->data()->isEmpty()) {
+            continue;
+        }
+
+        auto lastIt = graph->data()->constEnd();
+        --lastIt;
+        const double graphLastKey = lastIt->key;
+        const int graphSize = graph->data()->size();
+
+        if (!reference || graphLastKey > latestKey ||
+            (qFuzzyCompare(graphLastKey + 1.0, latestKey + 1.0) && graphSize > bestSize)) {
+            reference = graph;
+            latestKey = graphLastKey;
+            bestSize = graphSize;
+        }
+    }
+
+    return reference;
+}
+
+bool resolveKeyRangeByPointWindow(const QCPGraph* graph,
+                                  int startIndex,
+                                  int pointCount,
+                                  double& keyMin,
+                                  double& keyMax)
+{
+    keyMin = 0.0;
+    keyMax = 0.0;
+
+    if (!graph || pointCount <= 0 || graph->data()->isEmpty()) {
+        return false;
+    }
+
+    const int dataSize = graph->data()->size();
+    const int boundedStart = qBound(0, startIndex, qMax(0, dataSize - 1));
+    const int boundedEnd = qBound(boundedStart, boundedStart + pointCount - 1, dataSize - 1);
+
+    auto it = graph->data()->constBegin();
+    int idx = 0;
+    while (idx < boundedStart && it != graph->data()->constEnd()) {
+        ++it;
+        ++idx;
+    }
+    if (it == graph->data()->constEnd()) {
+        return false;
+    }
+
+    keyMin = it->key;
+
+    while (idx < boundedEnd && it != graph->data()->constEnd()) {
+        ++it;
+        ++idx;
+    }
+
+    if (it == graph->data()->constEnd()) {
+        auto lastIt = graph->data()->constEnd();
+        --lastIt;
+        keyMax = lastIt->key;
+    } else {
+        keyMax = it->key;
+    }
+
+    if (keyMax < keyMin) {
+        qSwap(keyMin, keyMax);
+    }
+    if (qFuzzyCompare(keyMin + 1.0, keyMax + 1.0)) {
+        keyMax = keyMin + 1.0;
+    }
+
+    return true;
+}
+
 bool calculateAxisValueRange(const QCustomPlot* plot,
                              const QCPAxis* valueAxis,
                              const QCPRange& keyRange,
@@ -335,6 +419,7 @@ void PlotterWindow::setupToolBar()
         if (m_scrollBar) {
             m_scrollBar->setPageStep(value);
         }
+        m_needReplot = true;
     });
     toolBar->addWidget(m_visiblePointsSpin);
 
@@ -739,6 +824,7 @@ void PlotterWindow::setupPlot()
         menu.addSeparator();
         menu.addAction(tr("配置Y轴..."), this, &PlotterWindow::onConfigureYAxisClicked);
         menu.addAction(tr("测量游标..."), this, &PlotterWindow::onMeasureCursorClicked);
+        menu.addAction(tr("差值曲线..."), this, &PlotterWindow::onShowDifferenceClicked);
         menu.addSeparator();
         menu.addAction(tr("FFT 分析"), this, &PlotterWindow::onFFTAnalysisClicked);
         menu.addAction(tr("实时 FFT"), this, &PlotterWindow::onRealTimeFFTClicked);
@@ -817,7 +903,46 @@ void PlotterWindow::appendData(int curveIndex, double y)
     if (m_paused) return;
 
     ensureCurveExists(curveIndex);
-    m_plot->graph(curveIndex)->addData(m_dataIndex, y);
+    const double x = static_cast<double>(m_dataIndex);
+    m_plot->graph(curveIndex)->addData(x, y);
+
+    if (curveIndex >= m_latestValues.size()) {
+        m_latestValues.resize(curveIndex + 1);
+    }
+    m_latestValues[curveIndex] = y;
+
+    checkTriggerCondition(curveIndex, y);
+    checkAlarmCondition(curveIndex, y);
+    updateRealTimeFFT(curveIndex, y);
+
+    for (auto& diffInfo : m_diffCurves) {
+        if (!diffInfo.graph) {
+            continue;
+        }
+        if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
+            continue;
+        }
+        if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
+            diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
+            continue;
+        }
+
+        const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
+        diffInfo.graph->addData(x, diff);
+    }
+
+    for (auto& filterInfo : m_realTimeFilters) {
+        if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
+            continue;
+        }
+        const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
+        filterInfo.filterGraph->addData(x, filteredValue);
+    }
+
+    ++m_dataIndex;
+    if (m_dataIndex % 100 == 0) {
+        trimData();
+    }
     m_needReplot = true;
 }
 
@@ -827,6 +952,44 @@ void PlotterWindow::appendData(int curveIndex, double x, double y)
 
     ensureCurveExists(curveIndex);
     m_plot->graph(curveIndex)->addData(x, y);
+
+    if (curveIndex >= m_latestValues.size()) {
+        m_latestValues.resize(curveIndex + 1);
+    }
+    m_latestValues[curveIndex] = y;
+
+    checkTriggerCondition(curveIndex, y);
+    checkAlarmCondition(curveIndex, y);
+    updateRealTimeFFT(curveIndex, y);
+
+    for (auto& diffInfo : m_diffCurves) {
+        if (!diffInfo.graph) {
+            continue;
+        }
+        if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
+            continue;
+        }
+        if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
+            diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
+            continue;
+        }
+
+        const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
+        diffInfo.graph->addData(x, diff);
+    }
+
+    for (auto& filterInfo : m_realTimeFilters) {
+        if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
+            continue;
+        }
+        const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
+        filterInfo.filterGraph->addData(x, filteredValue);
+    }
+
+    ++m_dataIndex;
+    if (m_dataIndex % 100 == 0) {
+        trimData();
+    }
     m_needReplot = true;
 }
 
@@ -899,6 +1062,12 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
         ensureCurveExists(i);
         m_plot->graph(i)->addData(x, values[i]);
 
+        // 触发条件检测
+        checkTriggerCondition(i, values[i]);
+
+        // 报警条件检测
+        checkAlarmCondition(i, values[i]);
+
         // 实时FFT更新
         updateRealTimeFFT(i, values[i]);
     }
@@ -925,12 +1094,11 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
     // 保存最新值
     m_latestValues = values;
 
+    ++m_dataIndex;
     m_needReplot = true;
 
-    // 优化：每100个点才检查一次数据裁剪（使用静态计数器）
-    static int trimCounter = 0;
-    if (++trimCounter >= 100) {
-        trimCounter = 0;
+    // 优化：每100个点才检查一次数据裁剪
+    if (m_dataIndex % 100 == 0) {
         trimData();
     }
     // 优化：updateValuePanel 移到 updatePlot() 中统一处理
@@ -1027,6 +1195,7 @@ void PlotterWindow::setYAxisRange(double min, double max)
 void PlotterWindow::setAutoScale(bool enabled)
 {
     m_autoScale = enabled;
+    m_needReplot = true;
 }
 
 void PlotterWindow::setShowGrid(bool show)
@@ -1241,39 +1410,49 @@ void PlotterWindow::updatePlot()
 
         if (hasData) {
             if (m_scrollMode) {
-                // 滚动模式：固定宽度，显示最新数据
-                const double xMax = static_cast<double>(m_dataIndex);
-                const double xMin = qMax(0.0, xMax - static_cast<double>(m_visiblePoints));
-                m_plot->xAxis->setRange(xMin, xMax);
+                // 滚动模式：基于实际数据点窗口，兼容自定义/时间戳 X 轴
+                const QCPGraph* referenceGraph = findReferenceGraphForScroll(m_plot);
+                if (referenceGraph) {
+                    const int totalPoints = referenceGraph->data()->size();
+                    const int scrollMax = qMax(0, totalPoints - m_visiblePoints);
+                    int startIndex = scrollMax;
 
-                // 更新滚动条范围
-                if (m_scrollBar) {
-                    int scrollMax = qMax(0, m_dataIndex - m_visiblePoints);
-                    m_scrollBar->blockSignals(true);
-                    m_scrollBar->setRange(0, scrollMax);
-                    m_scrollBar->setValue(scrollMax);  // 跟随最新数据
-                    m_scrollBar->blockSignals(false);
-                }
-
-                bool shouldUpdateAxisRange = true;
-                if (m_throttleAutoRangeUpdates) {
-                    ++m_autoRangeUpdateCounter;
-                    shouldUpdateAxisRange = (m_autoRangeUpdateCounter % 2 == 0);
-                } else {
-                    m_autoRangeUpdateCounter = 0;
-                }
-
-                if (shouldUpdateAxisRange) {
-                    const QCPRange visibleKeyRange(xMin, xMax);
-                    double minValue = 0.0;
-                    double maxValue = 0.0;
-                    if (calculateAxisValueRange(m_plot, m_plot->yAxis, visibleKeyRange, minValue, maxValue)) {
-                        applySmoothedAxisRange(m_plot->yAxis, minValue, maxValue);
+                    if (m_scrollBar) {
+                        const bool followLatest = (m_scrollBar->value() >= m_scrollBar->maximum());
+                        startIndex = followLatest ? scrollMax : qBound(0, m_scrollBar->value(), scrollMax);
+                        m_scrollBar->blockSignals(true);
+                        m_scrollBar->setRange(0, scrollMax);
+                        m_scrollBar->setPageStep(m_visiblePoints);
+                        m_scrollBar->setValue(startIndex);
+                        m_scrollBar->blockSignals(false);
                     }
 
-                    if (m_rightAxisVisible && m_rightYAxis &&
-                        calculateAxisValueRange(m_plot, m_rightYAxis, visibleKeyRange, minValue, maxValue)) {
-                        applySmoothedAxisRange(m_rightYAxis, minValue, maxValue);
+                    double xMin = 0.0;
+                    double xMax = 0.0;
+                    if (resolveKeyRangeByPointWindow(referenceGraph, startIndex, m_visiblePoints, xMin, xMax)) {
+                        m_plot->xAxis->setRange(xMin, xMax);
+
+                        bool shouldUpdateAxisRange = true;
+                        if (m_throttleAutoRangeUpdates) {
+                            ++m_autoRangeUpdateCounter;
+                            shouldUpdateAxisRange = (m_autoRangeUpdateCounter % 2 == 0);
+                        } else {
+                            m_autoRangeUpdateCounter = 0;
+                        }
+
+                        if (shouldUpdateAxisRange) {
+                            const QCPRange visibleKeyRange(xMin, xMax);
+                            double minValue = 0.0;
+                            double maxValue = 0.0;
+                            if (calculateAxisValueRange(m_plot, m_plot->yAxis, visibleKeyRange, minValue, maxValue)) {
+                                applySmoothedAxisRange(m_plot->yAxis, minValue, maxValue);
+                            }
+
+                            if (m_rightAxisVisible && m_rightYAxis &&
+                                calculateAxisValueRange(m_plot, m_rightYAxis, visibleKeyRange, minValue, maxValue)) {
+                                applySmoothedAxisRange(m_rightYAxis, minValue, maxValue);
+                            }
+                        }
                     }
                 }
             } else if (m_autoScale) {
@@ -1642,6 +1821,9 @@ void PlotterWindow::onScrollModeToggled(bool checked)
 
     if (checked) {
         // 切换到滚动模式，自动跟随最新数据
+        if (m_scrollBar) {
+            m_scrollBar->setValue(m_scrollBar->maximum());
+        }
         m_needReplot = true;
     } else {
         // 切换到自动缩放模式
@@ -1658,9 +1840,21 @@ void PlotterWindow::onScrollBarChanged(int value)
 {
     if (!m_scrollMode) return;
 
-    // 根据滚动条位置设置X轴范围
-    const double xMin = static_cast<double>(value);
-    const double xMax = xMin + static_cast<double>(m_visiblePoints);
+    const QCPGraph* referenceGraph = findReferenceGraphForScroll(m_plot);
+    if (!referenceGraph) {
+        return;
+    }
+
+    const int totalPoints = referenceGraph->data()->size();
+    const int maxStart = qMax(0, totalPoints - m_visiblePoints);
+    const int startIndex = qBound(0, value, maxStart);
+
+    double xMin = 0.0;
+    double xMax = 0.0;
+    if (!resolveKeyRangeByPointWindow(referenceGraph, startIndex, m_visiblePoints, xMin, xMax)) {
+        return;
+    }
+
     m_plot->xAxis->setRange(xMin, xMax);
 
     const QCPRange visibleKeyRange(xMin, xMax);
