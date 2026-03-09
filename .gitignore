@@ -1,0 +1,42 @@
+# Build artifacts
+/build/
+/release/
+/ComAssistant_Portable/
+/cmake-build-*/
+
+# CMake / MSBuild
+/CMakeCache.txt
+/CMakeFiles/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.dir/
+*.obj
+*.o
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+
+# Generated translations and packages
+*.qm
+*.zip
+
+# Logs and temporary files
+*.log
+/output.txt
+/test_output.txt
+/full_test_output.txt
+/test_result.txt
+/all_tests.txt
+/Testing/
+/nul
+
+# IDE and local tool state
+/.vscode/
+/.idea/
+/.serena/
+/.claude/
+*.user

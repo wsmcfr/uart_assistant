@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>高级功能 - Advanced Features</title>
+    <style>
+        /* CSS 变量定义 - 暗色主题（默认） */
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        /* 通过 data-theme 属性手动切换主题 */
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-code: #f1f3f4;
+            --bg-table-header: #3498db;
+            --bg-table-row: #ffffff;
+            --bg-table-row-alt: #f8f9fa;
+            --bg-tip: #e8f8f0;
+            --bg-warning: #fef9e7;
+
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --text-heading1: #2874a6;
+            --text-heading2: #2e86c1;
+            --text-heading3: #3498db;
+            --text-strong: #1a252f;
+            --text-code: #27ae60;
+            --text-pre: #1e8449;
+            --text-tip: #1e8449;
+            --text-warning: #9a7d0a;
+
+            --border-primary: #3498db;
+            --border-secondary: #d5dbdb;
+            --border-table: #d5dbdb;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        h1 {
+            color: var(--text-heading1);
+            border-bottom: 3px solid var(--border-primary);
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: var(--text-heading2);
+            margin-top: 25px;
+        }
+        h3 {
+            color: var(--text-heading3);
+        }
+        p, li {
+            color: var(--text-secondary);
+        }
+        strong {
+            color: var(--text-strong);
+        }
+        code {
+            background: var(--bg-code);
+            color: var(--text-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Consolas", "Courier New", monospace;
+        }
+        pre {
+            background: var(--bg-code);
+            color: var(--text-pre);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid var(--border-secondary);
+        }
+        .tip {
+            background: var(--bg-tip);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-tip);
+        }
+        .warning {
+            background: var(--bg-warning);
+            border-left: 4px solid var(--border-warning);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-warning);
+        }
+        table {
+            border-collapse: collapse;
+            margin: 10px 0;
+            width: 100%;
+        }
+        table th {
+            background: var(--bg-table-header);
+            color: white;
+            padding: 8px;
+        }
+        table td {
+            border: 1px solid var(--border-table);
+            padding: 8px;
+            color: var(--text-secondary);
+            background: var(--bg-table-row);
+        }
+    </style>
+</head>
+<body>
+    <h1>高级功能 Advanced Features</h1>
+
+    <h2>1. 宏录制/回放 Macro Recording</h2>
+    <p><strong>中文：</strong>宏功能允许您录制一系列发送操作，并在之后重复播放。</p>
+    <p><strong>English:</strong> Macro function allows you to record a series of send operations and replay them later.</p>
+
+    <h3>录制宏 / Recording</h3>
+    <ol>
+        <li>打开 工具 → 宏录制/回放 / Open Tools → Macro Recording</li>
+        <li>点击"开始录制"按钮 / Click "Start Recording"</li>
+        <li>在主界面进行正常的发送操作 / Perform normal send operations</li>
+        <li>点击"停止录制"保存宏 / Click "Stop Recording" to save</li>
+    </ol>
+
+    <h3>播放宏 / Playback</h3>
+    <ol>
+        <li>从下拉列表选择已录制的宏 / Select a recorded macro from dropdown</li>
+        <li>设置播放参数（循环次数、速度倍率）/ Set playback parameters</li>
+        <li>点击"播放"开始执行 / Click "Play" to start</li>
+    </ol>
+
+    <div class="tip">
+        <strong>💡 提示 / Tip:</strong> 可以勾选"录制接收数据"来同时记录设备响应，用于调试验证。<br>
+        Check "Record Receive Data" to also record device responses for debugging.
+    </div>
+
+    <h2>2. 文件传输 File Transfer</h2>
+    <p><strong>中文：</strong>支持 XMODEM/YMODEM 协议的文件传输功能。</p>
+    <p><strong>English:</strong> File transfer supporting XMODEM/YMODEM protocols.</p>
+
+    <h3>支持的协议 / Supported Protocols</h3>
+    <table>
+        <tr>
+            <th>协议 / Protocol</th>
+            <th>数据块大小 / Block Size</th>
+            <th>特点 / Features</th>
+        </tr>
+        <tr>
+            <td>XMODEM</td>
+            <td>128 字节</td>
+            <td>基础校验和 / Basic checksum</td>
+        </tr>
+        <tr>
+            <td>XMODEM-CRC</td>
+            <td>128 字节</td>
+            <td>CRC-16校验 / CRC-16 checksum</td>
+        </tr>
+        <tr>
+            <td>XMODEM-1K</td>
+            <td>1024 字节</td>
+            <td>大数据块传输 / Large block transfer</td>
+        </tr>
+        <tr>
+            <td>YMODEM</td>
+            <td>1024 字节</td>
+            <td>支持文件名和批量传输 / Filename and batch support</td>
+        </tr>
+    </table>
+
+    <h3>发送文件 / Send File</h3>
+    <ol>
+        <li>打开 工具 → 文件传输 / Open Tools → File Transfer</li>
+        <li>选择"发送文件"模式 / Select "Send File" mode</li>
+        <li>选择传输协议 / Select protocol</li>
+        <li>点击"浏览"选择文件 / Click "Browse" to select file</li>
+        <li>点击"开始传输"/ Click "Start Transfer"</li>
+    </ol>
+
+    <h3>接收文件 / Receive File</h3>
+    <ol>
+        <li>选择"接收文件"模式 / Select "Receive File" mode</li>
+        <li>选择保存路径 / Select save location</li>
+        <li>点击"开始传输"等待数据 / Click "Start" and wait</li>
+    </ol>
+
+    <h2>3. IAP固件升级 IAP Firmware Upgrade</h2>
+    <p><strong>中文：</strong>通过串口进行在线固件升级。</p>
+    <p><strong>English:</strong> Online firmware upgrade via serial port.</p>
+
+    <h3>操作步骤 / Steps</h3>
+    <ol>
+        <li>确保设备处于Bootloader模式 / Ensure device is in Bootloader mode</li>
+        <li>打开 工具 → IAP升级 / Open Tools → IAP Upgrade</li>
+        <li>选择固件文件（.hex 或 .bin）/ Select firmware file</li>
+        <li>点击"开始传输"/ Click "Start Transfer"</li>
+        <li>等待传输完成 / Wait for completion</li>
+    </ol>
+
+    <div class="warning">
+        <strong>⚠️ 警告 / Warning:</strong> 固件升级过程中请勿断开连接或关闭电源！<br>
+        Do not disconnect or power off during firmware upgrade!
+    </div>
+
+    <h2>4. 多端口管理 Multi-Port Management</h2>
+    <p><strong>中文：</strong>同时管理和监控多个串口连接。</p>
+    <p><strong>English:</strong> Manage and monitor multiple serial port connections.</p>
+
+    <h3>功能特点 / Features</h3>
+    <ul>
+        <li>同时打开多个串口 / Open multiple ports simultaneously</li>
+        <li>独立配置每个端口 / Configure each port independently</li>
+        <li>支持向所有端口广播数据 / Broadcast data to all ports</li>
+        <li>统计每个端口的收发字节数 / Track bytes sent/received per port</li>
+    </ul>
+
+    <h3>使用方法 / Usage</h3>
+    <ol>
+        <li>打开 工具 → 多端口管理 / Open Tools → Multi-Port</li>
+        <li>点击"添加端口"创建新连接 / Click "Add Port" to create connection</li>
+        <li>配置端口参数并打开 / Configure and open port</li>
+        <li>使用"发送到全部"同时发送数据 / Use "Send to All" for broadcast</li>
+    </ol>
+
+    <h2>5. Modbus协议分析 Modbus Protocol Analysis</h2>
+    <p><strong>中文：</strong>专业的Modbus RTU协议分析和测试工具。</p>
+    <p><strong>English:</strong> Professional Modbus RTU protocol analysis and testing tool.</p>
+
+    <h3>支持的功能码 / Supported Function Codes</h3>
+    <table>
+        <tr>
+            <th>功能码 / Code</th>
+            <th>名称 / Name</th>
+            <th>描述 / Description</th>
+        </tr>
+        <tr>
+            <td>0x01</td>
+            <td>读线圈 / Read Coils</td>
+            <td>读取离散输出状态</td>
+        </tr>
+        <tr>
+            <td>0x02</td>
+            <td>读离散输入 / Read Discrete Inputs</td>
+            <td>读取离散输入状态</td>
+        </tr>
+        <tr>
+            <td>0x03</td>
+            <td>读保持寄存器 / Read Holding Registers</td>
+            <td>读取保持寄存器值</td>
+        </tr>
+        <tr>
+            <td>0x04</td>
+            <td>读输入寄存器 / Read Input Registers</td>
+            <td>读取输入寄存器值</td>
+        </tr>
+        <tr>
+            <td>0x05</td>
+            <td>写单线圈 / Write Single Coil</td>
+            <td>写入单个线圈</td>
+        </tr>
+        <tr>
+            <td>0x06</td>
+            <td>写单寄存器 / Write Single Register</td>
+            <td>写入单个寄存器</td>
+        </tr>
+        <tr>
+            <td>0x0F</td>
+            <td>写多线圈 / Write Multiple Coils</td>
+            <td>写入多个线圈</td>
+        </tr>
+        <tr>
+            <td>0x10</td>
+            <td>写多寄存器 / Write Multiple Registers</td>
+            <td>写入多个寄存器</td>
+        </tr>
+    </table>
+
+    <h3>分析功能 / Analysis Features</h3>
+    <ul>
+        <li>自动解析Modbus帧结构 / Auto-parse Modbus frame structure</li>
+        <li>CRC校验验证 / CRC checksum verification</li>
+        <li>寄存器值多格式显示（十进制、十六进制、浮点数）/ Multi-format register display</li>
+        <li>请求/响应配对分析 / Request/Response pairing</li>
+        <li>错误码解释 / Error code interpretation</li>
+    </ul>
+
+    <h2>6. 数据导出 Data Export</h2>
+    <p><strong>中文：</strong>支持多种格式的数据导出功能。</p>
+    <p><strong>English:</strong> Data export supporting multiple formats.</p>
+
+    <h3>支持的格式 / Supported Formats</h3>
+    <table>
+        <tr>
+            <th>格式 / Format</th>
+            <th>扩展名</th>
+            <th>用途 / Usage</th>
+        </tr>
+        <tr>
+            <td>纯文本 / Plain Text</td>
+            <td>.txt</td>
+            <td>简单查看和分享</td>
+        </tr>
+        <tr>
+            <td>CSV表格</td>
+            <td>.csv</td>
+            <td>Excel分析</td>
+        </tr>
+        <tr>
+            <td>HTML网页</td>
+            <td>.html</td>
+            <td>格式化报告</td>
+        </tr>
+        <tr>
+            <td>JSON</td>
+            <td>.json</td>
+            <td>程序处理</td>
+        </tr>
+        <tr>
+            <td>XML</td>
+            <td>.xml</td>
+            <td>结构化数据</td>
+        </tr>
+        <tr>
+            <td>二进制</td>
+            <td>.bin</td>
+            <td>原始数据保存</td>
+        </tr>
+        <tr>
+            <td>十六进制转储</td>
+            <td>.hex</td>
+            <td>调试分析</td>
+        </tr>
+    </table>
+
+    <h3>过滤选项 / Filter Options</h3>
+    <ul>
+        <li>按方向过滤（仅发送/仅接收）/ Filter by direction</li>
+        <li>按时间范围过滤 / Filter by time range</li>
+        <li>按内容正则表达式过滤 / Filter by content regex</li>
+    </ul>
+
+    <h2>7. 数据搜索 Data Search</h2>
+    <p><strong>中文：</strong>在接收数据中快速搜索特定内容。</p>
+    <p><strong>English:</strong> Quickly search for specific content in received data.</p>
+
+    <h3>使用方法 / Usage</h3>
+    <ol>
+        <li>按 <code>Ctrl+F</code> 或 编辑 → 数据搜索 / Press Ctrl+F or Edit → Data Search</li>
+        <li>在过滤标签页输入搜索关键词 / Enter keywords in Filter tab</li>
+        <li>匹配的行会实时显示 / Matching lines shown in real-time</li>
+    </ol>
+
+    <div class="tip">
+        <strong>💡 提示 / Tip:</strong> 搜索支持正则表达式，如 <code>ERROR|FAIL</code> 可同时搜索两个关键词。<br>
+        Search supports regex, e.g., <code>ERROR|FAIL</code> searches both keywords.
+    </div>
+
+    <h2>8. 数据表格视图 Data Table View</h2>
+    <p><strong>中文：</strong>以结构化表格形式展示串口收发数据，便于数据分析和追踪。</p>
+    <p><strong>English:</strong> Display serial data in structured table format for easy analysis and tracking.</p>
+
+    <h3>打开方式 / How to Open</h3>
+    <p>菜单 <code>工具 → 数据表格</code> / Menu <code>Tools → Data Table</code></p>
+
+    <h3>表格列说明 / Column Description</h3>
+    <table>
+        <tr>
+            <th>列名 / Column</th>
+            <th>说明 / Description</th>
+        </tr>
+        <tr>
+            <td>序号 / Index</td>
+            <td>数据帧序号，从1开始递增</td>
+        </tr>
+        <tr>
+            <td>时间戳 / Timestamp</td>
+            <td>数据收发的精确时间</td>
+        </tr>
+        <tr>
+            <td>方向 / Direction</td>
+            <td>TX（发送）或 RX（接收）</td>
+        </tr>
+        <tr>
+            <td>HEX</td>
+            <td>十六进制格式数据</td>
+        </tr>
+        <tr>
+            <td>ASCII</td>
+            <td>ASCII文本格式数据</td>
+        </tr>
+        <tr>
+            <td>解析值 / Values</td>
+            <td>协议解析出的数值（如有）</td>
+        </tr>
+        <tr>
+            <td>协议 / Protocol</td>
+            <td>使用的协议类型</td>
+        </tr>
+    </table>
+
+    <h3>功能特点 / Features</h3>
+    <ul>
+        <li><strong>实时过滤 / Real-time Filter:</strong> 输入关键字实时筛选数据</li>
+        <li><strong>方向筛选 / Direction Filter:</strong> 仅显示TX/RX数据</li>
+        <li><strong>CSV导出 / CSV Export:</strong> 导出数据为CSV文件</li>
+        <li><strong>复制选中 / Copy Selected:</strong> 复制选中行到剪贴板</li>
+        <li><strong>自动滚动 / Auto Scroll:</strong> 新数据到来时自动滚动</li>
+        <li><strong>暂停更新 / Pause:</strong> 暂停实时更新以查看历史数据</li>
+    </ul>
+
+    <h2>9. 交互式控件面板 Interactive Control Panel</h2>
+    <p><strong>中文：</strong>提供可视化控件进行实时调参和数据显示。</p>
+    <p><strong>English:</strong> Visual controls for real-time parameter tuning and data display.</p>
+
+    <h3>打开方式 / How to Open</h3>
+    <p>菜单 <code>工具 → 控件面板</code> / Menu <code>Tools → Control Panel</code></p>
+
+    <h3>支持的控件 / Supported Controls</h3>
+    <table>
+        <tr>
+            <th>控件 / Control</th>
+            <th>功能 / Function</th>
+        </tr>
+        <tr>
+            <td><strong>滑动条 / Slider</strong></td>
+            <td>拖动调节参数，实时发送到设备</td>
+        </tr>
+        <tr>
+            <td><strong>3D姿态 / 3D Attitude</strong></td>
+            <td>显示 IMU/飞控的 Roll/Pitch/Yaw 姿态</td>
+        </tr>
+    </table>
+
+    <h3>滑动条控件 / Slider Control</h3>
+    <p><strong>功能特点 / Features:</strong></p>
+    <ul>
+        <li>拖动滑动条实时发送数据</li>
+        <li>点击名称可直接编辑</li>
+        <li>自定义数值范围、步进、小数位数</li>
+        <li>自定义发送模板（如 <code>SET %s %.2f\n</code>）</li>
+        <li>发送频率限制，防止数据拥堵</li>
+    </ul>
+
+    <p><strong>右键配置 / Right-click Config:</strong> 右键点击控件 → 配置...</p>
+
+    <h3>3D姿态控件 / 3D Attitude Control</h3>
+    <p><strong>功能特点 / Features:</strong></p>
+    <ul>
+        <li>3D飞行器模型实时旋转显示</li>
+        <li>支持 Roll/Pitch/Yaw 三轴显示</li>
+        <li>鼠标拖动旋转视角，滚轮缩放</li>
+        <li>显示坐标轴和参考网格</li>
+        <li>可绑定数据通道自动更新</li>
+    </ul>
+
+    <p><strong>数据通道绑定 / Channel Binding:</strong></p>
+    <ul>
+        <li>横滚通道 (Roll): 绑定接收 Roll 数据</li>
+        <li>俯仰通道 (Pitch): 绑定接收 Pitch 数据</li>
+        <li>偏航通道 (Yaw): 绑定接收 Yaw 数据</li>
+    </ul>
+
+    <h3>控件管理 / Control Management</h3>
+    <ul>
+        <li><strong>添加控件:</strong> 选择控件类型 → 点击"添加"</li>
+        <li><strong>删除控件:</strong> 右键点击控件 → 删除</li>
+        <li><strong>清空所有:</strong> 点击"清空"按钮</li>
+        <li><strong>保存配置:</strong> 点击"保存"导出为JSON文件</li>
+        <li><strong>加载配置:</strong> 点击"加载"导入JSON文件</li>
+    </ul>
+
+    <div class="tip">
+        <strong>💡 应用场景 / Applications:</strong><br>
+        PID参数在线调节、电机速度控制、飞控姿态监控、传感器数据可视化
+    </div>
+
+</body>
+</html>

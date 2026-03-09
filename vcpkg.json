@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "comassistant",
+  "version": "1.0.0",
+  "description": "串口调试助手 - Serial Port Debug Assistant",
+  "license": "GPL-3.0",
+  "supports": "windows & x64",
+  "dependencies": [
+    "spdlog",
+    "nlohmann-json",
+    "lua",
+    "hidapi",
+    "zlib"
+  ]
+}

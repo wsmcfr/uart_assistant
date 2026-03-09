@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>显示模式说明 - Display Modes</title>
+    <style>
+        /* CSS 变量定义 - 暗色主题（默认） */
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+            --bg-mode-box: #212f3c;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+            --border-mode-box: #3d5a80;
+        }
+
+        /* 明亮主题 */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #ffffff;
+                --bg-secondary: #f8f9fa;
+                --bg-code: #f1f3f4;
+                --bg-table-header: #3498db;
+                --bg-table-row: #ffffff;
+                --bg-table-row-alt: #f8f9fa;
+                --bg-tip: #e8f8f0;
+                --bg-warning: #fef9e7;
+                --bg-mode-box: #f8f9fa;
+
+                --text-primary: #2c3e50;
+                --text-secondary: #34495e;
+                --text-heading1: #2874a6;
+                --text-heading2: #2e86c1;
+                --text-heading3: #3498db;
+                --text-strong: #1a252f;
+                --text-code: #27ae60;
+                --text-pre: #1e8449;
+                --text-tip: #1e8449;
+                --text-warning: #9a7d0a;
+
+                --border-primary: #3498db;
+                --border-secondary: #d5dbdb;
+                --border-table: #d5dbdb;
+                --border-tip: #27ae60;
+                --border-warning: #f39c12;
+                --border-mode-box: #d5dbdb;
+            }
+        }
+
+        /* 通过 data-theme 属性手动切换主题 */
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-code: #f1f3f4;
+            --bg-table-header: #3498db;
+            --bg-table-row: #ffffff;
+            --bg-table-row-alt: #f8f9fa;
+            --bg-tip: #e8f8f0;
+            --bg-warning: #fef9e7;
+            --bg-mode-box: #f8f9fa;
+
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --text-heading1: #2874a6;
+            --text-heading2: #2e86c1;
+            --text-heading3: #3498db;
+            --text-strong: #1a252f;
+            --text-code: #27ae60;
+            --text-pre: #1e8449;
+            --text-tip: #1e8449;
+            --text-warning: #9a7d0a;
+
+            --border-primary: #3498db;
+            --border-secondary: #d5dbdb;
+            --border-table: #d5dbdb;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+            --border-mode-box: #d5dbdb;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+            --bg-mode-box: #212f3c;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+            --border-mode-box: #3d5a80;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        h1 {
+            color: var(--text-heading1);
+            border-bottom: 3px solid var(--border-primary);
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: var(--text-heading2);
+            margin-top: 25px;
+            border-bottom: 1px solid var(--border-mode-box);
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: var(--text-heading3);
+        }
+        p, li {
+            color: var(--text-secondary);
+        }
+        strong {
+            color: var(--text-strong);
+        }
+        code {
+            background: var(--bg-code);
+            color: var(--text-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Consolas", "Courier New", monospace;
+        }
+        pre {
+            background: var(--bg-code);
+            color: var(--text-pre);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid var(--border-secondary);
+        }
+        .tip {
+            background: var(--bg-tip);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-tip);
+        }
+        .warning {
+            background: var(--bg-warning);
+            border-left: 4px solid var(--border-warning);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-warning);
+        }
+        .mode-box {
+            background: var(--bg-mode-box);
+            border: 1px solid var(--border-mode-box);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 10px 0;
+            width: 100%;
+        }
+        table th {
+            background: var(--bg-table-header);
+            color: white;
+            padding: 8px;
+        }
+        table td {
+            border: 1px solid var(--border-table);
+            padding: 8px;
+            color: var(--text-secondary);
+            background: var(--bg-table-row);
+        }
+    </style>
+</head>
+<body>
+    <h1>显示模式说明 Display Modes</h1>
+
+    <p>ComAssistant 提供四种显示模式，适用于不同的使用场景。可在工具栏的"模式"下拉框中切换。</p>
+    <p>ComAssistant provides four display modes for different use cases. Switch via the "Mode" dropdown in toolbar.</p>
+
+    <h2>1. 串口模式 Serial Mode</h2>
+    <div class="mode-box">
+        <p><strong>用途 / Purpose:</strong> 标准串口通信模式，适合日常收发数据。</p>
+        <p>Standard serial communication mode for everyday data transmission.</p>
+
+        <h3>功能特点 Features:</h3>
+        <ul>
+            <li>多标签接收区（文本/十六进制/过滤）- Multi-tab receive area (Text/Hex/Filter)</li>
+            <li>支持文本和HEX格式发送 - Support text and HEX format sending</li>
+            <li>支持循环发送 - Auto-send loop support</li>
+            <li>支持追加换行符 - Append newline option</li>
+            <li>关键词高亮功能 - Keyword highlighting</li>
+        </ul>
+
+        <div class="tip">
+            <strong>适用场景:</strong> AT指令调试、传感器数据读取、普通串口通信<br>
+            <strong>Best for:</strong> AT command debugging, sensor data reading, general serial communication
+        </div>
+    </div>
+
+    <h2>2. 终端模式 Terminal Mode</h2>
+    <div class="mode-box">
+        <p><strong>用途 / Purpose:</strong> 专业VT100终端仿真器，支持完整ANSI转义序列，可与Linux/RTOS等系统进行交互式命令行操作。</p>
+        <p>Professional VT100 terminal emulator with full ANSI escape sequence support for interactive command line operation with Linux/RTOS systems.</p>
+
+        <h3>功能特点 Features:</h3>
+        <ul>
+            <li><strong>完整VT100/ANSI支持</strong> - 光标定位、屏幕清除、滚动区域、颜色控制</li>
+            <li><strong>Full VT100/ANSI support</strong> - Cursor positioning, screen clearing, scroll regions, color control</li>
+            <li>支持vim/nano等终端编辑器 - Supports vim/nano and other terminal editors</li>
+            <li>命令历史记录（上/下键切换）- Command history (Up/Down keys)</li>
+            <li>Tab键智能补全（本地命令优先，无匹配时发送到设备）- Smart Tab completion (local commands first, sends to device if no match)</li>
+            <li>本地回显选项 - Local echo option</li>
+            <li>日志记录功能 - Log recording feature</li>
+        </ul>
+
+        <h3>配色主题 Color Themes:</h3>
+        <table>
+            <tr>
+                <th>主题 Theme</th>
+                <th>说明 Description</th>
+            </tr>
+            <tr>
+                <td>Classic Green</td>
+                <td>经典绿色终端风格 - Classic green terminal style</td>
+            </tr>
+            <tr>
+                <td>Monokai</td>
+                <td>流行编辑器主题 - Popular editor theme</td>
+            </tr>
+            <tr>
+                <td>Dracula</td>
+                <td>暗色吸血鬼主题 - Dark vampire theme</td>
+            </tr>
+            <tr>
+                <td>Solarized Dark</td>
+                <td>护眼暗色主题 - Eye-friendly dark theme</td>
+            </tr>
+            <tr>
+                <td>One Dark</td>
+                <td>VS Code风格 - VS Code style</td>
+            </tr>
+            <tr>
+                <td>Ubuntu</td>
+                <td>Ubuntu终端风格 - Ubuntu terminal style</td>
+            </tr>
+        </table>
+
+        <h3>控制按钮说明 Control Buttons:</h3>
+        <table>
+            <tr>
+                <th>按钮 Button</th>
+                <th>发送内容 Sends</th>
+                <th>说明 Description</th>
+            </tr>
+            <tr>
+                <td><code>Ctrl+C</code></td>
+                <td><code>0x03</code></td>
+                <td>中断信号 - 终止当前运行的程序<br>Interrupt signal - terminate running program</td>
+            </tr>
+            <tr>
+                <td><code>Ctrl+D</code></td>
+                <td><code>0x04</code></td>
+                <td>EOF信号 - 表示输入结束<br>EOF signal - indicates end of input</td>
+            </tr>
+            <tr>
+                <td><code>Ctrl+Z</code></td>
+                <td><code>0x1A</code></td>
+                <td>挂起信号 - 将程序放到后台<br>Suspend signal - put program to background</td>
+            </tr>
+        </table>
+
+        <h3>支持的ANSI控制序列:</h3>
+        <ul>
+            <li><strong>光标控制:</strong> CUP(定位)、CUU/CUD/CUF/CUB(移动)、保存/恢复位置</li>
+            <li><strong>屏幕控制:</strong> ED(清屏)、EL(清行)、滚动</li>
+            <li><strong>颜色支持:</strong> 16色、256色、真彩色(RGB)</li>
+            <li><strong>文本样式:</strong> 粗体、斜体、下划线、闪烁、反显</li>
+        </ul>
+
+        <h3>字体设置:</h3>
+        <p>在工具栏"字号"处可调整终端字体大小（6-72pt）。推荐使用等宽字体如Consolas。</p>
+        <p>Adjust terminal font size (6-72pt) in toolbar "Font Size". Monospace fonts like Consolas recommended.</p>
+
+        <h3>Tab智能补全 Smart Tab Completion:</h3>
+        <p><strong>工作原理 / How it works:</strong></p>
+        <ol>
+            <li>首先在本地命令列表中查找匹配 - First searches local command list for matches</li>
+            <li>连续按Tab循环切换匹配项 - Press Tab repeatedly to cycle through matches</li>
+            <li>如果无本地匹配，发送Tab到远程设备 - If no local match, sends Tab to remote device</li>
+        </ol>
+        <p><strong>编辑命令列表 / Edit command list:</strong></p>
+        <p>点击工具栏"编辑命令"按钮可自定义本地命令列表。默认包含常用命令：help, ls, cd, pwd, cat, echo, reboot, reset, version, status, clear, exit, quit</p>
+        <p>Click "Edit Commands" button in toolbar to customize local command list. Default commands include: help, ls, cd, pwd, cat, echo, reboot, reset, version, status, clear, exit, quit</p>
+
+        <div class="warning">
+            <strong>注意:</strong> 控制字符是不可打印的，发送后设备回显可能看起来是空的。<br>
+            <strong>Note:</strong> Control characters are non-printable, device echo may appear empty.
+        </div>
+
+        <div class="tip">
+            <strong>适用场景:</strong> Linux/RTOS命令行交互、ESP32/STM32 Shell调试、路由器/交换机配置<br>
+            <strong>Best for:</strong> Linux/RTOS command line, ESP32/STM32 Shell debugging, router/switch configuration
+        </div>
+    </div>
+
+    <h2>3. 帧模式 Frame Mode</h2>
+    <div class="mode-box">
+        <p><strong>用途 / Purpose:</strong> 按帧解析数据，适合自定义协议调试。</p>
+        <p>Parse data by frames, suitable for custom protocol debugging.</p>
+
+        <h3>功能特点 Features:</h3>
+        <ul>
+            <li>自定义帧头帧尾 - Custom frame header/footer</li>
+            <li>帧校验支持（XOR/SUM/CRC16）- Frame checksum (XOR/SUM/CRC16)</li>
+            <li>帧列表显示有效/无效状态 - Frame list shows valid/invalid status</li>
+            <li>帧详情查看（HEX/ASCII）- Frame detail view (HEX/ASCII)</li>
+            <li>超时自动处理不完整帧 - Timeout handling for incomplete frames</li>
+        </ul>
+
+        <h3>帧配置说明 Frame Configuration:</h3>
+        <table>
+            <tr>
+                <th>参数 Parameter</th>
+                <th>默认值 Default</th>
+                <th>说明 Description</th>
+            </tr>
+            <tr>
+                <td>帧头 Header</td>
+                <td><code>AA</code></td>
+                <td>帧起始标志 - Frame start marker</td>
+            </tr>
+            <tr>
+                <td>帧尾 Footer</td>
+                <td><code>55</code></td>
+                <td>帧结束标志 - Frame end marker</td>
+            </tr>
+            <tr>
+                <td>校验 Checksum</td>
+                <td>无 None</td>
+                <td>可选XOR/SUM/CRC16</td>
+            </tr>
+        </table>
+
+        <h3>帧状态说明:</h3>
+        <ul>
+            <li><span style="color:#2ecc71;">✓</span> 有效帧 - 帧头帧尾正确，校验通过</li>
+            <li><span style="color:#e74c3c;">✗</span> 无效帧 - 帧头帧尾错误、超时或校验失败</li>
+        </ul>
+
+        <div class="tip">
+            <strong>适用场景:</strong> Modbus调试、自定义二进制协议、传感器数据帧解析<br>
+            <strong>Best for:</strong> Modbus debugging, custom binary protocols, sensor data frame parsing
+        </div>
+    </div>
+
+    <h2>4. 调试模式 Debug Mode</h2>
+    <div class="mode-box">
+        <p><strong>用途 / Purpose:</strong> 高级调试功能，支持断点、时间差分析。</p>
+        <p>Advanced debugging with breakpoints and time difference analysis.</p>
+
+        <h3>功能特点 Features:</h3>
+        <ul>
+            <li>数据记录表格（按行显示）- Data record table (line by line)</li>
+            <li>TX/RX方向标记 - TX/RX direction markers</li>
+            <li>时间差计算（相邻数据间隔）- Time difference calculation</li>
+            <li>断点功能（匹配特定数据时暂停）- Breakpoint (pause on matching data)</li>
+            <li>暂停/单步功能 - Pause/Step functions</li>
+            <li>监视变量显示 - Watch variables display</li>
+            <li>数据过滤功能 - Data filtering</li>
+        </ul>
+
+        <h3>工具栏按钮说明:</h3>
+        <table>
+            <tr>
+                <th>按钮 Button</th>
+                <th>功能 Function</th>
+            </tr>
+            <tr>
+                <td>暂停/继续</td>
+                <td>暂停数据更新，可查看历史数据 - Pause updates to review history</td>
+            </tr>
+            <tr>
+                <td>步进</td>
+                <td>暂停状态下逐条显示数据 - Show data one by one when paused</td>
+            </tr>
+            <tr>
+                <td>添加断点</td>
+                <td>设置数据断点，匹配时自动暂停 - Set data breakpoint</td>
+            </tr>
+            <tr>
+                <td>HEX</td>
+                <td>切换HEX/文本显示格式 - Toggle HEX/Text display</td>
+            </tr>
+            <tr>
+                <td>时间差</td>
+                <td>显示/隐藏时间差列 - Show/hide time difference column</td>
+            </tr>
+        </table>
+
+        <h3>断点使用方法:</h3>
+        <ol>
+            <li>点击"添加断点"按钮</li>
+            <li>输入要匹配的模式（支持HEX或文本）</li>
+            <li>当接收数据包含该模式时，自动暂停</li>
+        </ol>
+        <p>示例：输入 <code>ERROR</code> 作为断点，收到包含 "ERROR" 的数据时暂停。</p>
+
+        <div class="tip">
+            <strong>适用场景:</strong> 协议分析、时序调试、异常数据捕获<br>
+            <strong>Best for:</strong> Protocol analysis, timing debugging, exception capture
+        </div>
+    </div>
+
+    <h2>模式切换建议 Mode Selection Tips</h2>
+    <table>
+        <tr>
+            <th>使用场景 Use Case</th>
+            <th>推荐模式 Recommended Mode</th>
+        </tr>
+        <tr>
+            <td>日常AT指令调试</td>
+            <td>串口模式 Serial Mode</td>
+        </tr>
+        <tr>
+            <td>Linux/RTOS交互</td>
+            <td>终端模式 Terminal Mode</td>
+        </tr>
+        <tr>
+            <td>自定义协议调试</td>
+            <td>帧模式 Frame Mode</td>
+        </tr>
+        <tr>
+            <td>时序分析/异常捕获</td>
+            <td>调试模式 Debug Mode</td>
+        </tr>
+    </table>
+
+</body>
+</html>

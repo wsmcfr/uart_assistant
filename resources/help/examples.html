@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>使用示例 - Usage Examples</title>
+    <style>
+        /* CSS 变量定义 - 暗色主题（默认） */
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #7d3c98;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-example: #1c2833;
+            --bg-code-box: #1e3a2f;
+            --bg-result-box: #1a3347;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-example: #8e44ad;
+            --border-result: #3498db;
+        }
+
+        /* 明亮主题 */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #ffffff;
+                --bg-secondary: #f8f9fa;
+                --bg-code: #f1f3f4;
+                --bg-table-header: #9b59b6;
+                --bg-table-row: #ffffff;
+                --bg-table-row-alt: #f8f9fa;
+                --bg-tip: #e8f8f0;
+                --bg-example: #f8f9fa;
+                --bg-code-box: #e8f8f0;
+                --bg-result-box: #ebf5fb;
+
+                --text-primary: #2c3e50;
+                --text-secondary: #34495e;
+                --text-heading1: #2874a6;
+                --text-heading2: #2e86c1;
+                --text-heading3: #3498db;
+                --text-strong: #1a252f;
+                --text-code: #27ae60;
+                --text-pre: #1e8449;
+                --text-tip: #1e8449;
+
+                --border-primary: #3498db;
+                --border-secondary: #d5dbdb;
+                --border-table: #d5dbdb;
+                --border-tip: #27ae60;
+                --border-example: #9b59b6;
+                --border-result: #3498db;
+            }
+        }
+
+        /* 通过 data-theme 属性手动切换主题 */
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-code: #f1f3f4;
+            --bg-table-header: #9b59b6;
+            --bg-table-row: #ffffff;
+            --bg-table-row-alt: #f8f9fa;
+            --bg-tip: #e8f8f0;
+            --bg-example: #f8f9fa;
+            --bg-code-box: #e8f8f0;
+            --bg-result-box: #ebf5fb;
+
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --text-heading1: #2874a6;
+            --text-heading2: #2e86c1;
+            --text-heading3: #3498db;
+            --text-strong: #1a252f;
+            --text-code: #27ae60;
+            --text-pre: #1e8449;
+            --text-tip: #1e8449;
+
+            --border-primary: #3498db;
+            --border-secondary: #d5dbdb;
+            --border-table: #d5dbdb;
+            --border-tip: #27ae60;
+            --border-example: #9b59b6;
+            --border-result: #3498db;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #7d3c98;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-example: #1c2833;
+            --bg-code-box: #1e3a2f;
+            --bg-result-box: #1a3347;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-example: #8e44ad;
+            --border-result: #3498db;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        h1 {
+            color: var(--text-heading1);
+            border-bottom: 3px solid var(--border-primary);
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: var(--text-heading2);
+            margin-top: 25px;
+            border-left: 4px solid var(--border-primary);
+            padding-left: 10px;
+        }
+        h3 {
+            color: var(--text-heading3);
+        }
+        p, li {
+            color: var(--text-secondary);
+        }
+        strong {
+            color: var(--text-strong);
+        }
+        code {
+            background: var(--bg-code);
+            color: var(--text-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Consolas", "Courier New", monospace;
+        }
+        pre {
+            background: var(--bg-code);
+            color: var(--text-pre);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: "Consolas", "Courier New", monospace;
+            border: 1px solid var(--border-secondary);
+        }
+        .example-box {
+            border: 2px solid var(--border-example);
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            background: var(--bg-example);
+        }
+        .code-box {
+            background: var(--bg-code-box);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .result-box {
+            background: var(--bg-result-box);
+            border-left: 4px solid var(--border-result);
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .tip {
+            background: var(--bg-tip);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-tip);
+        }
+        ul {
+            margin: 10px 0;
+        }
+        li {
+            margin: 5px 0;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        table th {
+            background: var(--bg-table-header);
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        table td {
+            border: 1px solid var(--border-table);
+            padding: 10px;
+            color: var(--text-secondary);
+            background: var(--bg-table-row);
+        }
+        table tr:nth-child(even) td {
+            background: var(--bg-table-row-alt);
+        }
+    </style>
+</head>
+<body>
+    <h1>使用示例 Usage Examples</h1>
+
+    <p><strong>中文：</strong>本页面提供常见应用场景的完整示例。</p>
+    <p><strong>English:</strong> This page provides complete examples for common application scenarios.</p>
+
+    <h2>示例1：温度监测 / Example 1: Temperature Monitoring</h2>
+
+    <div class="example-box">
+        <h3>场景描述 / Scenario</h3>
+        <p><strong>中文：</strong>使用Arduino读取DHT22温湿度传感器，每秒通过串口发送数据到PC进行实时绘图。</p>
+        <p><strong>English:</strong> Use Arduino to read DHT22 temperature/humidity sensor, send data via serial port to PC every second for real-time plotting.</p>
+
+        <h3>Arduino代码 / Arduino Code</h3>
+        <div class="code-box">
+            <pre>
+#include &lt;DHT.h&gt;
+
+#define DHTPIN 2
+#define DHTTYPE DHT22
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+    Serial.begin(115200);
+    dht.begin();
+}
+
+void loop() {
+    float temp = dht.readTemperature();
+    float humidity = dht.readHumidity();
+
+    // 使用TEXT协议发送
+    Serial.print("{temp}");
+    Serial.print(temp);
+    Serial.print(",");
+    Serial.println(humidity);
+
+    delay(1000);  // 每秒一次
+}
+            </pre>
+        </div>
+
+        <h3>串口助手设置 / ComAssistant Settings</h3>
+        <ul>
+            <li>波特率 / Baud Rate: <code>115200</code></li>
+            <li>协议 / Protocol: <code>TEXT绘图</code></li>
+        </ul>
+
+        <h3>发送的数据示例 / Data Example</h3>
+        <div class="result-box">
+            <pre>
+{temp}25.3,60.2
+{temp}25.4,60.1
+{temp}25.5,60.3
+{temp}25.6,60.2
+            </pre>
+        </div>
+
+        <h3>预期结果 / Expected Result</h3>
+        <ul>
+            <li>自动创建名为 "temp" 的绘图窗口 / Auto-create plot window named "temp"</li>
+            <li>曲线1（蓝色）：温度数据 / Curve 1 (blue): Temperature data</li>
+            <li>曲线2（红色）：湿度数据 / Curve 2 (red): Humidity data</li>
+            <li>X轴自动递增（0, 1, 2, 3...）/ X-axis auto increments</li>
+        </ul>
+    </div>
+
+    <h2>示例2：三轴加速度计 / Example 2: 3-Axis Accelerometer</h2>
+
+    <div class="example-box">
+        <h3>场景描述 / Scenario</h3>
+        <p><strong>中文：</strong>使用MPU6050加速度计，实时监测X、Y、Z三轴加速度。</p>
+        <p><strong>English:</strong> Use MPU6050 accelerometer to monitor X, Y, Z axis acceleration in real-time.</p>
+
+        <h3>Arduino代码 / Arduino Code</h3>
+        <div class="code-box">
+            <pre>
+#include &lt;Wire.h&gt;
+#include &lt;MPU6050.h&gt;
+
+MPU6050 mpu;
+
+void setup() {
+    Serial.begin(115200);
+    Wire.begin();
+    mpu.initialize();
+}
+
+void loop() {
+    int16_t ax, ay, az;
+    mpu.getAcceleration(&ax, &ay, &az);
+
+    // 转换为g值
+    float gx = ax / 16384.0;
+    float gy = ay / 16384.0;
+    float gz = az / 16384.0;
+
+    // 使用STAMP协议（包含时间戳）
+    Serial.print("<");
+    Serial.print(millis());
+    Serial.print(">{accel}");
+    Serial.print(gx, 3);
+    Serial.print(",");
+    Serial.print(gy, 3);
+    Serial.print(",");
+    Serial.println(gz, 3);
+
+    delay(50);  // 20Hz采样率
+}
+            </pre>
+        </div>
+
+        <h3>串口助手设置 / ComAssistant Settings</h3>
+        <ul>
+            <li>波特率 / Baud Rate: <code>115200</code></li>
+            <li>协议 / Protocol: <code>STAMP绘图</code></li>
+        </ul>
+
+        <h3>发送的数据示例 / Data Example</h3>
+        <div class="result-box">
+            <pre>
+&lt;1000&gt;{accel}0.123,0.456,0.989
+&lt;1050&gt;{accel}0.125,0.458,0.991
+&lt;1100&gt;{accel}0.124,0.457,0.990
+&lt;1150&gt;{accel}0.126,0.459,0.992
+            </pre>
+        </div>
+
+        <h3>预期结果 / Expected Result</h3>
+        <ul>
+            <li>窗口名称：accel</li>
+            <li>曲线1：X轴加速度 / Curve 1: X-axis acceleration</li>
+            <li>曲线2：Y轴加速度 / Curve 2: Y-axis acceleration</li>
+            <li>曲线3：Z轴加速度 / Curve 3: Z-axis acceleration</li>
+            <li>X轴为时间戳（毫秒）/ X-axis is timestamp (ms)</li>
+        </ul>
+    </div>
+
+    <h2>示例3：Modbus设备读取 / Example 3: Modbus Device Reading</h2>
+
+    <div class="example-box">
+        <h3>场景描述 / Scenario</h3>
+        <p><strong>中文：</strong>通过Modbus RTU协议读取电表的电压、电流、功率数据。</p>
+        <p><strong>English:</strong> Read voltage, current, power data from power meter via Modbus RTU protocol.</p>
+
+        <h3>发送命令 / Send Command</h3>
+        <div class="code-box">
+            <p><strong>中文：</strong>读取地址为01的设备，从寄存器0x0000开始读取3个保持寄存器</p>
+            <p><strong>English:</strong> Read 3 holding registers from address 0x0000 of device 01</p>
+            <pre>01 03 00 00 00 03 05 CB</pre>
+        </div>
+
+        <h3>串口助手设置 / ComAssistant Settings</h3>
+        <ul>
+            <li>波特率 / Baud Rate: <code>9600</code></li>
+            <li>数据位 / Data Bits: <code>8</code></li>
+            <li>停止位 / Stop Bits: <code>1</code></li>
+            <li>校验位 / Parity: <code>None</code></li>
+            <li>协议 / Protocol: <code>Modbus</code></li>
+            <li>HEX发送 / HEX Send: <code>启用 / Enabled</code></li>
+        </ul>
+
+        <h3>响应数据示例 / Response Data Example</h3>
+        <div class="result-box">
+            <pre>01 03 06 00 E6 00 3C 04 B0 XX XX</pre>
+            <p><strong>解析 / Parsing:</strong></p>
+            <ul>
+                <li>01 - 设备地址 / Device Address</li>
+                <li>03 - 功能码（读保持寄存器）/ Function Code (Read Holding Registers)</li>
+                <li>06 - 字节数 / Byte Count</li>
+                <li>00 E6 - 寄存器1值（230V）/ Register 1 value (230V)</li>
+                <li>00 3C - 寄存器2值（60A）/ Register 2 value (60A)</li>
+                <li>04 B0 - 寄存器3值（1200W）/ Register 3 value (1200W)</li>
+                <li>XX XX - CRC16校验 / CRC16 Checksum</li>
+            </ul>
+        </div>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong> 接收区会自动解析Modbus帧并显示字段含义<br>
+            Receive area will auto-parse Modbus frames and display field meanings
+        </div>
+    </div>
+
+    <h2>示例4：CSV格式频率响应 / Example 4: CSV Format Frequency Response</h2>
+
+    <div class="example-box">
+        <h3>场景描述 / Scenario</h3>
+        <p><strong>中文：</strong>使用信号发生器和示波器测量滤波器的频率响应曲线。</p>
+        <p><strong>English:</strong> Measure filter frequency response curve using signal generator and oscilloscope.</p>
+
+        <h3>Python测试脚本 / Python Test Script</h3>
+        <div class="code-box">
+            <pre>
+import serial
+import time
+
+ser = serial.Serial('COM3', 115200)
+
+frequencies = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+
+for freq in frequencies:
+    # 设置信号发生器频率
+    set_frequency(freq)
+    time.sleep(0.5)
+
+    # 读取示波器幅度
+    amplitude = read_amplitude()
+
+    # 发送CSV格式数据
+    data = f"freq_resp,{freq},{amplitude}\n"
+    ser.write(data.encode())
+
+    time.sleep(0.5)
+
+ser.close()
+            </pre>
+        </div>
+
+        <h3>串口助手设置 / ComAssistant Settings</h3>
+        <ul>
+            <li>波特率 / Baud Rate: <code>115200</code></li>
+            <li>协议 / Protocol: <code>CSV绘图</code></li>
+        </ul>
+
+        <h3>发送的数据示例 / Data Example</h3>
+        <div class="result-box">
+            <pre>
+freq_resp,10,3.20
+freq_resp,20,3.18
+freq_resp,50,3.10
+freq_resp,100,2.95
+freq_resp,200,2.65
+freq_resp,500,2.10
+freq_resp,1000,1.45
+freq_resp,2000,0.85
+freq_resp,5000,0.35
+freq_resp,10000,0.12
+            </pre>
+        </div>
+
+        <h3>预期结果 / Expected Result</h3>
+        <ul>
+            <li>窗口名称：freq_resp</li>
+            <li>X轴：频率（Hz）/ X-axis: Frequency (Hz)</li>
+            <li>Y轴：幅度（V）/ Y-axis: Amplitude (V)</li>
+            <li>显示典型的低通滤波器频率响应曲线 / Show typical low-pass filter frequency response curve</li>
+        </ul>
+    </div>
+
+    <h2>示例5：多通道数据采集 / Example 5: Multi-Channel Data Acquisition</h2>
+
+    <div class="example-box">
+        <h3>场景描述 / Scenario</h3>
+        <p><strong>中文：</strong>使用ADS1115 ADC同时采集4路模拟信号。</p>
+        <p><strong>English:</strong> Use ADS1115 ADC to simultaneously acquire 4 analog signals.</p>
+
+        <h3>Arduino代码 / Arduino Code</h3>
+        <div class="code-box">
+            <pre>
+#include &lt;Wire.h&gt;
+#include &lt;Adafruit_ADS1X15.h&gt;
+
+Adafruit_ADS1115 ads;
+
+void setup() {
+    Serial.begin(115200);
+    ads.begin();
+    ads.setGain(GAIN_ONE);
+}
+
+void loop() {
+    // 读取4路ADC
+    int16_t adc0 = ads.readADC_SingleEnded(0);
+    int16_t adc1 = ads.readADC_SingleEnded(1);
+    int16_t adc2 = ads.readADC_SingleEnded(2);
+    int16_t adc3 = ads.readADC_SingleEnded(3);
+
+    // 转换为电压
+    float v0 = adc0 * 0.1875 / 1000.0;
+    float v1 = adc1 * 0.1875 / 1000.0;
+    float v2 = adc2 * 0.1875 / 1000.0;
+    float v3 = adc3 * 0.1875 / 1000.0;
+
+    // TEXT协议发送
+    Serial.print("{adc}");
+    Serial.print(v0, 3);
+    Serial.print(",");
+    Serial.print(v1, 3);
+    Serial.print(",");
+    Serial.print(v2, 3);
+    Serial.print(",");
+    Serial.println(v3, 3);
+
+    delay(100);  // 10Hz采样率
+}
+            </pre>
+        </div>
+
+        <h3>预期结果 / Expected Result</h3>
+        <ul>
+            <li>窗口名称：adc</li>
+            <li>4条曲线分别代表CH0、CH1、CH2、CH3 / 4 curves for CH0, CH1, CH2, CH3</li>
+            <li>实时显示各通道电压变化 / Real-time display of voltage changes on each channel</li>
+        </ul>
+    </div>
+
+    <h2>常见问题 / FAQ</h2>
+
+    <table>
+        <tr>
+            <th>问题 / Question</th>
+            <th>解决方案 / Solution</th>
+        </tr>
+        <tr>
+            <td>曲线不更新 / Curve not updating</td>
+            <td>
+                1. 检查协议选择是否正确 / Check if protocol is correct<br>
+                2. 检查窗口ID是否匹配 / Check if window ID matches<br>
+                3. 检查是否处于暂停状态 / Check if in paused state
+            </td>
+        </tr>
+        <tr>
+            <td>数据解析错误 / Data parsing error</td>
+            <td>
+                1. 检查数据格式是否符合协议 / Check if data format matches protocol<br>
+                2. 检查逗号分隔符 / Check comma separators<br>
+                3. 检查数值格式（不要有空格）/ Check number format (no spaces)
+            </td>
+        </tr>
+        <tr>
+            <td>性能卡顿 / Performance lag</td>
+            <td>
+                1. 启用OpenGL加速 / Enable OpenGL acceleration<br>
+                2. 启用数据抽稀 / Enable data decimation<br>
+                3. 减少曲线数量 / Reduce number of curves<br>
+                4. 降低最大点数限制 / Lower max point limit
+            </td>
+        </tr>
+        <tr>
+            <td>中文乱码 / Chinese garbled text</td>
+            <td>
+                1. 确保使用UTF-8编码 / Ensure UTF-8 encoding<br>
+                2. 检查串口波特率设置 / Check baud rate settings
+            </td>
+        </tr>
+    </table>
+
+    <h2>更多示例 / More Examples</h2>
+
+    <div class="tip">
+        <strong>💡 提示 / Tip:</strong><br>
+        <strong>中文：</strong> 更多应用示例和源代码请访问项目GitHub仓库<br>
+        <strong>English:</strong> More examples and source code available on project GitHub repository
+    </div>
+
+</body>
+</html>

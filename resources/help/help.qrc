@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/help">
+        <file>quickstart.html</file>
+        <file>modes.html</file>
+        <file>protocols.html</file>
+        <file>plotting.html</file>
+        <file>examples.html</file>
+        <file>advanced.html</file>
+    </qresource>
+</RCC>

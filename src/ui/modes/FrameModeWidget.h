@@ -1,0 +1,139 @@
+/**
+ * @file FrameModeWidget.h
+ * @brief 帧模式组件
+ * @author ComAssistant Team
+ * @date 2026-01-16
+ */
+
+#ifndef FRAMEMODEWIDGET_H
+#define FRAMEMODEWIDGET_H
+
+#include "IModeWidget.h"
+#include <QTableWidget>
+#include <QTextEdit>
+#include <QSplitter>
+#include <QToolBar>
+#include <QLineEdit>
+#include <QSpinBox>
+#include <QTimer>
+#include <QDateTime>
+#include <QEvent>
+#include <QLabel>
+#include <QComboBox>
+#include <QPushButton>
+
+namespace ComAssistant {
+
+/**
+ * @brief 帧数据结构
+ */
+struct FrameData {
+    int index = 0;              // 帧序号
+    QDateTime timestamp;        // 时间戳
+    QByteArray rawData;         // 原始数据
+    bool valid = false;         // 是否有效
+    QString errorInfo;          // 错误信息
+    QVariantMap parsedFields;   // 解析后的字段
+};
+
+/**
+ * @brief 帧模式解析配置（用于UI模式专用）
+ */
+struct ModeFrameConfig {
+    QByteArray header;          // 帧头
+    QByteArray footer;          // 帧尾
+    int lengthFieldPos = -1;    // 长度字段位置（-1表示不使用）
+    int lengthFieldSize = 1;    // 长度字段大小（1或2字节）
+    bool lengthBigEndian = false; // 长度字段字节序
+    bool lengthIncludesHeader = false;  // 长度是否包含帧头
+    int checksumType = 0;       // 校验类型：0=无, 1=XOR, 2=SUM, 3=CRC16
+    int checksumPos = -1;       // 校验位置（-1表示帧尾前）
+    int maxFrameSize = 1024;    // 最大帧长度
+    int timeout = 100;          // 超时时间（毫秒）
+};
+
+/**
+ * @brief 帧模式组件
+ */
+class FrameModeWidget : public IModeWidget {
+    Q_OBJECT
+
+public:
+    explicit FrameModeWidget(QWidget* parent = nullptr);
+    ~FrameModeWidget() override = default;
+
+    // IModeWidget 接口实现
+    QString modeName() const override { return tr("帧模式"); }
+    QString modeIcon() const override { return "frame"; }
+    void appendReceivedData(const QByteArray& data) override;
+    void appendSentData(const QByteArray& data) override;
+    void clear() override;
+    bool exportToFile(const QString& fileName) override;
+    void onActivated() override;
+    void onDeactivated() override;
+    QWidget* modeToolBar() override { return m_toolBar; }
+
+    // 帧配置
+    void setFrameConfig(const ModeFrameConfig& config);
+    ModeFrameConfig frameConfig() const { return m_config; }
+
+private slots:
+    void onFrameSelected(int row, int column);
+    void onConfigChanged();
+    void onClearFrames();
+    void onExportFrames();
+    void onFrameTimeout();
+    void onFilterChanged(const QString& text);
+    void onSendFrame();
+
+protected:
+    void changeEvent(QEvent* event) override;
+
+private:
+    void setupUi();
+    void setupToolBar();
+    void retranslateUi();
+    void processBuffer();
+    void addFrame(const FrameData& frame);
+    void updateFrameDetail(const FrameData& frame);
+    void updateStatistics();
+    bool validateFrame(const QByteArray& data, QString& error);
+    QByteArray calculateChecksum(const QByteArray& data);
+
+    // UI 组件
+    QSplitter* m_splitter;
+    QTableWidget* m_frameTable;
+    QTextEdit* m_detailView;
+    QToolBar* m_toolBar;
+    QLineEdit* m_headerEdit;
+    QLineEdit* m_footerEdit;
+    QLineEdit* m_filterEdit;
+    QLineEdit* m_sendEdit;
+
+    // 需要国际化的UI元素
+    QLabel* m_filterLabel = nullptr;
+    QLabel* m_detailLabel = nullptr;
+    QLabel* m_statsLabel = nullptr;
+    QLabel* m_sendLabel = nullptr;
+    QPushButton* m_sendBtn = nullptr;
+    QPushButton* m_sendWithHeaderBtn = nullptr;
+    QLabel* m_headerLabel = nullptr;
+    QLabel* m_footerLabel = nullptr;
+    QLabel* m_checksumLabel = nullptr;
+    QComboBox* m_checksumCombo = nullptr;
+
+    // 数据
+    QList<FrameData> m_frames;
+    QByteArray m_buffer;
+    ModeFrameConfig m_config;
+    QTimer* m_timeoutTimer;
+
+    // 统计
+    int m_totalFrames = 0;
+    int m_validFrames = 0;
+    int m_invalidFrames = 0;
+};
+
+} // namespace ComAssistant
+
+#endif // FRAMEMODEWIDGET_H

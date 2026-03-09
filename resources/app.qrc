@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <!-- 主题样式 -->
+        <file>themes/light.qss</file>
+        <file>themes/dark.qss</file>
+    </qresource>
+</RCC>

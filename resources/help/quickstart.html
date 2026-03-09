@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>快速入门 - Quick Start</title>
+    <style>
+        /* CSS 变量定义 - 暗色主题（默认） */
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        /* 明亮主题 */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #ffffff;
+                --bg-secondary: #f8f9fa;
+                --bg-code: #f1f3f4;
+                --bg-table-header: #3498db;
+                --bg-table-row: #ffffff;
+                --bg-table-row-alt: #f8f9fa;
+                --bg-tip: #e8f8f0;
+                --bg-warning: #fef9e7;
+
+                --text-primary: #2c3e50;
+                --text-secondary: #34495e;
+                --text-heading1: #2874a6;
+                --text-heading2: #2e86c1;
+                --text-heading3: #3498db;
+                --text-strong: #1a252f;
+                --text-code: #27ae60;
+                --text-pre: #1e8449;
+                --text-tip: #1e8449;
+                --text-warning: #9a7d0a;
+
+                --border-primary: #3498db;
+                --border-secondary: #d5dbdb;
+                --border-table: #d5dbdb;
+                --border-tip: #27ae60;
+                --border-warning: #f39c12;
+            }
+        }
+
+        /* 通过 data-theme 属性手动切换主题 */
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-code: #f1f3f4;
+            --bg-table-header: #3498db;
+            --bg-table-row: #ffffff;
+            --bg-table-row-alt: #f8f9fa;
+            --bg-tip: #e8f8f0;
+            --bg-warning: #fef9e7;
+
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --text-heading1: #2874a6;
+            --text-heading2: #2e86c1;
+            --text-heading3: #3498db;
+            --text-strong: #1a252f;
+            --text-code: #27ae60;
+            --text-pre: #1e8449;
+            --text-tip: #1e8449;
+            --text-warning: #9a7d0a;
+
+            --border-primary: #3498db;
+            --border-secondary: #d5dbdb;
+            --border-table: #d5dbdb;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        h1 {
+            color: var(--text-heading1);
+            border-bottom: 3px solid var(--border-primary);
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: var(--text-heading2);
+            margin-top: 25px;
+        }
+        h3 {
+            color: var(--text-heading3);
+        }
+        p, li {
+            color: var(--text-secondary);
+        }
+        strong {
+            color: var(--text-strong);
+        }
+        code {
+            background: var(--bg-code);
+            color: var(--text-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Consolas", "Courier New", monospace;
+        }
+        pre {
+            background: var(--bg-code);
+            color: var(--text-pre);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            border: 1px solid var(--border-secondary);
+        }
+        .tip {
+            background: var(--bg-tip);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-tip);
+        }
+        .warning {
+            background: var(--bg-warning);
+            border-left: 4px solid var(--border-warning);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-warning);
+        }
+        ul, ol {
+            margin: 10px 0;
+        }
+        li {
+            margin: 5px 0;
+        }
+        table {
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        table th {
+            background: var(--bg-table-header);
+            color: white;
+            padding: 8px;
+        }
+        table td {
+            border: 1px solid var(--border-table);
+            padding: 8px;
+            color: var(--text-secondary);
+            background: var(--bg-table-row);
+        }
+    </style>
+</head>
+<body>
+    <h1>快速入门 Quick Start</h1>
+
+    <h2>1. 串口连接 / Serial Connection</h2>
+    <p><strong>中文：</strong></p>
+    <ol>
+        <li>在工具栏选择串口端口（如 COM3）</li>
+        <li>选择波特率（默认 115200）</li>
+        <li>点击"打开串口"按钮</li>
+    </ol>
+
+    <p><strong>English:</strong></p>
+    <ol>
+        <li>Select serial port in toolbar (e.g., COM3)</li>
+        <li>Select baud rate (default 115200)</li>
+        <li>Click "Open Port" button</li>
+    </ol>
+
+    <div class="tip">
+        <strong>💡 提示 / Tip:</strong> 连接前请确保端口未被其他程序占用。<br>
+        Make sure the port is not occupied by other programs before connecting.
+    </div>
+
+    <h2>2. 发送数据 / Send Data</h2>
+    <p><strong>中文：</strong>在发送区输入数据，点击"发送"按钮</p>
+    <p><strong>English:</strong> Enter data in send area and click "Send" button</p>
+
+    <ul>
+        <li><strong>文本模式 / Text Mode:</strong> 直接输入文本 / Enter text directly</li>
+        <li><strong>HEX模式 / HEX Mode:</strong> 输入十六进制（如 AA BB CC）/ Enter hexadecimal (e.g., AA BB CC)</li>
+    </ul>
+
+    <h3>示例 / Examples:</h3>
+    <p><strong>文本发送 / Text Send:</strong></p>
+    <pre>Hello World</pre>
+
+    <p><strong>HEX发送 / HEX Send:</strong></p>
+    <pre>AA 55 01 02 03 04</pre>
+
+    <h2>3. 接收数据 / Receive Data</h2>
+    <p><strong>中文：</strong>数据会自动显示在接收区的不同标签页</p>
+    <p><strong>English:</strong> Data will be automatically displayed in different tabs of receive area</p>
+
+    <ul>
+        <li><strong>文本标签 / Text Tab:</strong> 显示文本格式 / Display text format</li>
+        <li><strong>十六进制标签 / Hex Tab:</strong> 显示HEX格式 / Display HEX format</li>
+        <li><strong>过滤标签 / Filter Tab:</strong> 根据关键词过滤 / Filter by keywords</li>
+    </ul>
+
+    <h2>4. 常用功能 / Common Features</h2>
+
+    <h3>时间戳 / Timestamp</h3>
+    <p>勾选"时间戳"选项，每行数据前会显示时间。<br>
+    Check "Timestamp" option to show time before each line.</p>
+
+    <h3>自动滚动 / Auto Scroll</h3>
+    <p>勾选"自动滚动"，接收区会自动滚动到最新数据。<br>
+    Check "Auto Scroll" to automatically scroll to latest data.</p>
+
+    <h3>HEX显示 / HEX Display</h3>
+    <p>勾选"HEX显示"，数据以十六进制格式显示。<br>
+    Check "HEX Display" to show data in hexadecimal format.</p>
+
+    <h3>循环发送 / Auto Send</h3>
+    <p>勾选"循环发送"并设置间隔（毫秒），数据会定时自动发送。<br>
+    Check "Auto Send" and set interval (ms) to send data automatically.</p>
+
+    <h3>快捷发送 / Quick Send</h3>
+    <p><strong>中文：</strong>界面左侧有快捷发送区域，可预设常用指令，一键点击发送。</p>
+    <p><strong>English:</strong> Quick send panel on the left side allows preset commands with one-click sending.</p>
+    <ul>
+        <li>点击 <code>+</code> 按钮添加新指令 / Click <code>+</code> button to add new command</li>
+        <li>右键点击按钮可编辑、删除或调整顺序 / Right-click button to edit, delete or reorder</li>
+        <li>支持文本和HEX格式 / Supports both text and HEX format</li>
+        <li>可选择是否追加换行符 / Option to append newline</li>
+    </ul>
+    <div class="tip">
+        <strong>💡 提示 / Tip:</strong> 快捷发送配置会自动保存，下次启动时恢复。<br>
+        Quick send configuration is automatically saved and restored on next launch.
+    </div>
+
+    <h3>关键词高亮 / Keyword Highlight</h3>
+    <p><strong>中文：</strong>在接收区可以设置关键词高亮，方便快速识别重要信息。</p>
+    <p><strong>English:</strong> Set keyword highlighting in receive area to quickly identify important information.</p>
+    <ul>
+        <li>勾选"高亮"启用功能 / Check "Highlight" to enable</li>
+        <li>点击"设置"按钮配置高亮规则 / Click "Settings" to configure rules</li>
+        <li>可自定义前景色和背景色 / Customize foreground and background colors</li>
+        <li>默认高亮 OK (绿色)、ERROR/FAIL (红色) / Default highlights: OK (green), ERROR/FAIL (red)</li>
+    </ul>
+
+    <h2>5. 快捷键 / Shortcuts</h2>
+    <table border="1" cellpadding="5" style="border-collapse: collapse; margin: 10px 0;">
+        <tr>
+            <th>快捷键 / Key</th>
+            <th>功能 / Function</th>
+        </tr>
+        <tr>
+            <td><code>Ctrl+N</code></td>
+            <td>新建会话 / New Session</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+S</code></td>
+            <td>保存会话 / Save Session</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+O</code></td>
+            <td>加载会话 / Load Session</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+L</code></td>
+            <td>清空全部 / Clear All</td>
+        </tr>
+        <tr>
+            <td><code>F1</code></td>
+            <td>帮助文档 / Help</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <strong>⚠️ 注意 / Warning:</strong> 关闭程序前请先断开串口连接。<br>
+        Please disconnect serial port before closing the program.
+    </div>
+
+</body>
+</html>

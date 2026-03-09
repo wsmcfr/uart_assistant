@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>绘图功能 - Plotting Features</title>
+    <style>
+        /* CSS 变量定义 - 暗色主题（默认） */
+        :root {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        /* 明亮主题 */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg-primary: #ffffff;
+                --bg-secondary: #f8f9fa;
+                --bg-code: #f1f3f4;
+                --bg-table-header: #3498db;
+                --bg-table-row: #ffffff;
+                --bg-table-row-alt: #f8f9fa;
+                --bg-tip: #e8f8f0;
+                --bg-warning: #fef9e7;
+
+                --text-primary: #2c3e50;
+                --text-secondary: #34495e;
+                --text-heading1: #2874a6;
+                --text-heading2: #2e86c1;
+                --text-heading3: #3498db;
+                --text-strong: #1a252f;
+                --text-code: #27ae60;
+                --text-pre: #1e8449;
+                --text-tip: #1e8449;
+                --text-warning: #9a7d0a;
+
+                --border-primary: #3498db;
+                --border-secondary: #d5dbdb;
+                --border-table: #d5dbdb;
+                --border-tip: #27ae60;
+                --border-warning: #f39c12;
+            }
+        }
+
+        /* 通过 data-theme 属性手动切换主题 */
+        [data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f9fa;
+            --bg-code: #f1f3f4;
+            --bg-table-header: #3498db;
+            --bg-table-row: #ffffff;
+            --bg-table-row-alt: #f8f9fa;
+            --bg-tip: #e8f8f0;
+            --bg-warning: #fef9e7;
+
+            --text-primary: #2c3e50;
+            --text-secondary: #34495e;
+            --text-heading1: #2874a6;
+            --text-heading2: #2e86c1;
+            --text-heading3: #3498db;
+            --text-strong: #1a252f;
+            --text-code: #27ae60;
+            --text-pre: #1e8449;
+            --text-tip: #1e8449;
+            --text-warning: #9a7d0a;
+
+            --border-primary: #3498db;
+            --border-secondary: #d5dbdb;
+            --border-table: #d5dbdb;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: transparent;
+            --bg-secondary: #1c2833;
+            --bg-code: #1a252f;
+            --bg-table-header: #2874a6;
+            --bg-table-row: #212f3c;
+            --bg-table-row-alt: #1c2833;
+            --bg-tip: #1e3a2f;
+            --bg-warning: #3d3215;
+
+            --text-primary: #e0e0e0;
+            --text-secondary: #d5d8dc;
+            --text-heading1: #5dade2;
+            --text-heading2: #85c1e9;
+            --text-heading3: #aed6f1;
+            --text-strong: #f8f9fa;
+            --text-code: #58d68d;
+            --text-pre: #82e0aa;
+            --text-tip: #a9dfbf;
+            --text-warning: #f9e79f;
+
+            --border-primary: #3498db;
+            --border-secondary: #2e4053;
+            --border-table: #566573;
+            --border-tip: #27ae60;
+            --border-warning: #f39c12;
+        }
+
+        body {
+            font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+            margin: 20px;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+        }
+        h1 {
+            color: var(--text-heading1);
+            border-bottom: 3px solid var(--border-primary);
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: var(--text-heading2);
+            margin-top: 25px;
+            border-left: 4px solid var(--border-primary);
+            padding-left: 10px;
+        }
+        h3 {
+            color: var(--text-heading3);
+        }
+        p, li {
+            color: var(--text-secondary);
+        }
+        strong {
+            color: var(--text-strong);
+        }
+        code {
+            background: var(--bg-code);
+            color: var(--text-code);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Consolas", "Courier New", monospace;
+        }
+        pre {
+            background: var(--bg-code);
+            color: var(--text-pre);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: "Consolas", "Courier New", monospace;
+            border: 1px solid var(--border-secondary);
+        }
+        .feature-box {
+            border: 2px solid var(--border-primary);
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            background: var(--bg-secondary);
+        }
+        .tip {
+            background: var(--bg-tip);
+            border-left: 4px solid var(--border-tip);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-tip);
+        }
+        .warning {
+            background: var(--bg-warning);
+            border-left: 4px solid var(--border-warning);
+            padding: 10px;
+            margin: 10px 0;
+            color: var(--text-warning);
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        table th {
+            background: var(--bg-table-header);
+            color: white;
+            padding: 10px;
+            text-align: left;
+        }
+        table td {
+            border: 1px solid var(--border-table);
+            padding: 10px;
+            color: var(--text-secondary);
+            background: var(--bg-table-row);
+        }
+        table tr:nth-child(even) td {
+            background: var(--bg-table-row-alt);
+        }
+        ul {
+            margin: 10px 0;
+        }
+        li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>绘图功能 Plotting Features</h1>
+
+    <p><strong>中文：</strong>串口调试助手提供强大的实时数据绘图功能，支持多窗口、多曲线绘制。</p>
+    <p><strong>English:</strong> ComAssistant provides powerful real-time data plotting with multi-window and multi-curve support.</p>
+
+    <h2>1. 创建绘图窗口 / Creating Plot Windows</h2>
+
+    <div class="feature-box">
+        <h3>方法一：通过协议自动创建 / Auto-create via Protocol</h3>
+        <p><strong>中文：</strong>发送包含窗口ID的绘图数据时，系统会自动创建对应窗口。</p>
+        <p><strong>English:</strong> Sending plot data with window ID will automatically create the corresponding window.</p>
+
+        <p><strong>示例 / Example:</strong></p>
+        <pre>{plot1}1.23,4.56,7.89</pre>
+        <p>将自动创建名为 "plot1" 的绘图窗口 / Automatically creates plot window named "plot1"</p>
+    </div>
+
+    <div class="feature-box">
+        <h3>方法二：手动创建 / Manual Creation</h3>
+        <p><strong>中文：</strong>通过菜单 <code>绘图 → 新建绘图窗口</code> 手动创建。</p>
+        <p><strong>English:</strong> Via menu <code>Plot → New Plot Window</code> to create manually.</p>
+    </div>
+
+    <h2>2. 窗口控制 / Window Controls</h2>
+
+    <table>
+        <tr>
+            <th>功能 / Feature</th>
+            <th>说明 / Description</th>
+        </tr>
+        <tr>
+            <td><strong>暂停/继续 / Pause/Resume</strong></td>
+            <td>暂停数据更新，方便观察细节 / Pause data update for detailed observation</td>
+        </tr>
+        <tr>
+            <td><strong>清空数据 / Clear Data</strong></td>
+            <td>清除当前窗口所有数据 / Clear all data in current window</td>
+        </tr>
+        <tr>
+            <td><strong>自动缩放 / Auto Scale</strong></td>
+            <td>自动调整坐标轴范围以适应数据 / Auto adjust axis range to fit data</td>
+        </tr>
+        <tr>
+            <td><strong>网格显示 / Show Grid</strong></td>
+            <td>显示或隐藏坐标网格 / Show or hide coordinate grid</td>
+        </tr>
+        <tr>
+            <td><strong>图例显示 / Show Legend</strong></td>
+            <td>显示或隐藏曲线图例 / Show or hide curve legend</td>
+        </tr>
+        <tr>
+            <td><strong>缩放/拖拽 / Zoom/Drag</strong></td>
+            <td>鼠标滚轮缩放，左键拖拽移动 / Mouse wheel zoom, left-click drag to move</td>
+        </tr>
+    </table>
+
+    <h2>3. 曲线管理 / Curve Management</h2>
+
+    <div class="feature-box">
+        <h3>3.1 自动曲线分配 / Auto Curve Assignment</h3>
+        <p><strong>中文：</strong>每个数据字段自动分配一条曲线，颜色自动区分。</p>
+        <p><strong>English:</strong> Each data field is automatically assigned a curve with distinct color.</p>
+
+        <p><strong>示例 / Example:</strong></p>
+        <pre>{plot1}1.23,4.56,7.89</pre>
+        <ul>
+            <li>曲线1（蓝色）：1.23 / Curve 1 (blue): 1.23</li>
+            <li>曲线2（红色）：4.56 / Curve 2 (red): 4.56</li>
+            <li>曲线3（绿色）：7.89 / Curve 3 (green): 7.89</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>3.2 曲线命名 / Curve Naming</h3>
+        <p><strong>中文：</strong>曲线默认命名为 "曲线1"、"曲线2"...，可在设置中自定义名称。</p>
+        <p><strong>English:</strong> Curves are named "Curve 1", "Curve 2"... by default, customizable in settings.</p>
+    </div>
+
+    <h2>4. 坐标轴设置 / Axis Settings</h2>
+
+    <div class="feature-box">
+        <h3>4.1 手动设置范围 / Manual Range Setting</h3>
+        <p><strong>中文：</strong>右键点击坐标轴，选择"设置范围"可手动指定最小值和最大值。</p>
+        <p><strong>English:</strong> Right-click on axis, select "Set Range" to manually specify min and max values.</p>
+    </div>
+
+    <div class="feature-box">
+        <h3>4.2 自动缩放模式 / Auto Scale Mode</h3>
+        <ul>
+            <li><strong>全局自动缩放 / Global Auto Scale:</strong> 根据所有数据自动调整</li>
+            <li><strong>滚动窗口 / Rolling Window:</strong> 仅显示最近N个数据点</li>
+        </ul>
+    </div>
+
+    <h2>5. 数据导出 / Data Export</h2>
+
+    <table>
+        <tr>
+            <th>格式 / Format</th>
+            <th>说明 / Description</th>
+        </tr>
+        <tr>
+            <td><strong>PNG图片 / PNG Image</strong></td>
+            <td>导出当前绘图为高清PNG图片 / Export current plot as high-resolution PNG image</td>
+        </tr>
+        <tr>
+            <td><strong>JPG图片 / JPG Image</strong></td>
+            <td>导出为JPG格式（文件更小）/ Export as JPG format (smaller file size)</td>
+        </tr>
+        <tr>
+            <td><strong>CSV数据 / CSV Data</strong></td>
+            <td>导出原始数据为CSV文件 / Export raw data as CSV file</td>
+        </tr>
+        <tr>
+            <td><strong>PDF文档 / PDF Document</strong></td>
+            <td>导出为矢量PDF文档 / Export as vector PDF document</td>
+        </tr>
+    </table>
+
+    <h2>6. 性能优化 / Performance Optimization</h2>
+
+    <div class="feature-box">
+        <h3>6.1 数据点限制 / Data Point Limit</h3>
+        <p><strong>中文：</strong>单窗口默认最多保存10,000个数据点，超出后自动删除最早的数据。</p>
+        <p><strong>English:</strong> Single window saves max 10,000 data points by default, oldest data auto-deleted when exceeded.</p>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong> 可在设置中调整最大点数（1,000 ~ 100,000）<br>
+            Can adjust max points in settings (1,000 ~ 100,000)
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>6.2 OpenGL加速 / OpenGL Acceleration</h3>
+        <p><strong>中文：</strong>启用OpenGL加速可显著提升绘图性能（推荐用于高速数据）。</p>
+        <p><strong>English:</strong> Enable OpenGL acceleration for significant performance boost (recommended for high-speed data).</p>
+
+        <p><strong>启用方法 / Enable Method:</strong></p>
+        <p>菜单: <code>绘图 → 绘图设置 → 启用OpenGL加速</code></p>
+        <p>Menu: <code>Plot → Plot Settings → Enable OpenGL Acceleration</code></p>
+    </div>
+
+    <div class="feature-box">
+        <h3>6.3 数据抽稀 / Data Decimation</h3>
+        <p><strong>中文：</strong>当采样率过高时（>100Hz），建议启用数据抽稀以降低CPU占用。</p>
+        <p><strong>English:</strong> When sampling rate is too high (>100Hz), enable data decimation to reduce CPU usage.</p>
+
+        <table>
+            <tr>
+                <th>抽稀比例 / Decimation Ratio</th>
+                <th>说明 / Description</th>
+            </tr>
+            <tr>
+                <td>1:1（无抽稀）/ 1:1 (No decimation)</td>
+                <td>保留所有数据 / Keep all data</td>
+            </tr>
+            <tr>
+                <td>1:2</td>
+                <td>每2个点保留1个 / Keep 1 out of every 2 points</td>
+            </tr>
+            <tr>
+                <td>1:5</td>
+                <td>每5个点保留1个 / Keep 1 out of every 5 points</td>
+            </tr>
+            <tr>
+                <td>1:10</td>
+                <td>每10个点保留1个 / Keep 1 out of every 10 points</td>
+            </tr>
+        </table>
+    </div>
+
+    <h2>7. 高级功能 / Advanced Features</h2>
+
+    <div class="feature-box">
+        <h3>7.1 多窗口同步 / Multi-Window Sync</h3>
+        <p><strong>中文：</strong>启用后，多个绘图窗口可以同步操作。</p>
+        <p><strong>English:</strong> When enabled, multiple plot windows can be synchronized.</p>
+
+        <p><strong>启用方法 / How to Enable:</strong> 菜单 <code>绘图 → 窗口同步</code></p>
+
+        <p><strong>同步内容 / Sync Features:</strong></p>
+        <ul>
+            <li><strong>暂停/继续状态 / Pause/Resume:</strong> 一个窗口暂停，所有窗口同步暂停</li>
+            <li><strong>X轴范围 / X-Axis Range:</strong> 拖动缩放时，其他窗口同步调整</li>
+            <li><strong>清空操作 / Clear:</strong> 同步清空所有窗口数据</li>
+        </ul>
+
+        <div class="tip">
+            <strong>💡 应用场景 / Applications:</strong><br>
+            对比多个通道数据、同时观察多个传感器、分析不同数据源的时间相关性
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.2 直方图视图 / Histogram View</h3>
+        <p><strong>中文：</strong>将曲线数据以直方图形式显示，用于分析数据分布特征。</p>
+        <p><strong>English:</strong> Display curve data as histogram for analyzing data distribution.</p>
+
+        <p><strong>启用方法 / How to Enable:</strong> 菜单 <code>视图 → 直方图</code></p>
+
+        <p><strong>配置选项 / Configuration:</strong></p>
+        <ul>
+            <li><strong>数据源曲线 / Source Curve:</strong> 选择要分析的曲线</li>
+            <li><strong>分箱数量 / Bin Count:</strong> 10-200，数量越多分辨率越高</li>
+        </ul>
+
+        <p><strong>显示信息 / Display Info:</strong></p>
+        <ul>
+            <li>数据分布柱状图</li>
+            <li>均值 (Mean)</li>
+            <li>标准差 (Std Dev)</li>
+            <li>最大/最小值</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.3 XY 绘图模式 / XY Plot Mode</h3>
+        <p><strong>中文：</strong>将两个通道的数据作为X-Y坐标绘制，适用于李萨如图形、相位分析等。</p>
+        <p><strong>English:</strong> Plot two channels as X-Y coordinates, suitable for Lissajous figures, phase analysis, etc.</p>
+
+        <p><strong>启用方法 / How to Enable:</strong> 菜单 <code>视图 → XY模式</code> 或快捷键 <code>Ctrl+Y</code></p>
+
+        <p><strong>配置选项 / Configuration:</strong></p>
+        <ul>
+            <li><strong>X通道 / X Channel:</strong> 选择作为X轴的数据通道</li>
+            <li><strong>Y通道 / Y Channel:</strong> 选择作为Y轴的数据通道</li>
+        </ul>
+
+        <p><strong>应用示例 / Examples:</strong></p>
+        <ul>
+            <li>发送正弦和余弦信号，显示圆形（李萨如图形）</li>
+            <li>分析两个传感器数据的相关性</li>
+            <li>电机速度-位置相图分析</li>
+        </ul>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong><br>
+            切换回时间序列模式：菜单 <code>视图 → 时间序列</code>
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.4 数据标记 / Data Markers</h3>
+        <p><strong>中文：</strong>鼠标悬停在曲线上可显示精确数值。</p>
+        <p><strong>English:</strong> Hover mouse over curve to display precise values.</p>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.5 曲线样式 / Curve Style</h3>
+        <p><strong>中文：</strong>支持线型（实线、虚线）、点型（圆点、方块）、线宽调整。</p>
+        <p><strong>English:</strong> Supports line style (solid, dashed), point style (circle, square), line width adjustment.</p>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.6 FFT 频谱分析 / FFT Spectrum Analysis</h3>
+        <p><strong>中文：</strong>对曲线数据进行快速傅里叶变换（FFT）分析，可查看频谱特性。</p>
+        <p><strong>English:</strong> Perform Fast Fourier Transform (FFT) analysis on curve data to view spectrum characteristics.</p>
+
+        <p><strong>使用方法 / How to Use:</strong></p>
+        <ul>
+            <li><strong>中文：</strong>菜单 <code>分析 → FFT 频谱分析</code> 或快捷键 <code>Ctrl+F</code></li>
+            <li><strong>English:</strong> Menu <code>Analysis → FFT Spectrum Analysis</code> or shortcut <code>Ctrl+F</code></li>
+        </ul>
+
+        <p><strong>分析结果包含 / Analysis Results Include:</strong></p>
+        <ul>
+            <li><strong>幅度谱 / Magnitude Spectrum:</strong> 显示各频率分量的幅度</li>
+            <li><strong>相位谱 / Phase Spectrum:</strong> 显示各频率分量的相位（-180° ~ 180°）</li>
+            <li><strong>功率谱 / Power Spectrum:</strong> 显示各频率分量的功率</li>
+            <li><strong>分析结果 / Analysis Results:</strong> 主频率、总功率、DC分量等统计信息</li>
+        </ul>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong><br>
+            <strong>中文：</strong> 数据点数越多，频率分辨率越高。建议至少采集100个数据点进行分析。<br>
+            <strong>English:</strong> More data points provide higher frequency resolution. Recommend at least 100 data points for analysis.
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.5 测量游标 / Measurement Cursors</h3>
+        <p><strong>中文：</strong>使用两个可移动游标精确测量曲线上任意两点之间的差值。</p>
+        <p><strong>English:</strong> Use two movable cursors to precisely measure the difference between any two points on the curve.</p>
+
+        <p><strong>使用方法 / How to Use:</strong></p>
+        <ul>
+            <li><strong>中文：</strong>菜单 <code>分析 → 测量游标</code> 或快捷键 <code>Ctrl+M</code></li>
+            <li><strong>English:</strong> Menu <code>Analysis → Measurement Cursors</code> or shortcut <code>Ctrl+M</code></li>
+        </ul>
+
+        <p><strong>功能说明 / Features:</strong></p>
+        <ul>
+            <li>设置游标1和游标2的X位置</li>
+            <li>自动显示两游标之间的ΔX和ΔY</li>
+            <li>可用于测量周期、幅度等参数</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.6 数字滤波 / Digital Filtering</h3>
+        <p><strong>中文：</strong>对曲线数据应用数字滤波，去除噪声或提取特定频率成分。</p>
+        <p><strong>English:</strong> Apply digital filtering to curve data to remove noise or extract specific frequency components.</p>
+
+        <p><strong>支持的滤波器类型 / Supported Filter Types:</strong></p>
+        <table>
+            <tr>
+                <th>滤波器 / Filter</th>
+                <th>用途 / Usage</th>
+            </tr>
+            <tr>
+                <td>滑动平均 / Moving Average</td>
+                <td>平滑数据，去除高频噪声</td>
+            </tr>
+            <tr>
+                <td>中值滤波 / Median</td>
+                <td>去除脉冲噪声和异常值</td>
+            </tr>
+            <tr>
+                <td>指数移动平均 / EMA</td>
+                <td>实时平滑，响应更快</td>
+            </tr>
+            <tr>
+                <td>低通滤波 / Low-pass</td>
+                <td>去除高频噪声，保留低频信号</td>
+            </tr>
+            <tr>
+                <td>高通滤波 / High-pass</td>
+                <td>去除直流分量和低频漂移</td>
+            </tr>
+            <tr>
+                <td>带通滤波 / Band-pass</td>
+                <td>提取特定频段信号</td>
+            </tr>
+            <tr>
+                <td>带阻滤波 / Band-stop</td>
+                <td>去除特定频段噪声（如工频干扰）</td>
+            </tr>
+            <tr>
+                <td>卡尔曼滤波 / Kalman</td>
+                <td>自适应滤波，适合动态系统</td>
+            </tr>
+        </table>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.7 触发捕获 / Trigger Capture</h3>
+        <p><strong>中文：</strong>类似示波器的触发功能，在满足条件时捕获数据。</p>
+        <p><strong>English:</strong> Oscilloscope-like trigger function to capture data when conditions are met.</p>
+
+        <p><strong>触发类型 / Trigger Types:</strong></p>
+        <ul>
+            <li><strong>上升沿 / Rising Edge:</strong> 信号从低于阈值上升到高于阈值时触发</li>
+            <li><strong>下降沿 / Falling Edge:</strong> 信号从高于阈值下降到低于阈值时触发</li>
+            <li><strong>高电平 / Level High:</strong> 信号高于阈值时触发</li>
+            <li><strong>低电平 / Level Low:</strong> 信号低于阈值时触发</li>
+        </ul>
+
+        <p><strong>配置选项 / Configuration:</strong></p>
+        <ul>
+            <li>触发源曲线选择</li>
+            <li>触发电平设置</li>
+            <li>触发前/后数据点数</li>
+            <li>单次触发模式</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>7.8 峰值自动标注 / Peak Auto-Annotation</h3>
+        <p><strong>中文：</strong>自动检测并标注曲线上的极值点（极大值和极小值）。</p>
+        <p><strong>English:</strong> Automatically detect and annotate extreme points (maxima and minima) on curves.</p>
+
+        <p><strong>配置选项 / Configuration:</strong></p>
+        <ul>
+            <li>目标曲线选择</li>
+            <li>峰值检测阈值（相对于振幅）</li>
+            <li>相邻峰值最小间距</li>
+            <li>显示极大值/极小值选项</li>
+            <li>最大标注数量限制</li>
+        </ul>
+    </div>
+
+    <h2>8. 嵌入式工程师功能 / Embedded Engineer Features</h2>
+
+    <div class="feature-box">
+        <h3>8.1 增强统计分析 / Advanced Statistics</h3>
+        <p><strong>中文：</strong>提供嵌入式开发常用的统计指标，帮助分析信号质量。</p>
+        <p><strong>English:</strong> Provides statistics commonly used in embedded development to help analyze signal quality.</p>
+
+        <p><strong>使用方法 / How to Use:</strong> 菜单 <code>分析 → 增强统计分析</code></p>
+
+        <p><strong>统计指标 / Statistics:</strong></p>
+        <table>
+            <tr>
+                <th>指标 / Metric</th>
+                <th>说明 / Description</th>
+            </tr>
+            <tr>
+                <td>最小值/最大值 / Min/Max</td>
+                <td>数据的极值范围</td>
+            </tr>
+            <tr>
+                <td>峰峰值 / Peak-to-Peak</td>
+                <td>最大值与最小值之差，表示信号振幅</td>
+            </tr>
+            <tr>
+                <td>平均值 / Average</td>
+                <td>数据的算术平均</td>
+            </tr>
+            <tr>
+                <td>中位数 / Median</td>
+                <td>数据的中间值，不受异常值影响</td>
+            </tr>
+            <tr>
+                <td>标准差 / Std Dev</td>
+                <td>数据的离散程度</td>
+            </tr>
+            <tr>
+                <td>RMS / RMS</td>
+                <td>均方根值，用于表示交流信号有效值</td>
+            </tr>
+            <tr>
+                <td>波峰因子 / Crest Factor</td>
+                <td>峰值与RMS之比，用于评估信号波形</td>
+            </tr>
+            <tr>
+                <td>采样率 / Sample Rate</td>
+                <td>估算的数据采样率(Hz)</td>
+            </tr>
+        </table>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong><br>
+            <strong>中文：</strong> 使用测量游标选择区间后，可以对选定区间进行统计分析。<br>
+            <strong>English:</strong> Use measurement cursors to select a range, then perform statistics on the selected interval.
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>8.2 数据报警系统 / Data Alarm System</h3>
+        <p><strong>中文：</strong>实时监控数据，当超出设定范围时触发报警。</p>
+        <p><strong>English:</strong> Real-time data monitoring with alarms when values exceed set limits.</p>
+
+        <p><strong>使用方法 / How to Use:</strong> 菜单 <code>分析 → 数据报警配置</code></p>
+
+        <p><strong>报警类型 / Alarm Types:</strong></p>
+        <ul>
+            <li><strong>上限报警 / Upper Limit:</strong> 数值超过上限时报警</li>
+            <li><strong>下限报警 / Lower Limit:</strong> 数值低于下限时报警</li>
+            <li><strong>变化率报警 / Rate Alarm:</strong> 数值变化过快时报警</li>
+        </ul>
+
+        <p><strong>报警动作 / Alarm Actions:</strong></p>
+        <ul>
+            <li>声音提示（蜂鸣）</li>
+            <li>视觉提示（界面闪烁）</li>
+            <li>自动暂停数据采集</li>
+        </ul>
+
+        <div class="warning">
+            <strong>⚠️ 应用场景 / Applications:</strong><br>
+            <strong>中文：</strong> 适用于电压监测、温度监控、传感器数据异常检测等场景。<br>
+            <strong>English:</strong> Suitable for voltage monitoring, temperature monitoring, sensor anomaly detection, etc.
+        </div>
+    </div>
+
+    <div class="feature-box">
+        <h3>8.3 数据标记功能 / Data Markers</h3>
+        <p><strong>中文：</strong>在曲线上添加自定义标记和注释，方便标注关键数据点。</p>
+        <p><strong>English:</strong> Add custom markers and annotations on curves to highlight key data points.</p>
+
+        <p><strong>使用方法 / How to Use:</strong> 菜单 <code>分析 → 添加数据标记</code></p>
+
+        <p><strong>标记功能 / Features:</strong></p>
+        <ul>
+            <li>选择目标曲线</li>
+            <li>指定X/Y位置（可自动从曲线获取Y值）</li>
+            <li>自定义标记文本</li>
+            <li>自定义标记颜色</li>
+            <li>批量清除所有标记</li>
+        </ul>
+    </div>
+
+    <div class="feature-box">
+        <h3>8.4 嵌入式场景预设 / Embedded Scene Presets</h3>
+        <p><strong>中文：</strong>针对常见嵌入式应用场景的一键预设配置。</p>
+        <p><strong>English:</strong> One-click preset configurations for common embedded application scenarios.</p>
+
+        <p><strong>使用方法 / How to Use:</strong> 菜单 <code>分析 → 嵌入式场景预设</code></p>
+
+        <p><strong>预设场景 / Preset Scenes:</strong></p>
+        <table>
+            <tr>
+                <th>场景 / Scene</th>
+                <th>配置说明 / Configuration</th>
+            </tr>
+            <tr>
+                <td><strong>PID 调参 / PID Tuning</strong></td>
+                <td>设定值、实际值、误差、输出 四条曲线<br>适合PID参数整定和响应分析</td>
+            </tr>
+            <tr>
+                <td><strong>电机控制 / Motor Control</strong></td>
+                <td>速度、位置（右Y轴）、电流、目标速度<br>位置曲线使用独立Y轴</td>
+            </tr>
+            <tr>
+                <td><strong>传感器监测 / Sensor Monitor</strong></td>
+                <td>4通道传感器数据同时显示<br>不同颜色区分各通道</td>
+            </tr>
+            <tr>
+                <td><strong>ADC 采样 / ADC Sampling</strong></td>
+                <td>ADC原始值、滤波值、参考电压<br>Y轴预设0-4095（12位ADC）</td>
+            </tr>
+            <tr>
+                <td><strong>电源监测 / Power Monitor</strong></td>
+                <td>电压、电流（右Y轴）、功率<br>预设电压上下限报警</td>
+            </tr>
+            <tr>
+                <td><strong>温度控制 / Temperature Control</strong></td>
+                <td>目标温度、实际温度、加热功率<br>预设温度上限报警</td>
+            </tr>
+        </table>
+
+        <div class="tip">
+            <strong>💡 提示 / Tip:</strong><br>
+            <strong>中文：</strong> 选择场景后，按预设的曲线顺序发送数据即可。例如PID场景按"设定值,实际值,误差,输出"顺序发送。<br>
+            <strong>English:</strong> After selecting a scene, send data in the preset curve order. E.g., PID scene: "setpoint,actual,error,output".
+        </div>
+    </div>
+
+    <h2>9. 使用建议 / Usage Recommendations</h2>
+
+    <table>
+        <tr>
+            <th>场景 / Scenario</th>
+            <th>建议设置 / Recommended Settings</th>
+        </tr>
+        <tr>
+            <td>低速数据（<10Hz）/ Low-speed data</td>
+            <td>无抽稀，显示所有点 / No decimation, show all points</td>
+        </tr>
+        <tr>
+            <td>中速数据（10-100Hz）/ Medium-speed data</td>
+            <td>1:2抽稀，保留5000点 / 1:2 decimation, keep 5000 points</td>
+        </tr>
+        <tr>
+            <td>高速数据（>100Hz）/ High-speed data</td>
+            <td>1:5抽稀，启用OpenGL / 1:5 decimation, enable OpenGL</td>
+        </tr>
+        <tr>
+            <td>多曲线（>8条）/ Multi-curve (>8)</td>
+            <td>降低线宽，启用OpenGL / Reduce line width, enable OpenGL</td>
+        </tr>
+    </table>
+
+    <div class="warning">
+        <strong>⚠️ 注意 / Warning:</strong><br>
+        <strong>中文：</strong> 单窗口曲线数量建议不超过16条，过多曲线会影响性能和可读性。<br>
+        <strong>English:</strong> Recommend ≤16 curves per window, too many curves affect performance and readability.
+    </div>
+
+    <h2>10. 快捷键 / Shortcuts</h2>
+
+    <table>
+        <tr>
+            <th>快捷键 / Key</th>
+            <th>功能 / Function</th>
+        </tr>
+        <tr>
+            <td><code>Space</code></td>
+            <td>暂停/继续 / Pause/Resume</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+Shift+C</code></td>
+            <td>清空数据 / Clear Data</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+A</code></td>
+            <td>自动缩放 / Auto Scale</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+G</code></td>
+            <td>显示/隐藏网格 / Show/Hide Grid</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+L</code></td>
+            <td>显示/隐藏图例 / Show/Hide Legend</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+S</code></td>
+            <td>保存图片 / Save Image</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+E</code></td>
+            <td>导出数据 / Export Data</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+F</code></td>
+            <td>FFT 频谱分析 / FFT Spectrum Analysis</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+M</code></td>
+            <td>测量游标 / Measurement Cursors</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+T</code></td>
+            <td>触发捕获 / Trigger Capture</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+K</code></td>
+            <td>峰值标注 / Peak Annotation</td>
+        </tr>
+    </table>
+
+</body>
+</html>
