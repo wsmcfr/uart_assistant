@@ -16,6 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: "vcpkg.json"
+
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -24,7 +29,11 @@ jobs:
 
       - name: Configure
         shell: pwsh
-        run: cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build -S .
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_FEATURE_FLAGS=manifests
 
       - name: Build
         shell: pwsh
