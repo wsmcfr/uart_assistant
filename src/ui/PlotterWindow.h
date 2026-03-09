@@ -569,7 +569,7 @@ private:
         QString name;                ///< 差值曲线名称
     };
     QVector<DiffCurveInfo> m_diffCurves;  ///< 所有差值曲线
-    QSet<QCPGraph*> m_staticCurves;       ///< 静态曲线（滤波曲线等，不参与数据裁剪）
+    QSet<QCPGraph*> m_staticCurves;       ///< 静态曲线（仅历史对比用，不参与实时裁剪）
 
     // 实时滤波配置
     struct RealTimeFilterInfo {
@@ -678,6 +678,8 @@ private:
     int m_histogramCurveIndex = 0;                       ///< 直方图目标曲线索引
     int m_histogramBinCount = 50;                        ///< 直方图分箱数量
     QAction* m_histogramAction = nullptr;                ///< 直方图切换动作
+    qint64 m_lastHistogramUpdateMs = 0;                  ///< 直方图上次刷新时间
+    bool m_forceHistogramRefresh = false;                ///< 强制刷新直方图一次
 
     // XY视图模式
     QAction* m_xyViewAction = nullptr;                   ///< XY视图切换动作
@@ -687,6 +689,8 @@ private:
     QComboBox* m_xyChannelXCombo = nullptr;              ///< X通道选择下拉框
     QComboBox* m_xyChannelYCombo = nullptr;              ///< Y通道选择下拉框
     QWidget* m_xyControlWidget = nullptr;                ///< XY控制面板容器
+    qint64 m_lastXYUpdateMs = 0;                         ///< XY视图上次刷新时间
+    bool m_forceXYRefresh = false;                       ///< 强制刷新XY视图一次
 
     // 默认颜色列表
     static const QVector<QColor> s_defaultColors;

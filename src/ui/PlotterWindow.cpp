@@ -306,6 +306,8 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
     connect(m_controlPanel, &PlotControlPanel::maxDataPointsChanged, this, [this](int points) {
         m_maxDataPoints = points;
     });
+    connect(m_controlPanel, &PlotControlPanel::differenceCurveRequested,
+            this, &PlotterWindow::onShowDifferenceClicked);
     m_controlPanel->updateCurveList();
 
     LOG_INFO(QString("PlotterWindow created: %1").arg(windowId));
@@ -1106,24 +1108,19 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
 
 void PlotterWindow::trimData()
 {
-    // 限制数据点数量（排除静态曲线和差值曲线）
+    // 限制数据点数量（保留真正静态曲线，其余实时曲线都参与裁剪）
+    QSet<QCPGraph*> realtimeFilterGraphs;
+    for (const auto& filterInfo : m_realTimeFilters) {
+        if (filterInfo.filterGraph) {
+            realtimeFilterGraphs.insert(filterInfo.filterGraph);
+        }
+    }
+
     for (int i = 0; i < m_plot->graphCount(); ++i) {
         QCPGraph* graph = m_plot->graph(i);
 
-        // 跳过静态曲线（滤波曲线等）
-        if (m_staticCurves.contains(graph)) {
-            continue;
-        }
-
-        // 跳过差值曲线
-        bool isDiffCurve = false;
-        for (const auto& diff : m_diffCurves) {
-            if (diff.graph == graph) {
-                isDiffCurve = true;
-                break;
-            }
-        }
-        if (isDiffCurve) {
+        // 仅跳过“真正静态曲线”，实时滤波曲线也要参与裁剪
+        if (m_staticCurves.contains(graph) && !realtimeFilterGraphs.contains(graph)) {
             continue;
         }
 
@@ -1918,13 +1915,10 @@ void PlotterWindow::updateValuePanel()
     bool needRebuild = (allValues.size() != m_lastValueCount) || m_valueLabels.isEmpty();
 
     if (!needRebuild) {
-        // 只更新标签文本
+        // 高频路径：仅更新文本，避免每帧 setStyleSheet 触发额外样式重算
         for (int i = 0; i < qMin(allValues.size(), m_valueLabels.size()); ++i) {
             const auto& info = allValues[i];
-            QString labelText = QString("%1: %2").arg(info.name).arg(info.value, 0, 'f', 2);
-            m_valueLabels[i]->setText(labelText);
-            m_valueLabels[i]->setStyleSheet(QString("color: %1; font-weight: bold;")
-                .arg(info.color.name()));
+            m_valueLabels[i]->setText(QString("%1: %2").arg(info.name).arg(info.value, 0, 'f', 2));
         }
         return;
     }
@@ -3501,9 +3495,6 @@ void PlotterWindow::onFilterCurveClicked()
             newGraph->addData(xData[i], filteredData[i]);
         }
 
-        // 将滤波曲线标记为静态曲线，不参与数据裁剪
-        m_staticCurves.insert(newGraph);
-
         // 添加到实时滤波列表，以便持续更新
         RealTimeFilterInfo filterInfo;
         filterInfo.filterGraph = newGraph;
@@ -4598,7 +4589,7 @@ void PlotterWindow::updateAlarmDisplay()
     }
 
     if (!m_alarmConfig.enabled) {
-        m_plot->replot();
+        m_plot->replot(QCustomPlot::rpQueuedReplot);
         return;
     }
 
@@ -4635,7 +4626,7 @@ void PlotterWindow::updateAlarmDisplay()
     m_alarmStatusText->setColor(Qt::green);
     m_alarmStatusText->setFont(QFont("Sans", 10, QFont::Bold));
 
-    m_plot->replot();
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void PlotterWindow::onAddMarkerClicked()
@@ -4764,7 +4755,7 @@ void PlotterWindow::onAddMarkerClicked()
         marker.text->setPen(QPen(marker.color));
 
         m_dataMarkers.append(marker);
-        m_plot->replot();
+        m_plot->replot(QCustomPlot::rpQueuedReplot);
     }
 }
 
@@ -4779,7 +4770,7 @@ void PlotterWindow::clearAllMarkers()
         }
     }
     m_dataMarkers.clear();
-    m_plot->replot();
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void PlotterWindow::onApplyScenePresetClicked()
@@ -5003,7 +4994,7 @@ void PlotterWindow::applyScenePreset(EmbeddedSceneType sceneType)
         break;
     }
 
-    m_plot->replot();
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
     QMessageBox::information(this, tr("场景预设"), tr("场景预设已应用，请按照预设配置发送数据。"));
 }
 
@@ -5070,6 +5061,9 @@ void PlotterWindow::retranslateUi()
     if (m_histogramAction) {
         m_histogramAction->setText(tr("直方图视图(&H)"));
     }
+    if (m_xyViewAction) {
+        m_xyViewAction->setText(tr("XY视图(&Y)"));
+    }
     if (m_renderQualityHighAction) {
         m_renderQualityHighAction->setText(tr("高质量（细腻）"));
     }
@@ -5099,6 +5093,20 @@ void PlotterWindow::onHistogramViewClicked()
     bool enableHistogram = m_histogramAction ? m_histogramAction->isChecked() : false;
 
     if (enableHistogram) {
+        // 从 XY 模式切换过来时，先清理 XY 相关对象
+        if (m_viewMode == PlotViewMode::XY) {
+            if (m_xyCurve) {
+                m_plot->removePlottable(m_xyCurve);
+                m_xyCurve = nullptr;
+            }
+            if (m_xyControlWidget) {
+                m_xyControlWidget->hide();
+            }
+            if (m_xyViewAction) {
+                m_xyViewAction->setChecked(false);
+            }
+        }
+
         // 切换到直方图视图
         // 如果有多条曲线，弹出选择对话框
         if (m_plot->graphCount() > 1) {
@@ -5123,6 +5131,15 @@ void PlotterWindow::onHistogramViewClicked()
                     curveCombo->addItem(m_plot->graph(i)->name(), i);
                 }
             }
+
+            if (curveCombo->count() == 0) {
+                QMessageBox::information(this, tr("提示"), tr("没有可用于直方图分析的原始曲线"));
+                if (m_histogramAction) {
+                    m_histogramAction->setChecked(false);
+                }
+                return;
+            }
+
             layout->addWidget(new QLabel(tr("选择曲线:")));
             layout->addWidget(curveCombo);
 
@@ -5154,6 +5171,7 @@ void PlotterWindow::onHistogramViewClicked()
         }
 
         m_viewMode = PlotViewMode::Histogram;
+        m_forceHistogramRefresh = true;
 
         // 隐藏所有时间序列曲线
         for (int i = 0; i < m_plot->graphCount(); ++i) {
@@ -5165,6 +5183,7 @@ void PlotterWindow::onHistogramViewClicked()
     } else {
         // 切换回时间序列视图
         m_viewMode = PlotViewMode::TimeSeries;
+        m_forceHistogramRefresh = false;
 
         // 移除直方图
         if (m_histogramBars) {
@@ -5182,9 +5201,10 @@ void PlotterWindow::onHistogramViewClicked()
         m_plot->yAxis->setLabel(tr("Y"));
 
         m_plot->rescaleAxes();
+        setWindowTitle(tr("绘图窗口 - %1").arg(m_windowId));
     }
 
-    m_plot->replot();
+    m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void PlotterWindow::updateHistogramView()
@@ -5192,6 +5212,13 @@ void PlotterWindow::updateHistogramView()
     if (m_viewMode != PlotViewMode::Histogram) {
         return;
     }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!m_forceHistogramRefresh && (now - m_lastHistogramUpdateMs) < 120) {
+        return;
+    }
+    m_forceHistogramRefresh = false;
+    m_lastHistogramUpdateMs = now;
 
     if (m_histogramCurveIndex < 0 || m_histogramCurveIndex >= m_plot->graphCount()) {
         return;
@@ -5204,7 +5231,21 @@ void PlotterWindow::updateHistogramView()
 
     // 获取数据
     QVector<double> values;
-    for (auto it = sourceGraph->data()->constBegin(); it != sourceGraph->data()->constEnd(); ++it) {
+    const int sourceSize = sourceGraph->data()->size();
+    if (sourceSize <= 0 || m_histogramBinCount <= 0) {
+        return;
+    }
+
+    // 大数据量时按步长采样，避免每次全量扫描导致卡顿
+    const int maxSampleCount = qMax(3000, m_histogramBinCount * 80);
+    const int sampleStep = qMax(1, sourceSize / maxSampleCount);
+    values.reserve(sourceSize / sampleStep + 1);
+
+    int sampleIndex = 0;
+    for (auto it = sourceGraph->data()->constBegin(); it != sourceGraph->data()->constEnd(); ++it, ++sampleIndex) {
+        if (sampleIndex % sampleStep != 0) {
+            continue;
+        }
         values.append(it->value);
     }
 
@@ -5272,11 +5313,12 @@ void PlotterWindow::updateHistogramView()
     double stdDev = std::sqrt(variance);
 
     // 更新窗口标题显示统计信息
-    setWindowTitle(tr("直方图 - %1 | 均值: %2 | 标准差: %3 | 数据点: %4")
+    setWindowTitle(tr("直方图 - %1 | 均值: %2 | 标准差: %3 | 采样点: %4 / 原始点: %5")
         .arg(sourceGraph->name())
         .arg(mean, 0, 'f', 3)
         .arg(stdDev, 0, 'f', 3)
-        .arg(values.size()));
+        .arg(values.size())
+        .arg(sourceSize));
 }
 
 void PlotterWindow::onXYViewClicked()
@@ -5284,6 +5326,7 @@ void PlotterWindow::onXYViewClicked()
     if (m_viewMode == PlotViewMode::XY) {
         // 退出XY模式，恢复时间序列模式
         m_viewMode = PlotViewMode::TimeSeries;
+        m_forceXYRefresh = false;
         m_xyViewAction->setChecked(false);
 
         // 移除XY曲线
@@ -5303,16 +5346,17 @@ void PlotterWindow::onXYViewClicked()
         }
 
         // 恢复坐标轴标签
-        m_plot->xAxis->setLabel(tr("样本"));
-        m_plot->yAxis->setLabel(tr("值"));
+        m_plot->xAxis->setLabel(tr("X"));
+        m_plot->yAxis->setLabel(tr("Y"));
 
         setWindowTitle(tr("绘图窗口 - %1").arg(m_windowId));
-        m_plot->replot();
+        m_plot->replot(QCustomPlot::rpQueuedReplot);
     } else {
         // 进入XY模式
         m_viewMode = PlotViewMode::XY;
         m_xyViewAction->setChecked(true);
         m_histogramAction->setChecked(false);
+        m_forceHistogramRefresh = false;
 
         // 隐藏直方图
         if (m_histogramBars) {
@@ -5357,7 +5401,28 @@ void PlotterWindow::onXYViewClicked()
         m_xyChannelXCombo->clear();
         m_xyChannelYCombo->clear();
 
+        QVector<int> availableCurveIndices;
         for (int i = 0; i < m_plot->graphCount(); ++i) {
+            QCPGraph* graph = m_plot->graph(i);
+            if (!graph) {
+                continue;
+            }
+
+            bool isSpecialCurve = false;
+            for (const auto& diff : m_diffCurves) {
+                if (diff.graph == graph) {
+                    isSpecialCurve = true;
+                    break;
+                }
+            }
+            if (!isSpecialCurve && m_staticCurves.contains(graph)) {
+                isSpecialCurve = true;
+            }
+            if (isSpecialCurve) {
+                continue;
+            }
+
+            availableCurveIndices.append(i);
             QString name = m_plot->graph(i)->name();
             if (name.isEmpty()) {
                 name = tr("通道 %1").arg(i + 1);
@@ -5366,13 +5431,28 @@ void PlotterWindow::onXYViewClicked()
             m_xyChannelYCombo->addItem(name, i);
         }
 
-        // 默认选择前两个通道
-        if (m_xyChannelXCombo->count() > 0) {
-            m_xyChannelXCombo->setCurrentIndex(qMin(m_xyChannelX, m_xyChannelXCombo->count() - 1));
+        if (availableCurveIndices.size() < 2) {
+            m_xyChannelXCombo->blockSignals(false);
+            m_xyChannelYCombo->blockSignals(false);
+            QMessageBox::information(this, tr("提示"), tr("XY视图至少需要2条原始曲线"));
+            m_viewMode = PlotViewMode::TimeSeries;
+            m_xyViewAction->setChecked(false);
+            for (int i = 0; i < m_plot->graphCount(); ++i) {
+                m_plot->graph(i)->setVisible(true);
+            }
+            if (m_xyControlWidget) {
+                m_xyControlWidget->hide();
+            }
+            setWindowTitle(tr("绘图窗口 - %1").arg(m_windowId));
+            m_plot->replot(QCustomPlot::rpQueuedReplot);
+            return;
         }
-        if (m_xyChannelYCombo->count() > 1) {
-            m_xyChannelYCombo->setCurrentIndex(qMin(m_xyChannelY, m_xyChannelYCombo->count() - 1));
-        }
+
+        // 默认选择前两个可用通道
+        const int xIndex = m_xyChannelXCombo->findData(m_xyChannelX);
+        const int yIndex = m_xyChannelYCombo->findData(m_xyChannelY);
+        m_xyChannelXCombo->setCurrentIndex(xIndex >= 0 ? xIndex : 0);
+        m_xyChannelYCombo->setCurrentIndex(yIndex >= 0 ? yIndex : 1);
 
         m_xyChannelXCombo->blockSignals(false);
         m_xyChannelYCombo->blockSignals(false);
@@ -5383,6 +5463,7 @@ void PlotterWindow::onXYViewClicked()
         m_xyControlWidget->show();
         m_xyControlWidget->raise();
 
+        m_forceXYRefresh = true;
         updateXYView();
     }
 }
@@ -5392,6 +5473,7 @@ void PlotterWindow::onXYChannelChanged()
     if (m_xyChannelXCombo && m_xyChannelYCombo) {
         m_xyChannelX = m_xyChannelXCombo->currentData().toInt();
         m_xyChannelY = m_xyChannelYCombo->currentData().toInt();
+        m_forceXYRefresh = true;
         updateXYView();
     }
 }
@@ -5401,6 +5483,13 @@ void PlotterWindow::updateXYView()
     if (m_viewMode != PlotViewMode::XY) {
         return;
     }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (!m_forceXYRefresh && (now - m_lastXYUpdateMs) < 80) {
+        return;
+    }
+    m_forceXYRefresh = false;
+    m_lastXYUpdateMs = now;
 
     // 检查通道有效性
     if (m_xyChannelX < 0 || m_xyChannelX >= m_plot->graphCount() ||
@@ -5424,8 +5513,16 @@ void PlotterWindow::updateXYView()
         m_xyCurve->setAntialiased(m_renderQualityMode == RenderQualityMode::HighQuality);
     }
 
-    // 获取数据（取两个通道数据点数的最小值）
-    int dataCount = qMin(graphX->data()->size(), graphY->data()->size());
+    // 获取数据（取两个通道数据点数的最小值），并在大数据量下抽样以提升流畅度
+    const int rawCount = qMin(graphX->data()->size(), graphY->data()->size());
+    if (rawCount <= 0) {
+        return;
+    }
+
+    const int maxPlotPoints = qBound(1000, m_maxDataPoints, 6000);
+    const int sampleStep = qMax(1, rawCount / maxPlotPoints);
+    const int dataCount = (rawCount + sampleStep - 1) / sampleStep;
+
     QVector<double> xData(dataCount);
     QVector<double> yData(dataCount);
     QVector<double> tData(dataCount);  // 参数t
@@ -5433,10 +5530,26 @@ void PlotterWindow::updateXYView()
     auto itX = graphX->data()->constBegin();
     auto itY = graphY->data()->constBegin();
 
-    for (int i = 0; i < dataCount; ++i, ++itX, ++itY) {
-        tData[i] = i;
-        xData[i] = itX->value;
-        yData[i] = itY->value;
+    int writeIndex = 0;
+    int rawIndex = 0;
+    for (; rawIndex < rawCount && itX != graphX->data()->constEnd() && itY != graphY->data()->constEnd();
+           ++rawIndex, ++itX, ++itY) {
+        if (rawIndex % sampleStep != 0) {
+            continue;
+        }
+        if (writeIndex >= dataCount) {
+            break;
+        }
+        tData[writeIndex] = writeIndex;
+        xData[writeIndex] = itX->value;
+        yData[writeIndex] = itY->value;
+        ++writeIndex;
+    }
+
+    if (writeIndex < dataCount) {
+        xData.resize(writeIndex);
+        yData.resize(writeIndex);
+        tData.resize(writeIndex);
     }
 
     m_xyCurve->setData(tData, xData, yData);
@@ -5463,10 +5576,11 @@ void PlotterWindow::updateXYView()
     }
 
     // 更新窗口标题
-    setWindowTitle(tr("XY视图 - %1 vs %2 | 数据点: %3")
+    setWindowTitle(tr("XY视图 - %1 vs %2 | 显示点: %3 / 原始点: %4")
         .arg(graphX->name())
         .arg(graphY->name())
-        .arg(dataCount));
+        .arg(xData.size())
+        .arg(rawCount));
 
     m_plot->replot(QCustomPlot::rpQueuedReplot);
 }

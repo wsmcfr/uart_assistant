@@ -68,6 +68,13 @@ QGroupBox* PlotControlPanel::createCurveManagement()
     });
     layout->addWidget(colorBtn);
 
+    QPushButton* diffBtn = new QPushButton(tr("差值曲线..."));
+    diffBtn->setFixedHeight(26);
+    connect(diffBtn, &QPushButton::clicked, this, [this]() {
+        emit differenceCurveRequested();
+    });
+    layout->addWidget(diffBtn);
+
     return group;
 }
 

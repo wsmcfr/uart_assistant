@@ -97,6 +97,11 @@ signals:
      */
     void maxDataPointsChanged(int points);
 
+    /**
+     * @brief 请求管理差值曲线
+     */
+    void differenceCurveRequested();
+
 protected:
     void changeEvent(QEvent* event) override;
 
