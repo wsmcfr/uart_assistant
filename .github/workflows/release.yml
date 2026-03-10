@@ -120,8 +120,8 @@ jobs:
             "# ComAssistant $tag"
             ""
             "## 下载"
-            "- Windows x64 便携版：`ComAssistant_${tag}_Windows_x64_Portable.zip`"
-            "- 完整性校验：`SHA256SUMS.txt`"
+            "- Windows x64 便携版：ComAssistant_${tag}_Windows_x64_Portable.zip"
+            "- 完整性校验：SHA256SUMS.txt"
             ""
             "## 本版本更新"
             $section
