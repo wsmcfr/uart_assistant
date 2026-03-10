@@ -113,25 +113,23 @@ jobs:
           }
 
           if ([string]::IsNullOrWhiteSpace($section)) {
-            $section = @"
-- 本版本详细说明暂未同步到 CHANGELOG。
-- 维护者可在 CHANGELOG.md 增加对应的版本段落后重新发布。
-"@
+            $section = "- 本版本详细说明暂未同步到 CHANGELOG。`n- 维护者可在 CHANGELOG.md 增加对应的版本段落后重新发布。"
           }
 
-          $body = @"
-# ComAssistant $tag
-
-## 下载
-- Windows x64 便携版：`ComAssistant_${tag}_Windows_x64_Portable.zip`
-- 完整性校验：`SHA256SUMS.txt`
-
-## 本版本更新
-$section
-
-## 反馈
-- 问题反馈与建议：https://github.com/$repo/issues
-"@
+          $bodyLines = @(
+            "# ComAssistant $tag"
+            ""
+            "## 下载"
+            "- Windows x64 便携版：`ComAssistant_${tag}_Windows_x64_Portable.zip`"
+            "- 完整性校验：`SHA256SUMS.txt`"
+            ""
+            "## 本版本更新"
+            $section
+            ""
+            "## 反馈"
+            "- 问题反馈与建议：https://github.com/$repo/issues"
+          )
+          $body = $bodyLines -join "`n"
 
           Set-Content -Path $notesPath -Value $body -Encoding UTF8
 
