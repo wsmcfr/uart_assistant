@@ -93,6 +93,7 @@ private:
     QFontComboBox* m_fontCombo = nullptr;
     QSpinBox* m_fontSizeSpin = nullptr;
     QSpinBox* m_maxLinesSpin = nullptr;
+    QSpinBox* m_hexBufferSpin = nullptr;
     QCheckBox* m_showTimestampCheck = nullptr;
     QCheckBox* m_autoScrollCheck = nullptr;
     QComboBox* m_newlineCombo = nullptr;

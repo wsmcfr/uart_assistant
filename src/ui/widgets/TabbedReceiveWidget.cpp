@@ -21,8 +21,298 @@
 #include <QColorDialog>
 #include <QMessageBox>
 #include <QEvent>
+#include <QAbstractTableModel>
+#include <QSyntaxHighlighter>
+#include <QRegularExpression>
+#include <QElapsedTimer>
 
 namespace ComAssistant {
+
+class ReceiveHighlightHighlighter final : public QSyntaxHighlighter {
+public:
+    explicit ReceiveHighlightHighlighter(QTextDocument* parent)
+        : QSyntaxHighlighter(parent)
+    {
+    }
+
+    void setRules(const QVector<HighlightRule>& rules)
+    {
+        m_rules.clear();
+        m_rules.reserve(rules.size());
+
+        for (const HighlightRule& rule : rules) {
+            if (!rule.enabled || rule.keyword.isEmpty()) {
+                continue;
+            }
+
+            CompiledRule compiled;
+            compiled.format.setForeground(rule.color);
+            compiled.format.setFontWeight(QFont::Bold);
+
+            QRegularExpression regex(QRegularExpression::escape(rule.keyword));
+            if (!rule.caseSensitive) {
+                regex.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+            }
+            compiled.regex = regex;
+
+            m_rules.append(compiled);
+        }
+    }
+
+    void setEnabled(bool enabled)
+    {
+        m_enabled = enabled;
+    }
+
+protected:
+    void highlightBlock(const QString& text) override
+    {
+        if (!m_enabled || m_rules.isEmpty()) {
+            return;
+        }
+
+        for (const CompiledRule& rule : m_rules) {
+            QRegularExpressionMatchIterator it = rule.regex.globalMatch(text);
+            while (it.hasNext()) {
+                const QRegularExpressionMatch match = it.next();
+                if (match.hasMatch()) {
+                    setFormat(match.capturedStart(), match.capturedLength(), rule.format);
+                }
+            }
+        }
+    }
+
+private:
+    struct CompiledRule {
+        QRegularExpression regex;
+        QTextCharFormat format;
+    };
+
+    QVector<CompiledRule> m_rules;
+    bool m_enabled = true;
+};
+
+class ReceiveHexModel final : public QAbstractTableModel {
+public:
+    explicit ReceiveHexModel(QObject* parent = nullptr)
+        : QAbstractTableModel(parent)
+    {
+        setMaxBytes(8 * 1024 * 1024);
+    }
+
+    void setMaxBytes(int maxBytes)
+    {
+        maxBytes = qMax(16, maxBytes);
+        if (m_maxBytes == maxBytes) {
+            return;
+        }
+
+        beginResetModel();
+        QByteArray newBuffer;
+        newBuffer.resize(maxBytes);
+
+        const int copyBytes = qMin(m_size, maxBytes);
+        for (int i = 0; i < copyBytes; ++i) {
+            newBuffer[i] = static_cast<char>(byteAt(m_size - copyBytes + i));
+        }
+
+        m_buffer = newBuffer;
+        m_maxBytes = maxBytes;
+        m_start = 0;
+        m_size = copyBytes;
+        endResetModel();
+    }
+
+    void clear()
+    {
+        beginResetModel();
+        if (m_buffer.size() != m_maxBytes) {
+            m_buffer.resize(m_maxBytes);
+        }
+        m_buffer.fill(0);
+        m_start = 0;
+        m_size = 0;
+        m_totalBytes = 0;
+        endResetModel();
+    }
+
+    void appendData(const QByteArray& data)
+    {
+        if (data.isEmpty() || m_maxBytes <= 0) {
+            return;
+        }
+
+        if (m_buffer.size() != m_maxBytes) {
+            m_buffer.resize(m_maxBytes);
+        }
+
+        const int incoming = data.size();
+        m_totalBytes += static_cast<quint64>(incoming);
+
+        if (incoming >= m_maxBytes) {
+            beginResetModel();
+            const int offset = incoming - m_maxBytes;
+            for (int i = 0; i < m_maxBytes; ++i) {
+                m_buffer[i] = data[offset + i];
+            }
+            m_start = 0;
+            m_size = m_maxBytes;
+            endResetModel();
+            return;
+        }
+
+        const int oldSize = m_size;
+        const int oldRowCount = rowCount();
+        const int newSize = qMin(m_maxBytes, m_size + incoming);
+        const int newRowCount = rowsForBytes(newSize);
+        const bool overflow = (oldSize + incoming > m_maxBytes);
+
+        if (newRowCount > oldRowCount) {
+            beginInsertRows(QModelIndex(), oldRowCount, newRowCount - 1);
+        }
+
+        for (int i = 0; i < incoming; ++i) {
+            writeByte(static_cast<quint8>(data[i]));
+        }
+
+        if (newRowCount > oldRowCount) {
+            endInsertRows();
+        }
+
+        if (newRowCount == 0) {
+            return;
+        }
+
+        if (overflow || oldSize >= m_maxBytes) {
+            emit dataChanged(index(0, 0), index(newRowCount - 1, 16));
+        } else {
+            const int firstRow = qMax(0, oldRowCount - 1);
+            emit dataChanged(index(firstRow, 0), index(newRowCount - 1, 16));
+        }
+    }
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        if (parent.isValid()) {
+            return 0;
+        }
+        return rowsForBytes(m_size);
+    }
+
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return parent.isValid() ? 0 : 17;
+    }
+
+    QVariant data(const QModelIndex& index, int role) const override
+    {
+        if (!index.isValid()) {
+            return {};
+        }
+
+        if (role == Qt::TextAlignmentRole) {
+            if (index.column() == 16) {
+                return QVariant::fromValue(Qt::AlignLeft | Qt::AlignVCenter);
+            }
+            return QVariant::fromValue(Qt::AlignCenter);
+        }
+
+        if (role != Qt::DisplayRole) {
+            return {};
+        }
+
+        const int row = index.row();
+        const int col = index.column();
+        const int logicalIndex = row * 16 + col;
+
+        if (col < 16) {
+            if (logicalIndex >= m_size) {
+                return {};
+            }
+            const quint8 value = byteAt(logicalIndex);
+            return QString("%1").arg(value, 2, 16, QChar('0')).toUpper();
+        }
+
+        const int rowStart = row * 16;
+        if (rowStart >= m_size) {
+            return {};
+        }
+
+        QString ascii;
+        ascii.reserve(16);
+        for (int i = 0; i < 16; ++i) {
+            const int idx = rowStart + i;
+            if (idx >= m_size) {
+                break;
+            }
+            const quint8 value = byteAt(idx);
+            ascii.append((value >= 32 && value < 127) ? QChar(value) : QChar('.'));
+        }
+        return ascii;
+    }
+
+    QVariant headerData(int section, Qt::Orientation orientation, int role) const override
+    {
+        if (role != Qt::DisplayRole) {
+            return {};
+        }
+
+        if (orientation == Qt::Horizontal) {
+            if (section < 16) {
+                return QString("%1").arg(section, 2, 16, QChar('0')).toUpper();
+            }
+            return QStringLiteral("ASCII");
+        }
+
+        const quint64 baseOffset = (m_totalBytes > static_cast<quint64>(m_size))
+            ? (m_totalBytes - static_cast<quint64>(m_size))
+            : 0;
+        const quint64 rowOffset = baseOffset + static_cast<quint64>(section) * 16;
+        return QString("%1").arg(rowOffset, 8, 16, QChar('0')).toUpper();
+    }
+
+private:
+    int rowsForBytes(int bytes) const
+    {
+        return (bytes + 15) / 16;
+    }
+
+    quint8 byteAt(int logicalIndex) const
+    {
+        if (logicalIndex < 0 || logicalIndex >= m_size || m_maxBytes <= 0) {
+            return 0;
+        }
+        const int pos = (m_start + logicalIndex) % m_maxBytes;
+        return static_cast<quint8>(m_buffer[pos]);
+    }
+
+    void writeByte(quint8 value)
+    {
+        if (m_maxBytes <= 0) {
+            return;
+        }
+
+        if (m_buffer.size() != m_maxBytes) {
+            m_buffer.resize(m_maxBytes);
+        }
+
+        if (m_size < m_maxBytes) {
+            const int pos = (m_start + m_size) % m_maxBytes;
+            m_buffer[pos] = static_cast<char>(value);
+            ++m_size;
+            return;
+        }
+
+        m_buffer[m_start] = static_cast<char>(value);
+        m_start = (m_start + 1) % m_maxBytes;
+    }
+
+    QByteArray m_buffer;
+    int m_maxBytes = 0;
+    int m_start = 0;
+    int m_size = 0;
+    quint64 m_totalBytes = 0;
+};
 
 TabbedReceiveWidget::TabbedReceiveWidget(QWidget* parent)
     : QWidget(parent)
@@ -36,6 +326,10 @@ TabbedReceiveWidget::TabbedReceiveWidget(QWidget* parent)
     m_terminalRefreshTimer = new QTimer(this);
     m_terminalRefreshTimer->setSingleShot(true);
     connect(m_terminalRefreshTimer, &QTimer::timeout, this, &TabbedReceiveWidget::updateTerminalDisplay);
+
+    m_perfTimer = new QTimer(this);
+    connect(m_perfTimer, &QTimer::timeout, this, &TabbedReceiveWidget::updatePerformanceStats);
+    m_perfTimer->start(1000);
 
     // 添加默认高亮规则 - 只高亮文字颜色
     addHighlightRule({"OK", QColor(46, 204, 113), false, true});       // 绿色
@@ -82,6 +376,10 @@ void TabbedReceiveWidget::setupUi()
     connect(m_highlightSettingsBtn, &QPushButton::clicked,
             this, &TabbedReceiveWidget::onHighlightSettingsClicked);
 
+    m_perfLabel = new QLabel(tr("性能: 接收 0 B/s | 渲染 0 ms"));
+    m_perfLabel->setStyleSheet("color: #666;");
+    m_perfLabel->setMinimumWidth(220);
+
     m_clearBtn = new QPushButton(tr("清空"));
     m_clearBtn->setFixedWidth(60);
     connect(m_clearBtn, &QPushButton::clicked, this, &TabbedReceiveWidget::onClearClicked);
@@ -92,6 +390,7 @@ void TabbedReceiveWidget::setupUi()
     optionsLayout->addSpacing(8);
     optionsLayout->addWidget(m_highlightCheck);
     optionsLayout->addWidget(m_highlightSettingsBtn);
+    optionsLayout->addWidget(m_perfLabel);
     optionsLayout->addStretch();
     optionsLayout->addWidget(m_clearBtn);
 
@@ -123,12 +422,19 @@ void TabbedReceiveWidget::setupOptionsBar()
 
 void TabbedReceiveWidget::setupMainTab()
 {
-    m_mainTextEdit = new QTextEdit;
+    m_mainTextEdit = new QPlainTextEdit;
     m_mainTextEdit->setReadOnly(true);
-    m_mainTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+    m_mainTextEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_mainTextEdit->setFont(QFont("Consolas", 10));
     m_mainTextEdit->document()->setMaximumBlockCount(m_maxLines);
+    m_mainTextEdit->document()->setUndoRedoEnabled(false);
     m_mainTextEdit->setPlaceholderText(tr("接收到的数据将在这里显示..."));
+
+    if (!m_highlighter) {
+        m_highlighter = new ReceiveHighlightHighlighter(m_mainTextEdit->document());
+        m_highlighter->setEnabled(m_highlightEnabled);
+        m_highlighter->setRules(m_highlightRules);
+    }
 
     // 创建一个包含文本编辑器和智能滚屏指示器的容器
     QWidget* textContainer = new QWidget;
@@ -161,23 +467,21 @@ void TabbedReceiveWidget::setupMainTab()
 
 void TabbedReceiveWidget::setupHexTab()
 {
-    m_hexTable = new QTableWidget;
-    m_hexTable->setColumnCount(17);  // 16 hex + 1 ASCII
+    m_hexTable = new QTableView;
+    m_hexModel = new ReceiveHexModel(m_hexTable);
+    m_hexModel->setMaxBytes(m_maxRawDataBytes);
 
-    QStringList headers;
-    for (int i = 0; i < 16; ++i) {
-        headers << QString("%1").arg(i, 2, 16, QChar('0')).toUpper();
-    }
-    headers << "ASCII";
-    m_hexTable->setHorizontalHeaderLabels(headers);
-
+    m_hexTable->setModel(m_hexModel);
+    m_hexTable->setWordWrap(false);
+    m_hexTable->setUniformRowHeights(true);
+    m_hexTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_hexTable->setSelectionMode(QAbstractItemView::ContiguousSelection);
+    m_hexTable->setSelectionBehavior(QAbstractItemView::SelectItems);
     m_hexTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
     m_hexTable->horizontalHeader()->setDefaultSectionSize(28);
     m_hexTable->horizontalHeader()->setStretchLastSection(true);
     m_hexTable->verticalHeader()->setDefaultSectionSize(22);
     m_hexTable->setFont(QFont("Consolas", 9));
-    m_hexTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_hexTable->setSelectionMode(QAbstractItemView::ContiguousSelection);
 
     m_tabWidget->addTab(m_hexTable, tr("十六进制"));
 }
@@ -202,6 +506,7 @@ void TabbedReceiveWidget::setupFilterTab()
     m_filterResult = new QTextEdit;
     m_filterResult->setReadOnly(true);
     m_filterResult->setFont(QFont("Consolas", 10));
+    m_filterResult->document()->setUndoRedoEnabled(false);
     filterLayout->addWidget(m_filterResult);
 
     m_tabWidget->addTab(filterWidget, tr("过滤"));
@@ -209,6 +514,9 @@ void TabbedReceiveWidget::setupFilterTab()
 
 void TabbedReceiveWidget::appendData(const QByteArray& data)
 {
+    QElapsedTimer perfTimer;
+    perfTimer.start();
+
     m_rawData.append(data);
     trimRawDataBuffer();
 
@@ -230,6 +538,12 @@ void TabbedReceiveWidget::appendData(const QByteArray& data)
 
     appendToHexView(data);
     emit dataReceived(data);
+
+    if (!data.isEmpty()) {
+        m_perfRxBytes += data.size();
+    }
+    m_perfRenderCostSumMs += static_cast<double>(perfTimer.nsecsElapsed()) / 1000000.0;
+    m_perfRenderSamples += 1;
 }
 
 void TabbedReceiveWidget::appendSentData(const QByteArray& data)
@@ -675,6 +989,7 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
     }
 
     if (!text.isEmpty()) {
+        m_mainTextEdit->setUpdatesEnabled(false);
         m_mainTextEdit->moveCursor(QTextCursor::End);
         m_mainTextEdit->insertPlainText(text);
 
@@ -684,89 +999,28 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
             m_lineHistory.append(lines);
             trimLineHistory();
         }
+        // 智能滚屏：仅在未暂停时滚动到底部
+        if (m_autoScrollEnabled && !m_smartScrollPaused) {
+            m_mainTextEdit->verticalScrollBar()->setValue(
+                m_mainTextEdit->verticalScrollBar()->maximum());
+        }
+        m_mainTextEdit->setUpdatesEnabled(true);
     }
 
-    // 智能滚屏：仅在未暂停时滚动到底部
-    if (m_autoScrollEnabled && !m_smartScrollPaused) {
-        m_mainTextEdit->verticalScrollBar()->setValue(
-            m_mainTextEdit->verticalScrollBar()->maximum());
-    }
-
-    // 延迟批处理高亮，降低高频数据下的阻塞
-    if (m_highlightEnabled && !m_highlightRules.isEmpty()) {
-        scheduleHighlightUpdate();
-    }
 }
 
 void TabbedReceiveWidget::appendToHexView(const QByteArray& data)
 {
-    if (data.isEmpty()) {
+    if (data.isEmpty() || !m_hexTable || !m_hexModel) {
         return;
     }
 
     m_hexTable->setUpdatesEnabled(false);
-
-    const int rowCountBefore = m_hexTable->rowCount();
-    const int bytesIncludingCurrentRow = m_hexColIndex + data.size();
-    const int rowsNeeded = (bytesIncludingCurrentRow + 15) / 16;
-    const int targetRowCount = m_hexRowCount + rowsNeeded;
-    if (targetRowCount > rowCountBefore) {
-        m_hexTable->setRowCount(targetRowCount);
-    }
-
-    auto ensureRowInitialized = [this](int row) {
-        if (!m_hexTable->verticalHeaderItem(row)) {
-            QString rowHeader = QString("%1").arg(row * 16, 8, 16, QChar('0')).toUpper();
-            m_hexTable->setVerticalHeaderItem(row, new QTableWidgetItem(rowHeader));
-        }
-        if (!m_hexTable->item(row, 16)) {
-            m_hexTable->setItem(row, 16, new QTableWidgetItem(""));
-        }
-    };
-
-    for (int i = 0; i < data.size(); ++i) {
-        unsigned char byte = static_cast<unsigned char>(data[i]);
-
-        ensureRowInitialized(m_hexRowCount);
-
-        // 设置十六进制值
-        QString hexStr = QString("%1").arg(byte, 2, 16, QChar('0')).toUpper();
-        QTableWidgetItem* hexItem = m_hexTable->item(m_hexRowCount, m_hexColIndex);
-        if (!hexItem) {
-            hexItem = new QTableWidgetItem;
-            m_hexTable->setItem(m_hexRowCount, m_hexColIndex, hexItem);
-        }
-        hexItem->setText(hexStr);
-
-        // 更新 ASCII 列
-        QTableWidgetItem* asciiItem = m_hexTable->item(m_hexRowCount, 16);
-        if (asciiItem) {
-            QString ascii = asciiItem->text();
-            if (ascii.size() < m_hexColIndex) {
-                ascii.append(QString(m_hexColIndex - ascii.size(), ' '));
-            }
-
-            const QChar asciiChar = (byte >= 32 && byte < 127) ? QChar(byte) : QChar('.');
-            if (ascii.size() == m_hexColIndex) {
-                ascii.append(asciiChar);
-            } else {
-                ascii[m_hexColIndex] = asciiChar;
-            }
-            asciiItem->setText(ascii);
-        }
-
-        m_hexColIndex++;
-        if (m_hexColIndex >= 16) {
-            m_hexColIndex = 0;
-            m_hexRowCount++;
-        }
-    }
-
-    m_hexTable->setUpdatesEnabled(true);
-
+    m_hexModel->appendData(data);
     if (m_autoScrollEnabled) {
         m_hexTable->scrollToBottom();
     }
+    m_hexTable->setUpdatesEnabled(true);
 }
 
 void TabbedReceiveWidget::updateFilterView()
@@ -789,11 +1043,17 @@ void TabbedReceiveWidget::updateFilterView()
 
 void TabbedReceiveWidget::refreshMainView()
 {
+    if (!m_mainTextEdit) {
+        return;
+    }
+
+    m_mainTextEdit->setUpdatesEnabled(false);
     // 清空当前显示
     m_mainTextEdit->clear();
 
     // 根据当前HEX显示设置重新显示数据
     if (m_rawData.isEmpty()) {
+        m_mainTextEdit->setUpdatesEnabled(true);
         return;
     }
 
@@ -821,10 +1081,8 @@ void TabbedReceiveWidget::refreshMainView()
         m_mainTextEdit->verticalScrollBar()->setValue(
             m_mainTextEdit->verticalScrollBar()->maximum());
     }
+    m_mainTextEdit->setUpdatesEnabled(true);
 
-    if (m_highlightEnabled && !m_highlightRules.isEmpty()) {
-        scheduleHighlightUpdate();
-    }
 }
 
 void TabbedReceiveWidget::clear()
@@ -842,9 +1100,9 @@ void TabbedReceiveWidget::clear()
         m_terminalRefreshTimer->stop();
     }
 
-    m_hexTable->setRowCount(0);
-    m_hexRowCount = 0;
-    m_hexColIndex = 0;
+    if (m_hexModel) {
+        m_hexModel->clear();
+    }
 
     m_filterResult->clear();
 
@@ -867,6 +1125,13 @@ void TabbedReceiveWidget::clear()
     m_terminalCursorY = 0;
     m_ansiBuffer.clear();
     m_inAnsiEscape = false;
+
+    m_perfRxBytes = 0;
+    m_perfRenderCostSumMs = 0.0;
+    m_perfRenderSamples = 0;
+    if (m_perfLabel) {
+        m_perfLabel->setText(tr("性能: 接收 0 B/s | 渲染 0 ms"));
+    }
 }
 
 void TabbedReceiveWidget::exportToFile(const QString& fileName)
@@ -950,6 +1215,12 @@ void TabbedReceiveWidget::setDisplayFont(const QFont& font)
         QFont hexFont = font;
         hexFont.setPointSize(qMax(8, font.pointSize() - 1));
         m_hexTable->setFont(hexFont);
+        if (m_hexTable->horizontalHeader()) {
+            m_hexTable->horizontalHeader()->setFont(hexFont);
+        }
+        if (m_hexTable->verticalHeader()) {
+            m_hexTable->verticalHeader()->setFont(hexFont);
+        }
     }
 }
 
@@ -967,6 +1238,20 @@ void TabbedReceiveWidget::setMaxLines(int maxLines)
         if (m_terminalCursorY > 0) {
             --m_terminalCursorY;
         }
+    }
+}
+
+void TabbedReceiveWidget::setHexBufferBytes(int bytes)
+{
+    const int clampedBytes = qMax(1024 * 1024, qMin(bytes, 512 * 1024 * 1024));
+    if (m_maxRawDataBytes == clampedBytes) {
+        return;
+    }
+
+    m_maxRawDataBytes = clampedBytes;
+    trimRawDataBuffer();
+    if (m_hexModel) {
+        m_hexModel->setMaxBytes(m_maxRawDataBytes);
     }
 }
 
@@ -1002,7 +1287,7 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
         case ReceiveDisplayMode::Terminal:
             // 终端模式 - 黑底绿字，仿真终端风格
             m_mainTextEdit->setStyleSheet(
-                "QTextEdit {"
+                "QPlainTextEdit {"
                 "  background-color: #1a1a1a;"
                 "  color: #00ff00;"
                 "  border: none;"
@@ -1019,7 +1304,7 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
         case ReceiveDisplayMode::Frame:
             // 帧模式 - 带边框，每帧清晰分隔
             m_mainTextEdit->setStyleSheet(
-                "QTextEdit {"
+                "QPlainTextEdit {"
                 "  background-color: #f5f5f5;"
                 "  color: #333333;"
                 "  border: 1px solid #cccccc;"
@@ -1034,7 +1319,7 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
         case ReceiveDisplayMode::Debug:
             // 调试模式 - 带时间戳和方向
             m_mainTextEdit->setStyleSheet(
-                "QTextEdit {"
+                "QPlainTextEdit {"
                 "  background-color: #fffef0;"
                 "  color: #333333;"
                 "  border: 1px solid #e0e0e0;"
@@ -1377,55 +1662,46 @@ void TabbedReceiveWidget::trimRawDataBuffer()
     }
 }
 
+void TabbedReceiveWidget::updatePerformanceStats()
+{
+    if (!m_perfLabel) {
+        return;
+    }
+
+    const qint64 bytes = m_perfRxBytes;
+    m_perfRxBytes = 0;
+
+    QString rateText;
+    const double bytesPerSec = static_cast<double>(bytes);
+    if (bytesPerSec >= 1024.0 * 1024.0) {
+        rateText = QString::number(bytesPerSec / (1024.0 * 1024.0), 'f', 2) + " MB/s";
+    } else if (bytesPerSec >= 1024.0) {
+        rateText = QString::number(bytesPerSec / 1024.0, 'f', 1) + " KB/s";
+    } else {
+        rateText = QString::number(bytesPerSec, 'f', 0) + " B/s";
+    }
+
+    double renderMs = 0.0;
+    if (m_perfRenderSamples > 0) {
+        renderMs = m_perfRenderCostSumMs / static_cast<double>(m_perfRenderSamples);
+    }
+    m_perfRenderCostSumMs = 0.0;
+    m_perfRenderSamples = 0;
+
+    m_perfLabel->setText(tr("性能: 接收 %1 | 渲染 %2 ms")
+                             .arg(rateText)
+                             .arg(renderMs, 0, 'f', 2));
+}
+
 void TabbedReceiveWidget::applyHighlight()
 {
-    if (!m_mainTextEdit || !m_mainTextEdit->document()) {
+    if (!m_highlighter) {
         return;
     }
 
-    if (!m_highlightEnabled || m_highlightRules.isEmpty()) {
-        // 移除所有高亮，恢复默认样式
-        QTextCursor cursor(m_mainTextEdit->document());
-        cursor.select(QTextCursor::Document);
-        QTextCharFormat format;
-        format.clearForeground();
-        cursor.setCharFormat(format);
-        return;
-    }
-
-    // 先清除所有高亮
-    QTextCursor cursor(m_mainTextEdit->document());
-    cursor.select(QTextCursor::Document);
-    QTextCharFormat defaultFormat;
-    defaultFormat.clearForeground();
-    cursor.setCharFormat(defaultFormat);
-
-    const QString text = m_mainTextEdit->toPlainText();
-    if (text.isEmpty()) {
-        return;
-    }
-
-    // 应用每条高亮规则
-    for (const HighlightRule& rule : m_highlightRules) {
-        if (!rule.enabled || rule.keyword.isEmpty()) {
-            continue;
-        }
-
-        QTextCharFormat format;
-        format.setForeground(rule.color);
-        format.setFontWeight(QFont::Bold);  // 加粗使高亮更明显
-
-        Qt::CaseSensitivity cs = rule.caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
-
-        int pos = 0;
-        while ((pos = text.indexOf(rule.keyword, pos, cs)) != -1) {
-            QTextCursor highlightCursor(m_mainTextEdit->document());
-            highlightCursor.setPosition(pos);
-            highlightCursor.setPosition(pos + rule.keyword.length(), QTextCursor::KeepAnchor);
-            highlightCursor.setCharFormat(format);
-            pos += rule.keyword.length();
-        }
-    }
+    m_highlighter->setEnabled(m_highlightEnabled);
+    m_highlighter->setRules(m_highlightRules);
+    m_highlighter->rehighlight();
 }
 
 QString TabbedReceiveWidget::formatTimestamp() const
@@ -1472,6 +1748,9 @@ void TabbedReceiveWidget::retranslateUi()
     }
     if (m_clearBtn) {
         m_clearBtn->setText(tr("清空"));
+    }
+    if (m_perfLabel) {
+        m_perfLabel->setText(tr("性能: 接收 0 B/s | 渲染 0 ms"));
     }
 
     // 更新标签页标题

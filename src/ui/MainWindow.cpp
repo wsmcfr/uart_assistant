@@ -688,6 +688,8 @@ void MainWindow::applyDisplaySettings()
     const QString fontFamily = settings.value("Display/Font", "Consolas").toString();
     const int fontSize = settings.value("Display/FontSize", 10).toInt();
     const int maxLines = settings.value("Display/MaxLines", 10000).toInt();
+    const int hexBufferMb = settings.value("Display/HexBufferMB", 8).toInt();
+    const int hexBufferBytes = qMax(1, qMin(hexBufferMb, 512)) * 1024 * 1024;
     QFont displayFont(fontFamily, fontSize);
 
     if (m_serialModeWidget && m_serialModeWidget->receiveWidget()) {
@@ -696,6 +698,7 @@ void MainWindow::applyDisplaySettings()
         receiveWidget->setAutoScrollEnabled(autoScroll);
         receiveWidget->setDisplayFont(displayFont);
         receiveWidget->setMaxLines(maxLines);
+        receiveWidget->setHexBufferBytes(hexBufferBytes);
     }
 
     if (m_dataTableWidget) {

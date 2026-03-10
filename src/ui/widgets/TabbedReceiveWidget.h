@@ -12,7 +12,7 @@
 #include <QTabWidget>
 #include <QTextEdit>
 #include <QPlainTextEdit>
-#include <QTableWidget>
+#include <QTableView>
 #include <QLineEdit>
 #include <QCheckBox>
 #include <QPushButton>
@@ -24,6 +24,9 @@
 #include <QTimer>
 
 namespace ComAssistant {
+
+class ReceiveHighlightHighlighter;
+class ReceiveHexModel;
 
 /**
  * @brief 高亮规则
@@ -72,6 +75,7 @@ public:
 
     void setDisplayFont(const QFont& font);
     void setMaxLines(int maxLines);
+    void setHexBufferBytes(int bytes);
 
     // 显示模式
     void setDisplayMode(int mode);
@@ -142,6 +146,7 @@ private:
     void scheduleTerminalDisplayUpdate();
     void trimLineHistory();
     void trimRawDataBuffer();
+    void updatePerformanceStats();
 
     QString formatTimestamp() const;
     QString bytesToHexString(const QByteArray& data) const;
@@ -155,12 +160,11 @@ private:
     QTabWidget* m_tabWidget = nullptr;
 
     // 主文本显示
-    QTextEdit* m_mainTextEdit = nullptr;
+    QPlainTextEdit* m_mainTextEdit = nullptr;
 
     // 十六进制表格
-    QTableWidget* m_hexTable = nullptr;
-    int m_hexRowCount = 0;
-    int m_hexColIndex = 0;
+    QTableView* m_hexTable = nullptr;
+    ReceiveHexModel* m_hexModel = nullptr;
 
     // 过滤标签页
     QLineEdit* m_filterInput = nullptr;
@@ -198,6 +202,14 @@ private:
     // 高亮
     bool m_highlightEnabled = true;
     QVector<HighlightRule> m_highlightRules;
+    ReceiveHighlightHighlighter* m_highlighter = nullptr;
+
+    // 性能统计
+    QLabel* m_perfLabel = nullptr;
+    QTimer* m_perfTimer = nullptr;
+    qint64 m_perfRxBytes = 0;
+    double m_perfRenderCostSumMs = 0.0;
+    int m_perfRenderSamples = 0;
 
     // 显示模式
     ReceiveDisplayMode m_displayMode = ReceiveDisplayMode::Serial;
