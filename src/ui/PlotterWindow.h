@@ -521,6 +521,10 @@ private:
     QLabel* m_renderQualityLabel = nullptr;            ///< 工具栏渲染标签
     QLabel* m_visiblePointsLabel = nullptr;            ///< 工具栏显示点数标签
     QSpinBox* m_visiblePointsSpin = nullptr;           ///< 工具栏显示点数输入
+    QLabel* m_perfDiagLabel = nullptr;                 ///< 工具栏性能诊断标签
+    QAction* m_diffRealtimeAction = nullptr;           ///< 差值曲线实时更新开关
+    QAction* m_filterRealtimeAction = nullptr;         ///< 滤波曲线实时更新开关
+    QAction* m_perfDiagAction = nullptr;               ///< 性能诊断显示开关
     PlotControlPanel* m_controlPanel = nullptr;  ///< 控制面板
 
     // 数据管理
@@ -536,6 +540,12 @@ private:
     bool m_throttleAutoRangeUpdates = false;  ///< 是否节流Y轴范围更新
     int m_autoRangeUpdateCounter = 0;      ///< 自动范围更新节流计数器（高性能模式）
     double m_sampleRate = 1000.0;          ///< 采样率 (Hz)，用于FFT分析
+    bool m_diffRealtimeEnabled = true;     ///< 差值曲线是否实时更新
+    bool m_filterRealtimeEnabled = true;   ///< 滤波曲线是否实时更新
+    bool m_showPerfDiag = true;            ///< 是否显示性能诊断
+    qint64 m_perfWindowStartMs = 0;        ///< 性能统计窗口起始时间
+    int m_perfFrameCount = 0;              ///< 性能统计窗口内帧数
+    double m_perfTotalFrameMs = 0.0;       ///< 性能统计窗口内累计耗时
 
     // 滚动模式
     bool m_scrollMode = true;              ///< 滚动模式（固定宽度）

@@ -21,6 +21,7 @@
 #include <QMap>
 #include <QLabel>
 #include <QFont>
+#include <QTimer>
 
 namespace ComAssistant {
 
@@ -137,6 +138,10 @@ private:
     void updateFilterView();
     void refreshMainView();
     void applyHighlight();
+    void scheduleHighlightUpdate();
+    void scheduleTerminalDisplayUpdate();
+    void trimLineHistory();
+    void trimRawDataBuffer();
 
     QString formatTimestamp() const;
     QString bytesToHexString(const QByteArray& data) const;
@@ -173,6 +178,8 @@ private:
     QByteArray m_rawData;
     QByteArray m_utf8Buffer;
     QStringList m_lineHistory;
+    QTimer* m_highlightTimer = nullptr;         ///< 高亮延迟应用定时器
+    QTimer* m_terminalRefreshTimer = nullptr;   ///< 终端显示节流刷新定时器
 
     // 状态
     bool m_timestampEnabled = false;
@@ -180,6 +187,8 @@ private:
     bool m_hexDisplayEnabled = false;
     bool m_needTimestamp = true;
     int m_maxLines = 10000;
+    int m_terminalMaxLines = 1000;
+    int m_maxRawDataBytes = 8 * 1024 * 1024;    ///< 原始数据缓存上限（8MB）
 
     // 智能滚屏
     bool m_smartScrollPaused = false;       ///< 智能滚屏暂停标志

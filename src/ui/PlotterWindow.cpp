@@ -39,6 +39,7 @@
 #include <QColorDialog>
 #include <QApplication>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QStyle>
 #include <QPalette>
 #include <QLinearGradient>
@@ -463,6 +464,14 @@ void PlotterWindow::setupToolBar()
                                                    this,
                                                    &PlotterWindow::onExportDataClicked);
     exportDataAction->setShortcut(QKeySequence("Ctrl+E"));
+
+    toolBar->addSeparator();
+    m_perfDiagLabel = new QLabel(tr("性能: 等待数据..."), toolBar);
+    m_perfDiagLabel->setObjectName("plotPerfDiagLabel");
+    m_perfDiagLabel->setMinimumWidth(260);
+    m_perfDiagLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    m_perfDiagLabel->setVisible(m_showPerfDiag);
+    toolBar->addWidget(m_perfDiagLabel);
 }
 
 void PlotterWindow::setupMenuBar()
@@ -506,6 +515,35 @@ void PlotterWindow::setupMenuBar()
     m_openGLAction->setCheckable(true);
     m_openGLAction->setChecked(m_openGLEnabled);
     connect(m_openGLAction, &QAction::toggled, this, &PlotterWindow::onOpenGLToggled);
+
+    settingsMenu->addSeparator();
+
+    m_diffRealtimeAction = settingsMenu->addAction(tr("差值曲线实时更新"));
+    m_diffRealtimeAction->setCheckable(true);
+    m_diffRealtimeAction->setChecked(m_diffRealtimeEnabled);
+    connect(m_diffRealtimeAction, &QAction::toggled, this, [this](bool checked) {
+        m_diffRealtimeEnabled = checked;
+    });
+
+    m_filterRealtimeAction = settingsMenu->addAction(tr("滤波曲线实时更新"));
+    m_filterRealtimeAction->setCheckable(true);
+    m_filterRealtimeAction->setChecked(m_filterRealtimeEnabled);
+    connect(m_filterRealtimeAction, &QAction::toggled, this, [this](bool checked) {
+        m_filterRealtimeEnabled = checked;
+    });
+
+    m_perfDiagAction = settingsMenu->addAction(tr("显示性能诊断"));
+    m_perfDiagAction->setCheckable(true);
+    m_perfDiagAction->setChecked(m_showPerfDiag);
+    connect(m_perfDiagAction, &QAction::toggled, this, [this](bool checked) {
+        m_showPerfDiag = checked;
+        if (m_perfDiagLabel) {
+            m_perfDiagLabel->setVisible(checked);
+            if (checked && m_perfDiagLabel->text().isEmpty()) {
+                m_perfDiagLabel->setText(tr("性能: 等待数据..."));
+            }
+        }
+    });
 
     settingsMenu->addSeparator();
 
@@ -917,28 +955,32 @@ void PlotterWindow::appendData(int curveIndex, double y)
     checkAlarmCondition(curveIndex, y);
     updateRealTimeFFT(curveIndex, y);
 
-    for (auto& diffInfo : m_diffCurves) {
-        if (!diffInfo.graph) {
-            continue;
-        }
-        if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
-            continue;
-        }
-        if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
-            diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
-            continue;
-        }
+    if (m_diffRealtimeEnabled) {
+        for (auto& diffInfo : m_diffCurves) {
+            if (!diffInfo.graph) {
+                continue;
+            }
+            if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
+                continue;
+            }
+            if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
+                diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
+                continue;
+            }
 
-        const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
-        diffInfo.graph->addData(x, diff);
+            const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
+            diffInfo.graph->addData(x, diff);
+        }
     }
 
-    for (auto& filterInfo : m_realTimeFilters) {
-        if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
-            continue;
+    if (m_filterRealtimeEnabled) {
+        for (auto& filterInfo : m_realTimeFilters) {
+            if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
+                continue;
+            }
+            const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
+            filterInfo.filterGraph->addData(x, filteredValue);
         }
-        const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
-        filterInfo.filterGraph->addData(x, filteredValue);
     }
 
     ++m_dataIndex;
@@ -964,28 +1006,32 @@ void PlotterWindow::appendData(int curveIndex, double x, double y)
     checkAlarmCondition(curveIndex, y);
     updateRealTimeFFT(curveIndex, y);
 
-    for (auto& diffInfo : m_diffCurves) {
-        if (!diffInfo.graph) {
-            continue;
-        }
-        if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
-            continue;
-        }
-        if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
-            diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
-            continue;
-        }
+    if (m_diffRealtimeEnabled) {
+        for (auto& diffInfo : m_diffCurves) {
+            if (!diffInfo.graph) {
+                continue;
+            }
+            if (curveIndex != diffInfo.curve1 && curveIndex != diffInfo.curve2) {
+                continue;
+            }
+            if (diffInfo.curve1 < 0 || diffInfo.curve2 < 0 ||
+                diffInfo.curve1 >= m_latestValues.size() || diffInfo.curve2 >= m_latestValues.size()) {
+                continue;
+            }
 
-        const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
-        diffInfo.graph->addData(x, diff);
+            const double diff = m_latestValues[diffInfo.curve1] - m_latestValues[diffInfo.curve2];
+            diffInfo.graph->addData(x, diff);
+        }
     }
 
-    for (auto& filterInfo : m_realTimeFilters) {
-        if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
-            continue;
+    if (m_filterRealtimeEnabled) {
+        for (auto& filterInfo : m_realTimeFilters) {
+            if (!filterInfo.filterGraph || filterInfo.sourceCurveIndex != curveIndex) {
+                continue;
+            }
+            const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
+            filterInfo.filterGraph->addData(x, filteredValue);
         }
-        const double filteredValue = FilterUtils::filterPoint(y, filterInfo.config, filterInfo.state);
-        filterInfo.filterGraph->addData(x, filteredValue);
     }
 
     ++m_dataIndex;
@@ -1020,21 +1066,25 @@ void PlotterWindow::appendMultiData(const QVector<double>& values)
     }
 
     // 实时更新所有差值曲线
-    for (auto& diffInfo : m_diffCurves) {
-        if (diffInfo.graph && diffInfo.curve1 >= 0 && diffInfo.curve2 >= 0 &&
-            diffInfo.curve1 < values.size() && diffInfo.curve2 < values.size()) {
-            double diff = values[diffInfo.curve1] - values[diffInfo.curve2];
-            diffInfo.graph->addData(m_dataIndex, diff);
+    if (m_diffRealtimeEnabled) {
+        for (auto& diffInfo : m_diffCurves) {
+            if (diffInfo.graph && diffInfo.curve1 >= 0 && diffInfo.curve2 >= 0 &&
+                diffInfo.curve1 < values.size() && diffInfo.curve2 < values.size()) {
+                double diff = values[diffInfo.curve1] - values[diffInfo.curve2];
+                diffInfo.graph->addData(m_dataIndex, diff);
+            }
         }
     }
 
     // 实时滤波更新
-    for (auto& filterInfo : m_realTimeFilters) {
-        if (filterInfo.filterGraph && filterInfo.sourceCurveIndex >= 0 &&
-            filterInfo.sourceCurveIndex < values.size()) {
-            double rawValue = values[filterInfo.sourceCurveIndex];
-            double filteredValue = FilterUtils::filterPoint(rawValue, filterInfo.config, filterInfo.state);
-            filterInfo.filterGraph->addData(m_dataIndex, filteredValue);
+    if (m_filterRealtimeEnabled) {
+        for (auto& filterInfo : m_realTimeFilters) {
+            if (filterInfo.filterGraph && filterInfo.sourceCurveIndex >= 0 &&
+                filterInfo.sourceCurveIndex < values.size()) {
+                double rawValue = values[filterInfo.sourceCurveIndex];
+                double filteredValue = FilterUtils::filterPoint(rawValue, filterInfo.config, filterInfo.state);
+                filterInfo.filterGraph->addData(m_dataIndex, filteredValue);
+            }
         }
     }
 
@@ -1075,21 +1125,25 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
     }
 
     // 实时更新所有差值曲线
-    for (auto& diffInfo : m_diffCurves) {
-        if (diffInfo.graph && diffInfo.curve1 >= 0 && diffInfo.curve2 >= 0 &&
-            diffInfo.curve1 < values.size() && diffInfo.curve2 < values.size()) {
-            double diff = values[diffInfo.curve1] - values[diffInfo.curve2];
-            diffInfo.graph->addData(x, diff);
+    if (m_diffRealtimeEnabled) {
+        for (auto& diffInfo : m_diffCurves) {
+            if (diffInfo.graph && diffInfo.curve1 >= 0 && diffInfo.curve2 >= 0 &&
+                diffInfo.curve1 < values.size() && diffInfo.curve2 < values.size()) {
+                double diff = values[diffInfo.curve1] - values[diffInfo.curve2];
+                diffInfo.graph->addData(x, diff);
+            }
         }
     }
 
     // 实时滤波更新
-    for (auto& filterInfo : m_realTimeFilters) {
-        if (filterInfo.filterGraph && filterInfo.sourceCurveIndex >= 0 &&
-            filterInfo.sourceCurveIndex < values.size()) {
-            double rawValue = values[filterInfo.sourceCurveIndex];
-            double filteredValue = FilterUtils::filterPoint(rawValue, filterInfo.config, filterInfo.state);
-            filterInfo.filterGraph->addData(x, filteredValue);
+    if (m_filterRealtimeEnabled) {
+        for (auto& filterInfo : m_realTimeFilters) {
+            if (filterInfo.filterGraph && filterInfo.sourceCurveIndex >= 0 &&
+                filterInfo.sourceCurveIndex < values.size()) {
+                double rawValue = values[filterInfo.sourceCurveIndex];
+                double filteredValue = FilterUtils::filterPoint(rawValue, filterInfo.config, filterInfo.state);
+                filterInfo.filterGraph->addData(x, filteredValue);
+            }
         }
     }
 
@@ -1170,6 +1224,13 @@ void PlotterWindow::clearAll()
     // 重置所有实时滤波状态
     for (auto& filterInfo : m_realTimeFilters) {
         FilterUtils::resetState(filterInfo.state);
+    }
+
+    m_perfWindowStartMs = 0;
+    m_perfFrameCount = 0;
+    m_perfTotalFrameMs = 0.0;
+    if (m_perfDiagLabel) {
+        m_perfDiagLabel->setText(tr("性能: 等待数据..."));
     }
 
     LOG_INFO(QString("Cleared all data in window '%1'").arg(m_windowId));
@@ -1378,12 +1439,62 @@ void PlotterWindow::updatePlot()
     if (!m_needReplot) return;
     m_needReplot = false;
 
+    QElapsedTimer frameTimer;
+    frameTimer.start();
+
+    auto finalizePerfDiagnostics = [this, &frameTimer]() {
+        const double frameMs = frameTimer.nsecsElapsed() / 1000000.0;
+        m_perfTotalFrameMs += frameMs;
+        ++m_perfFrameCount;
+
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (m_perfWindowStartMs == 0) {
+            m_perfWindowStartMs = nowMs;
+        }
+
+        const qint64 elapsedMs = nowMs - m_perfWindowStartMs;
+        if (elapsedMs < 1000) {
+            if (m_perfDiagLabel) {
+                m_perfDiagLabel->setVisible(m_showPerfDiag);
+            }
+            return;
+        }
+
+        int totalPoints = 0;
+        for (int i = 0; i < m_plot->graphCount(); ++i) {
+            totalPoints += m_plot->graph(i)->data()->size();
+        }
+
+        const double fps = elapsedMs > 0
+            ? (static_cast<double>(m_perfFrameCount) * 1000.0 / static_cast<double>(elapsedMs))
+            : 0.0;
+        const double avgFrameMs = m_perfFrameCount > 0
+            ? (m_perfTotalFrameMs / static_cast<double>(m_perfFrameCount))
+            : 0.0;
+
+        if (m_perfDiagLabel) {
+            m_perfDiagLabel->setVisible(m_showPerfDiag);
+            if (m_showPerfDiag) {
+                m_perfDiagLabel->setText(
+                    tr("性能  FPS:%1  平均:%2ms  点数:%3")
+                        .arg(QString::number(fps, 'f', 1))
+                        .arg(QString::number(avgFrameMs, 'f', 2))
+                        .arg(totalPoints));
+            }
+        }
+
+        m_perfWindowStartMs = nowMs;
+        m_perfFrameCount = 0;
+        m_perfTotalFrameMs = 0.0;
+    };
+
     // 根据视图模式选择不同的更新逻辑
     if (m_viewMode == PlotViewMode::Histogram) {
         // 直方图模式：更新直方图数据
         updateHistogramView();
         m_plot->replot(QCustomPlot::rpQueuedReplot);
         updateValuePanel();
+        finalizePerfDiagnostics();
         return;
     }
 
@@ -1391,6 +1502,7 @@ void PlotterWindow::updatePlot()
         // XY模式：更新XY曲线
         updateXYView();
         updateValuePanel();
+        finalizePerfDiagnostics();
         return;
     }
 
@@ -1504,6 +1616,8 @@ void PlotterWindow::updatePlot()
         double currentX = m_plot->xAxis->pixelToCoord(m_lastCursorPixelX);
         updateCursorInfo(currentX, false);
     }
+
+    finalizePerfDiagnostics();
 }
 
 void PlotterWindow::onOpenGLToggled(bool checked)
@@ -5069,6 +5183,21 @@ void PlotterWindow::retranslateUi()
     }
     if (m_renderQualityPerformanceAction) {
         m_renderQualityPerformanceAction->setText(tr("高性能（流畅）"));
+    }
+    if (m_diffRealtimeAction) {
+        m_diffRealtimeAction->setText(tr("差值曲线实时更新"));
+    }
+    if (m_filterRealtimeAction) {
+        m_filterRealtimeAction->setText(tr("滤波曲线实时更新"));
+    }
+    if (m_perfDiagAction) {
+        m_perfDiagAction->setText(tr("显示性能诊断"));
+    }
+    if (m_perfDiagLabel) {
+        m_perfDiagLabel->setVisible(m_showPerfDiag);
+        if (m_perfDiagLabel->text().isEmpty()) {
+            m_perfDiagLabel->setText(tr("性能: 等待数据..."));
+        }
     }
     if (m_renderQualityCombo) {
         QSignalBlocker blocker(m_renderQualityCombo);

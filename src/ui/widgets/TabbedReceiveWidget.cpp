@@ -29,6 +29,14 @@ TabbedReceiveWidget::TabbedReceiveWidget(QWidget* parent)
 {
     setupUi();
 
+    m_highlightTimer = new QTimer(this);
+    m_highlightTimer->setSingleShot(true);
+    connect(m_highlightTimer, &QTimer::timeout, this, &TabbedReceiveWidget::applyHighlight);
+
+    m_terminalRefreshTimer = new QTimer(this);
+    m_terminalRefreshTimer->setSingleShot(true);
+    connect(m_terminalRefreshTimer, &QTimer::timeout, this, &TabbedReceiveWidget::updateTerminalDisplay);
+
     // 添加默认高亮规则 - 只高亮文字颜色
     addHighlightRule({"OK", QColor(46, 204, 113), false, true});       // 绿色
     addHighlightRule({"SUCCESS", QColor(46, 204, 113), false, true});  // 绿色
@@ -202,6 +210,7 @@ void TabbedReceiveWidget::setupFilterTab()
 void TabbedReceiveWidget::appendData(const QByteArray& data)
 {
     m_rawData.append(data);
+    trimRawDataBuffer();
 
     // 根据显示模式处理数据
     switch (m_displayMode) {
@@ -289,7 +298,7 @@ void TabbedReceiveWidget::appendTerminalMode(const QByteArray& data)
         }
     }
 
-    updateTerminalDisplay();
+    scheduleTerminalDisplayUpdate();
 }
 
 void TabbedReceiveWidget::processAnsiEscape(const QByteArray& seq)
@@ -367,7 +376,7 @@ void TabbedReceiveWidget::terminalNewLine()
     }
 
     // 限制最大行数
-    const int maxLines = 1000;
+    const int maxLines = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
     while (m_terminalLines.size() > maxLines) {
         m_terminalLines.removeFirst();
         m_terminalCursorY--;
@@ -437,6 +446,14 @@ void TabbedReceiveWidget::terminalResetFormat()
 
 void TabbedReceiveWidget::updateTerminalDisplay()
 {
+    const int maxLines = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
+    while (m_terminalLines.size() > maxLines) {
+        m_terminalLines.removeFirst();
+        if (m_terminalCursorY > 0) {
+            --m_terminalCursorY;
+        }
+    }
+
     // 将终端行缓冲更新到显示
     QString text = m_terminalLines.join('\n');
     m_mainTextEdit->setPlainText(text);
@@ -480,6 +497,7 @@ void TabbedReceiveWidget::appendFrameMode(const QByteArray& data)
         m_mainTextEdit->insertPlainText(frameText);
 
         m_lineHistory.append(frameText);
+        trimLineHistory();
     }
 
     // 智能滚屏：仅在未暂停时滚动到底部
@@ -546,6 +564,9 @@ void TabbedReceiveWidget::appendDebugMode(const QByteArray& data, bool isSent)
 
         m_mainTextEdit->moveCursor(QTextCursor::End);
         m_mainTextEdit->insertHtml(html);
+
+        m_lineHistory.append(prefix + text);
+        trimLineHistory();
 
         // 更新时间戳为下一行
         timestamp = QDateTime::currentDateTime();
@@ -656,11 +677,14 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
     if (!text.isEmpty()) {
         m_mainTextEdit->moveCursor(QTextCursor::End);
         m_mainTextEdit->insertPlainText(text);
-    }
 
-    // 记录历史
-    QStringList lines = text.split('\n', Qt::SkipEmptyParts);
-    m_lineHistory.append(lines);
+        // 记录历史（限长）
+        const QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+        if (!lines.isEmpty()) {
+            m_lineHistory.append(lines);
+            trimLineHistory();
+        }
+    }
 
     // 智能滚屏：仅在未暂停时滚动到底部
     if (m_autoScrollEnabled && !m_smartScrollPaused) {
@@ -668,35 +692,66 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
             m_mainTextEdit->verticalScrollBar()->maximum());
     }
 
-    // 实时应用高亮
+    // 延迟批处理高亮，降低高频数据下的阻塞
     if (m_highlightEnabled && !m_highlightRules.isEmpty()) {
-        applyHighlight();
+        scheduleHighlightUpdate();
     }
 }
 
 void TabbedReceiveWidget::appendToHexView(const QByteArray& data)
 {
+    if (data.isEmpty()) {
+        return;
+    }
+
+    m_hexTable->setUpdatesEnabled(false);
+
+    const int rowCountBefore = m_hexTable->rowCount();
+    const int bytesIncludingCurrentRow = m_hexColIndex + data.size();
+    const int rowsNeeded = (bytesIncludingCurrentRow + 15) / 16;
+    const int targetRowCount = m_hexRowCount + rowsNeeded;
+    if (targetRowCount > rowCountBefore) {
+        m_hexTable->setRowCount(targetRowCount);
+    }
+
+    auto ensureRowInitialized = [this](int row) {
+        if (!m_hexTable->verticalHeaderItem(row)) {
+            QString rowHeader = QString("%1").arg(row * 16, 8, 16, QChar('0')).toUpper();
+            m_hexTable->setVerticalHeaderItem(row, new QTableWidgetItem(rowHeader));
+        }
+        if (!m_hexTable->item(row, 16)) {
+            m_hexTable->setItem(row, 16, new QTableWidgetItem(""));
+        }
+    };
+
     for (int i = 0; i < data.size(); ++i) {
         unsigned char byte = static_cast<unsigned char>(data[i]);
 
-        // 需要新行
-        if (m_hexColIndex == 0) {
-            m_hexTable->setRowCount(m_hexRowCount + 1);
-            QString rowHeader = QString("%1").arg(m_hexRowCount * 16, 8, 16, QChar('0')).toUpper();
-            m_hexTable->setVerticalHeaderItem(m_hexRowCount, new QTableWidgetItem(rowHeader));
-            // 初始化 ASCII 列
-            m_hexTable->setItem(m_hexRowCount, 16, new QTableWidgetItem(""));
-        }
+        ensureRowInitialized(m_hexRowCount);
 
         // 设置十六进制值
         QString hexStr = QString("%1").arg(byte, 2, 16, QChar('0')).toUpper();
-        m_hexTable->setItem(m_hexRowCount, m_hexColIndex, new QTableWidgetItem(hexStr));
+        QTableWidgetItem* hexItem = m_hexTable->item(m_hexRowCount, m_hexColIndex);
+        if (!hexItem) {
+            hexItem = new QTableWidgetItem;
+            m_hexTable->setItem(m_hexRowCount, m_hexColIndex, hexItem);
+        }
+        hexItem->setText(hexStr);
 
         // 更新 ASCII 列
         QTableWidgetItem* asciiItem = m_hexTable->item(m_hexRowCount, 16);
         if (asciiItem) {
             QString ascii = asciiItem->text();
-            ascii += (byte >= 32 && byte < 127) ? QChar(byte) : '.';
+            if (ascii.size() < m_hexColIndex) {
+                ascii.append(QString(m_hexColIndex - ascii.size(), ' '));
+            }
+
+            const QChar asciiChar = (byte >= 32 && byte < 127) ? QChar(byte) : QChar('.');
+            if (ascii.size() == m_hexColIndex) {
+                ascii.append(asciiChar);
+            } else {
+                ascii[m_hexColIndex] = asciiChar;
+            }
             asciiItem->setText(ascii);
         }
 
@@ -706,6 +761,8 @@ void TabbedReceiveWidget::appendToHexView(const QByteArray& data)
             m_hexRowCount++;
         }
     }
+
+    m_hexTable->setUpdatesEnabled(true);
 
     if (m_autoScrollEnabled) {
         m_hexTable->scrollToBottom();
@@ -764,6 +821,10 @@ void TabbedReceiveWidget::refreshMainView()
         m_mainTextEdit->verticalScrollBar()->setValue(
             m_mainTextEdit->verticalScrollBar()->maximum());
     }
+
+    if (m_highlightEnabled && !m_highlightRules.isEmpty()) {
+        scheduleHighlightUpdate();
+    }
 }
 
 void TabbedReceiveWidget::clear()
@@ -774,6 +835,12 @@ void TabbedReceiveWidget::clear()
     m_needTimestamp = true;  // 重置时间戳状态
 
     m_mainTextEdit->clear();
+    if (m_highlightTimer) {
+        m_highlightTimer->stop();
+    }
+    if (m_terminalRefreshTimer) {
+        m_terminalRefreshTimer->stop();
+    }
 
     m_hexTable->setRowCount(0);
     m_hexRowCount = 0;
@@ -792,6 +859,14 @@ void TabbedReceiveWidget::clear()
     // 重置智能滚屏状态
     m_smartScrollPaused = false;
     hideSmartScrollIndicator();
+
+    // 重置终端模式状态
+    m_terminalLines.clear();
+    m_terminalLines.append("");
+    m_terminalCursorX = 0;
+    m_terminalCursorY = 0;
+    m_ansiBuffer.clear();
+    m_inAnsiEscape = false;
 }
 
 void TabbedReceiveWidget::exportToFile(const QString& fileName)
@@ -883,6 +958,15 @@ void TabbedReceiveWidget::setMaxLines(int maxLines)
     m_maxLines = qBound(100, maxLines, 100000);
     if (m_mainTextEdit && m_mainTextEdit->document()) {
         m_mainTextEdit->document()->setMaximumBlockCount(m_maxLines);
+    }
+    trimLineHistory();
+
+    const int terminalLimit = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
+    while (m_terminalLines.size() > terminalLimit) {
+        m_terminalLines.removeFirst();
+        if (m_terminalCursorY > 0) {
+            --m_terminalCursorY;
+        }
     }
 }
 
@@ -1063,15 +1147,12 @@ void TabbedReceiveWidget::onHexDisplayToggled(bool checked)
 {
     m_hexDisplayEnabled = checked;
     refreshMainView();
-    if (m_highlightEnabled && !m_highlightRules.isEmpty()) {
-        applyHighlight();
-    }
 }
 
 void TabbedReceiveWidget::onHighlightToggled(bool checked)
 {
     m_highlightEnabled = checked;
-    applyHighlight();
+    scheduleHighlightUpdate();
 }
 
 void TabbedReceiveWidget::onHighlightSettingsClicked()
@@ -1213,12 +1294,13 @@ void TabbedReceiveWidget::onHighlightSettingsClicked()
     layout->addWidget(dialogButtons);
 
     dialog.exec();
-    applyHighlight();
+    scheduleHighlightUpdate();
 }
 
 void TabbedReceiveWidget::addHighlightRule(const HighlightRule& rule)
 {
     m_highlightRules.append(rule);
+    scheduleHighlightUpdate();
 }
 
 void TabbedReceiveWidget::removeHighlightRule(const QString& keyword)
@@ -1226,6 +1308,7 @@ void TabbedReceiveWidget::removeHighlightRule(const QString& keyword)
     for (int i = 0; i < m_highlightRules.size(); ++i) {
         if (m_highlightRules[i].keyword == keyword) {
             m_highlightRules.removeAt(i);
+            scheduleHighlightUpdate();
             return;
         }
     }
@@ -1234,17 +1317,72 @@ void TabbedReceiveWidget::removeHighlightRule(const QString& keyword)
 void TabbedReceiveWidget::clearHighlightRules()
 {
     m_highlightRules.clear();
+    scheduleHighlightUpdate();
 }
 
 void TabbedReceiveWidget::setHighlightEnabled(bool enabled)
 {
     m_highlightEnabled = enabled;
     m_highlightCheck->setChecked(enabled);
-    applyHighlight();
+    scheduleHighlightUpdate();
+}
+
+void TabbedReceiveWidget::scheduleHighlightUpdate()
+{
+    if (!m_mainTextEdit) {
+        return;
+    }
+
+    if (!m_highlightEnabled || m_highlightRules.isEmpty()) {
+        if (m_highlightTimer) {
+            m_highlightTimer->stop();
+        }
+        applyHighlight();
+        return;
+    }
+
+    if (!m_highlightTimer) {
+        applyHighlight();
+        return;
+    }
+
+    if (!m_highlightTimer->isActive()) {
+        m_highlightTimer->start(120);
+    }
+}
+
+void TabbedReceiveWidget::scheduleTerminalDisplayUpdate()
+{
+    if (!m_terminalRefreshTimer) {
+        updateTerminalDisplay();
+        return;
+    }
+
+    if (!m_terminalRefreshTimer->isActive()) {
+        m_terminalRefreshTimer->start(40);
+    }
+}
+
+void TabbedReceiveWidget::trimLineHistory()
+{
+    if (m_lineHistory.size() > m_maxLines) {
+        m_lineHistory = m_lineHistory.mid(m_lineHistory.size() - m_maxLines);
+    }
+}
+
+void TabbedReceiveWidget::trimRawDataBuffer()
+{
+    if (m_rawData.size() > m_maxRawDataBytes) {
+        m_rawData = m_rawData.right(m_maxRawDataBytes);
+    }
 }
 
 void TabbedReceiveWidget::applyHighlight()
 {
+    if (!m_mainTextEdit || !m_mainTextEdit->document()) {
+        return;
+    }
+
     if (!m_highlightEnabled || m_highlightRules.isEmpty()) {
         // 移除所有高亮，恢复默认样式
         QTextCursor cursor(m_mainTextEdit->document());
@@ -1262,15 +1400,21 @@ void TabbedReceiveWidget::applyHighlight()
     defaultFormat.clearForeground();
     cursor.setCharFormat(defaultFormat);
 
+    const QString text = m_mainTextEdit->toPlainText();
+    if (text.isEmpty()) {
+        return;
+    }
+
     // 应用每条高亮规则
     for (const HighlightRule& rule : m_highlightRules) {
-        if (!rule.enabled) continue;
+        if (!rule.enabled || rule.keyword.isEmpty()) {
+            continue;
+        }
 
         QTextCharFormat format;
         format.setForeground(rule.color);
         format.setFontWeight(QFont::Bold);  // 加粗使高亮更明显
 
-        QString text = m_mainTextEdit->toPlainText();
         Qt::CaseSensitivity cs = rule.caseSensitive ? Qt::CaseSensitive : Qt::CaseInsensitive;
 
         int pos = 0;
