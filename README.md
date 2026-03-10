@@ -24,7 +24,9 @@
 
 ## 发布规范（维护者）
 
-1. 更新 `src/version.h` 中版本号
+1. 同步更新版本号：
+   - `src/version.h`
+   - `CMakeLists.txt`（`project(... VERSION X.Y.Z)`）
 2. 更新 `CHANGELOG.md`
 3. 提交代码并创建标签：`git tag vX.Y.Z`
 4. 推送标签：`git push origin vX.Y.Z`

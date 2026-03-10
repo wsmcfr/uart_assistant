@@ -164,7 +164,7 @@ private slots:
 
 ## 发布流程
 
-1. 更新版本号 (`src/version.h`)
+1. 同步更新版本号（`src/version.h` 与 `CMakeLists.txt`）
 2. 更新 CHANGELOG.md
 3. 运行所有测试
 4. 构建 Release 版本

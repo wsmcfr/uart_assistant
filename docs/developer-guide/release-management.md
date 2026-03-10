@@ -10,7 +10,7 @@
 
 - 版本号采用 `SemVer`：`MAJOR.MINOR.PATCH`
 - Git 标签必须使用 `v` 前缀：`v1.2.3`
-- `src/version.h` 中的 `APP_VERSION` 必须与标签版本一致
+- `src/version.h` 的 `APP_VERSION` 与 `CMakeLists.txt` 的 `project(... VERSION ...)` 必须与标签版本一致
 
 ## Release 资产约定
 
@@ -49,7 +49,7 @@
 ## 标准发布流程
 
 1. 完成功能与测试
-2. 更新 `src/version.h`、`CHANGELOG.md`
+2. 更新 `src/version.h`、`CMakeLists.txt`、`CHANGELOG.md`
 3. 提交并合并到主分支
 4. 创建标签：`git tag vX.Y.Z`
 5. 推送标签：`git push origin vX.Y.Z`
