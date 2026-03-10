@@ -141,7 +141,7 @@ jobs:
             artifacts/*.zip
             artifacts/SHA256SUMS.txt
 
-      - name: Update README Latest Release Block
+      - name: Update Latest Release Info (README + Help)
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
@@ -151,6 +151,8 @@ jobs:
 
           git fetch origin main
           git checkout -B main origin/main
+
+          $docsUpdated = $false
 
           $readmePath = Join-Path $PWD "README.md"
           if (-not (Test-Path $readmePath)) {
@@ -184,17 +186,56 @@ jobs:
 
           if ($updated -ne $content) {
             Set-Content -Path $readmePath -Value $updated -Encoding UTF8
-            "README_UPDATED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            $docsUpdated = $true
+          }
+
+          $helpPath = Join-Path $PWD "resources/help/quickstart.html"
+          if (-not (Test-Path $helpPath)) {
+            throw "quickstart.html not found: $helpPath"
+          }
+
+          $helpContent = Get-Content -Path $helpPath -Raw -Encoding UTF8
+          $helpMarkerPattern = '(?s)<!-- LATEST_RELEASE_HELP:START -->.*?<!-- LATEST_RELEASE_HELP:END -->'
+          $helpBlockLines = @(
+            "<!-- LATEST_RELEASE_HELP:START -->"
+            "<p><strong>当前版本：</strong>$tag（发布于 $releaseDate）<br>"
+            "<strong>Current:</strong> $tag (released on $releaseDate)</p>"
+            "<p><strong>直链下载：</strong><a href='https://github.com/$repo/releases/download/$tag/$zipName'>$zipName</a><br>"
+            "<strong>校验文件：</strong><a href='https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt'>SHA256SUMS.txt</a></p>"
+            "<!-- LATEST_RELEASE_HELP:END -->"
+          )
+          $newHelpBlock = $helpBlockLines -join "`n"
+
+          if (-not ($helpContent -match $helpMarkerPattern)) {
+            throw "quickstart.html does not contain LATEST_RELEASE_HELP marker block."
+          }
+
+          $updatedHelp = [regex]::Replace(
+            $helpContent,
+            $helpMarkerPattern,
+            [System.Text.RegularExpressions.MatchEvaluator]{
+              param($m)
+              $newHelpBlock
+            }
+          )
+
+          if ($updatedHelp -ne $helpContent) {
+            Set-Content -Path $helpPath -Value $updatedHelp -Encoding UTF8
+            $docsUpdated = $true
+          }
+
+          if ($docsUpdated) {
+            "DOCS_UPDATED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } else {
-            "README_UPDATED=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "DOCS_UPDATED=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
       - name: Commit README Latest Release Info
-        if: env.README_UPDATED == 'true'
+        if: env.DOCS_UPDATED == 'true'
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git commit -m "docs(readme): 更新最新发布信息为 ${{ github.ref_name }}"
+          git add README.md resources/help/quickstart.html
+          git commit -m "docs(release): 更新最新发布信息为 ${{ github.ref_name }}"
           git push origin main
