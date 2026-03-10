@@ -140,3 +140,61 @@ jobs:
           files: |
             artifacts/*.zip
             artifacts/SHA256SUMS.txt
+
+      - name: Update README Latest Release Block
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
+          $releaseDate = (Get-Date).ToString("yyyy-MM-dd")
+          $zipName = "ComAssistant_${tag}_Windows_x64_Portable.zip"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          $readmePath = Join-Path $PWD "README.md"
+          if (-not (Test-Path $readmePath)) {
+            throw "README.md not found: $readmePath"
+          }
+
+          $content = Get-Content -Path $readmePath -Raw -Encoding UTF8
+          $markerPattern = '(?s)<!-- LATEST_RELEASE:START -->.*?<!-- LATEST_RELEASE:END -->'
+
+          $blockLines = @(
+            "<!-- LATEST_RELEASE:START -->"
+            "- 当前最新稳定版：$tag（发布于 $releaseDate）"
+            "- 直链下载：<https://github.com/$repo/releases/download/$tag/$zipName>"
+            "- 校验文件：<https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt>"
+            "<!-- LATEST_RELEASE:END -->"
+          )
+          $newBlock = $blockLines -join "`n"
+
+          if (-not ($content -match $markerPattern)) {
+            throw "README.md does not contain LATEST_RELEASE marker block."
+          }
+
+          $updated = [regex]::Replace(
+            $content,
+            $markerPattern,
+            [System.Text.RegularExpressions.MatchEvaluator]{
+              param($m)
+              $newBlock
+            }
+          )
+
+          if ($updated -ne $content) {
+            Set-Content -Path $readmePath -Value $updated -Encoding UTF8
+            "README_UPDATED=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          } else {
+            "README_UPDATED=false" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
+
+      - name: Commit README Latest Release Info
+        if: env.README_UPDATED == 'true'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs(readme): 更新最新发布信息为 ${{ github.ref_name }}"
+          git push origin main

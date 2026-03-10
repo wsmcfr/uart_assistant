@@ -34,6 +34,7 @@
   - `windeployqt` 依赖打包
   - 生成 ZIP 便携包与 SHA256 清单
   - 自动创建/更新 GitHub Release 并上传资产
+  - 自动回写 `README.md` 的最新发布信息区块（`LATEST_RELEASE` 标记段）
 
 ## 客户端更新检查
 

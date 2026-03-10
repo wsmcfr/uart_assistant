@@ -7,6 +7,12 @@
 - 最新稳定版下载页：<https://github.com/wsmcfr/uart_assistant/releases/latest>
 - 所有历史版本：<https://github.com/wsmcfr/uart_assistant/releases>
 
+<!-- LATEST_RELEASE:START -->
+- 当前最新稳定版：`v1.1.2`（发布于 2026-03-10）
+- 直链下载：<https://github.com/wsmcfr/uart_assistant/releases/download/v1.1.2/ComAssistant_v1.1.2_Windows_x64_Portable.zip>
+- 校验文件：<https://github.com/wsmcfr/uart_assistant/releases/download/v1.1.2/SHA256SUMS.txt>
+<!-- LATEST_RELEASE:END -->
+
 下载时优先选择发布资产中的 `ComAssistant_*_Windows_x64_Portable.zip`，解压后可直接运行。
 每个版本的更新内容、修复项与升级说明可在对应 Release 正文中查看。
 
