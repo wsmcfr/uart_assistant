@@ -367,6 +367,8 @@ void VT100Display::onCursorBlink()
 
 void VT100Display::onScreenUpdated()
 {
+    // 有新数据时自动滚动到底部，确保显示最新内容
+    m_scrollOffset = 0;
     update();
 }
 
@@ -384,13 +386,33 @@ void VT100Display::paintEvent(QPaintEvent* event)
     int rows = m_buffer->rows();
     int cols = m_buffer->cols();
 
-    // 绘制每个单元格
-    for (int row = 0; row < rows; ++row) {
+    // 绘制每个单元格（考虑滚动偏移）
+    for (int displayRow = 0; displayRow < rows; ++displayRow) {
+        // 根据滚动偏移计算实际数据来源
+        int histIndex = m_scrollOffset - (rows - displayRow);
         for (int col = 0; col < cols; ++col) {
-            const TerminalCell& cell = screen[row][col];
+            const TerminalCell* cellPtr = nullptr;
+            if (histIndex < 0) {
+                // 从当前屏幕缓冲区读取
+                cellPtr = &screen[displayRow][col];
+            } else {
+                // 从历史缓冲区读取
+                int histLine = m_buffer->historyLineCount() - 1 - histIndex;
+                if (histLine >= 0 && histLine < m_buffer->historyLineCount()) {
+                    const auto& histLineData = m_buffer->historyLine(histLine);
+                    if (col < histLineData.size()) {
+                        cellPtr = &histLineData[col];
+                    }
+                }
+                if (!cellPtr) {
+                    static const TerminalCell emptyCell;
+                    cellPtr = &emptyCell;
+                }
+            }
+            const TerminalCell& cell = *cellPtr;
 
             int x = col * m_cellWidth;
-            int y = row * m_cellHeight;
+            int y = displayRow * m_cellHeight;
 
             // 检查是否在选择区域内
             bool selected = false;
@@ -400,8 +422,8 @@ void VT100Display::paintEvent(QPaintEvent* event)
                 if (start.y() > end.y() || (start.y() == end.y() && start.x() > end.x())) {
                     std::swap(start, end);
                 }
-                if ((row > start.y() || (row == start.y() && col >= start.x())) &&
-                    (row < end.y() || (row == end.y() && col <= end.x()))) {
+                if ((displayRow > start.y() || (displayRow == start.y() && col >= start.x())) &&
+                    (displayRow < end.y() || (displayRow == end.y() && col <= end.x()))) {
                     selected = true;
                 }
             }
