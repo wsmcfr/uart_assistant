@@ -17,7 +17,7 @@ SerialPort::SerialPort(const SerialConfig& config, QObject* parent)
     m_port = new QSerialPort(this);
 
     connect(m_port, &QSerialPort::readyRead, this, &SerialPort::onReadyRead);
-    connect(m_port, &QSerialPort::errorOccurred, this, &SerialPort::onError);
+    connect(m_port, SIGNAL(error(QSerialPort::SerialPortError)), this, SLOT(onError(QSerialPort::SerialPortError)));
 }
 
 SerialPort::~SerialPort()
@@ -42,8 +42,32 @@ bool SerialPort::open()
     m_port->setPortName(m_config.portName);
     applyConfig();
 
+    // 检查端口是否存在
+    bool portExists = false;
+    for (const QSerialPortInfo& info : QSerialPortInfo::availablePorts()) {
+        if (info.portName() == m_config.portName ||
+            info.portName() == "COM" + m_config.portName ||
+            info.systemLocation().contains(m_config.portName)) {
+            portExists = true;
+            break;
+        }
+    }
+    if (!portExists) {
+        m_lastError = tr("Port not found: %1").arg(m_config.portName);
+        LOG_ERROR(m_lastError);
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+
+    // Qt5.12.9 兼容：抑制 QSerialPort 的内部警告
+    // QIODevice::open: QSerialPort is not a sequential device 是无害的 Qt 内部警告
     if (!m_port->open(QIODevice::ReadWrite)) {
         m_lastError = m_port->errorString();
+        // 过滤掉 Qt 内部的无害警告
+        if (m_lastError.contains("sequential device")) {
+            m_lastError = tr("Cannot open port %1. Port may be in use or access denied.")
+                              .arg(m_config.portName);
+        }
         LOG_ERROR(QString("Failed to open serial port %1: %2")
                       .arg(m_config.portName, m_lastError));
         emit errorOccurred(m_lastError);

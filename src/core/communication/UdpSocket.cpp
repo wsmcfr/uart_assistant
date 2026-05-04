@@ -17,7 +17,7 @@ UdpSocket::UdpSocket(const NetworkConfig& config, QObject* parent)
 {
     m_socket = new QUdpSocket(this);
     connect(m_socket, &QUdpSocket::readyRead, this, &UdpSocket::onReadyRead);
-    connect(m_socket, &QUdpSocket::errorOccurred, this, &UdpSocket::onError);
+    connect(m_socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onError(QAbstractSocket::SocketError)));
 }
 
 UdpSocket::~UdpSocket()

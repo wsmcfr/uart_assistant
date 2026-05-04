@@ -118,6 +118,11 @@ public:
     void saveCursor();
     void restoreCursor();
 
+    // 批量更新（抑制中间信号，只在 endBatchUpdate 时触发一次）
+    void beginBatchUpdate();
+    void endBatchUpdate();
+    bool isBatchUpdating() const { return m_batchUpdateCount > 0; }
+
     // 回滚缓冲区（历史）
     int historyLineCount() const { return m_history.size(); }
     const QVector<TerminalCell>& historyLine(int index) const;
@@ -135,6 +140,7 @@ signals:
 private:
     void ensureCursorInBounds();
     void addLineToHistory(const QVector<TerminalCell>& line);
+    void putCharInternal(QChar ch);  // 内部写入，不触发信号
 
     int m_cols;
     int m_rows;
@@ -156,6 +162,10 @@ private:
 
     // 屏幕缓冲区
     QVector<QVector<TerminalCell>> m_screen;
+
+    // 批量更新计数器
+    int m_batchUpdateCount = 0;
+    bool m_screenDirty = false;  // 批量更新期间是否有脏数据
 
     // 回滚历史
     QVector<QVector<TerminalCell>> m_history;

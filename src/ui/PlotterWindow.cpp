@@ -942,6 +942,12 @@ void PlotterWindow::appendData(int curveIndex, double y)
 {
     if (m_paused) return;
 
+    // 数据抽稀检查（与 appendMultiData 保持一致）
+    if (shouldDecimate()) {
+        m_dataIndex++;
+        return;  // 跳过这个数据点
+    }
+
     ensureCurveExists(curveIndex);
     const double x = static_cast<double>(m_dataIndex);
     m_plot->graph(curveIndex)->addData(x, y);
@@ -993,6 +999,12 @@ void PlotterWindow::appendData(int curveIndex, double y)
 void PlotterWindow::appendData(int curveIndex, double x, double y)
 {
     if (m_paused) return;
+
+    // 数据抽稀检查（与 appendMultiData 保持一致）
+    if (shouldDecimate()) {
+        m_dataIndex++;
+        return;  // 跳过这个数据点
+    }
 
     ensureCurveExists(curveIndex);
     m_plot->graph(curveIndex)->addData(x, y);
@@ -1319,7 +1331,7 @@ bool PlotterWindow::exportData(const QString& filename)
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
 
     // 写入表头
     stream << "X";
@@ -1338,7 +1350,7 @@ bool PlotterWindow::exportData(const QString& filename)
     }
 
     // 排序X值
-    QVector<double> xValues(xValuesSet.begin(), xValuesSet.end());
+    QVector<double> xValues = xValuesSet.toList().toVector();
     std::sort(xValues.begin(), xValues.end());
 
     // 写入数据
@@ -1581,11 +1593,13 @@ void PlotterWindow::updatePlot()
         }
     }
 
-    // 更新峰值标注（每20次更新才检测一次，避免性能问题）
-    static int peakUpdateCounter = 0;
-    if (m_peakConfig.enabled && ++peakUpdateCounter >= 20) {
-        peakUpdateCounter = 0;
-        updatePeakAnnotations();
+    // 更新峰值标注（仅在启用时才检测，每20帧一次）
+    if (m_peakConfig.enabled) {
+        static int peakUpdateCounter = 0;
+        if (++peakUpdateCounter >= 20) {
+            peakUpdateCounter = 0;
+            updatePeakAnnotations();
+        }
     }
 
     // 更新测量游标（Y轴范围可能变化了）
@@ -1596,8 +1610,11 @@ void PlotterWindow::updatePlot()
     // 性能优化：使用 rpQueuedReplot 避免阻塞
     m_plot->replot(QCustomPlot::rpQueuedReplot);
 
-    // 更新数值面板（合并到定时器中，降低调用频率）
-    updateValuePanel();
+    // 更新数值面板（每3帧更新一次，减少QLabel文本刷新开销）
+    if (++m_valuePanelUpdateCounter >= 3) {
+        m_valuePanelUpdateCounter = 0;
+        updateValuePanel();
+    }
 
     // 发送数据量变化信号（优化：每10次更新才计算一次）
     static int signalCounter = 0;
@@ -3449,8 +3466,15 @@ void PlotterWindow::onFilterCurveClicked()
             }
         }
         if (rowIdx >= 0) {
-            // 使用 Qt6 的 setRowVisible 方法
-            filterLayout->setRowVisible(rowIdx, visible);
+            // Qt5 兼容：手动控制行内控件的可见性
+            QLayoutItem* labelItem = filterLayout->itemAt(rowIdx, QFormLayout::LabelRole);
+            QLayoutItem* fieldItem = filterLayout->itemAt(rowIdx, QFormLayout::FieldRole);
+            if (labelItem && labelItem->widget()) {
+                labelItem->widget()->setVisible(visible);
+            }
+            if (fieldItem && fieldItem->widget()) {
+                fieldItem->widget()->setVisible(visible);
+            }
         }
     };
 

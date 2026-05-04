@@ -2,6 +2,15 @@
 
 `ComAssistant` 是一个面向调试与开发场景的串口/网络通信工具，支持数据收发、协议解析、绘图分析、脚本扩展等功能。
 
+## 技术栈
+
+- **Qt 5.12.9** (MinGW 7.3.0 64-bit)
+- **C++17**
+- **CMake** 构建系统
+- **QCustomPlot** 绘图引擎（支持 OpenGL 加速）
+- **Lua 5.4** 脚本引擎
+- **spdlog** 日志库
+
 ## 快速下载
 
 - 最新稳定版下载页：<https://github.com/wsmcfr/uart_assistant/releases/latest>

@@ -6,6 +6,8 @@
  */
 
 #include "TabbedReceiveWidget.h"
+#include "modes/TerminalBuffer.h"
+#include "modes/AnsiParser.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -27,6 +29,25 @@
 #include <QElapsedTimer>
 
 namespace ComAssistant {
+
+// HEX 查找表：每个字节对应 3 个字符（2位十六进制 + 空格）
+static const char HEX_LOOKUP_TABLE[] =
+    "00 " "01 " "02 " "03 " "04 " "05 " "06 " "07 " "08 " "09 " "0A " "0B " "0C " "0D " "0E " "0F "
+    "10 " "11 " "12 " "13 " "14 " "15 " "16 " "17 " "18 " "19 " "1A " "1B " "1C " "1D " "1E " "1F "
+    "20 " "21 " "22 " "23 " "24 " "25 " "26 " "27 " "28 " "29 " "2A " "2B " "2C " "2D " "2E " "2F "
+    "30 " "31 " "32 " "33 " "34 " "35 " "36 " "37 " "38 " "39 " "3A " "3B " "3C " "3D " "3E " "3F "
+    "40 " "41 " "42 " "43 " "44 " "45 " "46 " "47 " "48 " "49 " "4A " "4B " "4C " "4D " "4E " "4F "
+    "50 " "51 " "52 " "53 " "54 " "55 " "56 " "57 " "58 " "59 " "5A " "5B " "5C " "5D " "5E " "5F "
+    "60 " "61 " "62 " "63 " "64 " "65 " "66 " "67 " "68 " "69 " "6A " "6B " "6C " "6D " "6E " "6F "
+    "70 " "71 " "72 " "73 " "74 " "75 " "76 " "77 " "78 " "79 " "7A " "7B " "7C " "7D " "7E " "7F "
+    "80 " "81 " "82 " "83 " "84 " "85 " "86 " "87 " "88 " "89 " "8A " "8B " "8C " "8D " "8E " "8F "
+    "90 " "91 " "92 " "93 " "94 " "95 " "96 " "97 " "98 " "99 " "9A " "9B " "9C " "9D " "9E " "9F "
+    "A0 " "A1 " "A2 " "A3 " "A4 " "A5 " "A6 " "A7 " "A8 " "A9 " "AA " "AB " "AC " "AD " "AE " "AF "
+    "B0 " "B1 " "B2 " "B3 " "B4 " "B5 " "B6 " "B7 " "B8 " "B9 " "BA " "BB " "BC " "BD " "BE " "BF "
+    "C0 " "C1 " "C2 " "C3 " "C4 " "C5 " "C6 " "C7 " "C8 " "C9 " "CA " "CB " "CC " "CD " "CE " "CF "
+    "D0 " "D1 " "D2 " "D3 " "D4 " "D5 " "D6 " "D7 " "D8 " "D9 " "DA " "DB " "DC " "DD " "DE " "DF "
+    "E0 " "E1 " "E2 " "E3 " "E4 " "E5 " "E6 " "E7 " "E8 " "E9 " "EA " "EB " "EC " "ED " "EE " "EF "
+    "F0 " "F1 " "F2 " "F3 " "F4 " "F5 " "F6 " "F7 " "F8 " "F9 " "FA " "FB " "FC " "FD " "FE " "FF ";
 
 class ReceiveHighlightHighlighter final : public QSyntaxHighlighter {
 public:
@@ -97,7 +118,8 @@ public:
     explicit ReceiveHexModel(QObject* parent = nullptr)
         : QAbstractTableModel(parent)
     {
-        setMaxBytes(8 * 1024 * 1024);
+        // 延迟分配：不在此处预分配 8MB，等首次使用时再分配
+        m_maxBytes = 8 * 1024 * 1024;
     }
 
     void setMaxBytes(int maxBytes)
@@ -212,9 +234,9 @@ public:
 
         if (role == Qt::TextAlignmentRole) {
             if (index.column() == 16) {
-                return QVariant::fromValue(Qt::AlignLeft | Qt::AlignVCenter);
+                return static_cast<int>(Qt::AlignLeft | Qt::AlignVCenter);
             }
-            return QVariant::fromValue(Qt::AlignCenter);
+            return static_cast<int>(Qt::AlignCenter);
         }
 
         if (role != Qt::DisplayRole) {
@@ -318,6 +340,15 @@ TabbedReceiveWidget::TabbedReceiveWidget(QWidget* parent)
     : QWidget(parent)
 {
     setupUi();
+
+    // 创建终端缓冲区和 ANSI 解析器
+    m_terminalBuffer = new TerminalBuffer(80, 1000, this);
+    m_terminalBuffer->setMaxHistoryLines(10000);
+    m_ansiParser = new AnsiParser(m_terminalBuffer, this);
+
+    // 连接终端缓冲区更新信号
+    connect(m_terminalBuffer, &TerminalBuffer::screenUpdated,
+            this, &TabbedReceiveWidget::scheduleTerminalDisplayUpdate);
 
     m_highlightTimer = new QTimer(this);
     m_highlightTimer->setSingleShot(true);
@@ -473,7 +504,6 @@ void TabbedReceiveWidget::setupHexTab()
 
     m_hexTable->setModel(m_hexModel);
     m_hexTable->setWordWrap(false);
-    m_hexTable->setUniformRowHeights(true);
     m_hexTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_hexTable->setSelectionMode(QAbstractItemView::ContiguousSelection);
     m_hexTable->setSelectionBehavior(QAbstractItemView::SelectItems);
@@ -563,214 +593,62 @@ void TabbedReceiveWidget::appendSerialMode(const QByteArray& data)
 // ==================== 终端模式 ====================
 void TabbedReceiveWidget::appendTerminalMode(const QByteArray& data)
 {
-    // 处理终端数据，支持ANSI转义序列和控制字符
-    for (int i = 0; i < data.size(); ++i) {
-        unsigned char byte = static_cast<unsigned char>(data[i]);
-
-        // 处理ANSI转义序列
-        if (m_inAnsiEscape) {
-            m_ansiBuffer.append(byte);
-            // 检查转义序列是否结束 (以字母结尾)
-            if ((byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z')) {
-                processAnsiEscape(m_ansiBuffer);
-                m_ansiBuffer.clear();
-                m_inAnsiEscape = false;
-            }
-            continue;
-        }
-
-        // 检查ESC字符开始转义序列
-        if (byte == 0x1B) {
-            m_inAnsiEscape = true;
-            m_ansiBuffer.clear();
-            m_ansiBuffer.append(byte);
-            continue;
-        }
-
-        // 处理控制字符
-        switch (byte) {
-            case '\r':  // 回车
-                terminalCarriageReturn();
-                break;
-            case '\n':  // 换行
-                terminalNewLine();
-                break;
-            case '\b':  // 退格
-            case 0x7F:  // DEL
-                terminalBackspace();
-                break;
-            case '\t':  // 制表符
-                terminalTab();
-                break;
-            case '\a':  // 响铃 - 忽略
-                break;
-            default:
-                if (byte >= 32) {  // 可打印字符
-                    terminalWriteChar(QChar(byte));
-                }
-                break;
-        }
-    }
-
-    scheduleTerminalDisplayUpdate();
-}
-
-void TabbedReceiveWidget::processAnsiEscape(const QByteArray& seq)
-{
-    // 解析ANSI转义序列
-    if (seq.size() < 2) return;
-
-    // CSI序列: ESC [
-    if (seq.size() >= 3 && seq[1] == '[') {
-        QString params = QString::fromLatin1(seq.mid(2, seq.size() - 3));
-        char cmd = seq[seq.size() - 1];
-
-        QStringList paramList = params.split(';');
-
-        switch (cmd) {
-            case 'm':  // SGR - 设置图形
-                for (const QString& p : paramList) {
-                    int code = p.isEmpty() ? 0 : p.toInt();
-                    terminalSetColor(code);
-                }
-                break;
-            case 'H':  // 光标位置
-            case 'f':
-                // 简化处理，暂不实现
-                break;
-            case 'J':  // 清屏
-                if (params == "2") {
-                    m_terminalLines.clear();
-                    m_terminalLines.append("");
-                    m_terminalCursorX = 0;
-                    m_terminalCursorY = 0;
-                }
-                break;
-            case 'K':  // 清行
-                terminalClearLine();
-                break;
-            case 'A':  // 光标上移
-            case 'B':  // 光标下移
-            case 'C':  // 光标右移
-            case 'D':  // 光标左移
-                // 简化处理
-                break;
-        }
-    }
-}
-
-void TabbedReceiveWidget::terminalWriteChar(QChar ch)
-{
-    // 确保当前行存在
-    while (m_terminalCursorY >= m_terminalLines.size()) {
-        m_terminalLines.append("");
-    }
-
-    QString& currentLine = m_terminalLines[m_terminalCursorY];
-
-    // 在光标位置插入或覆盖字符
-    if (m_terminalCursorX >= currentLine.length()) {
-        currentLine.append(QString(m_terminalCursorX - currentLine.length(), ' '));
-        currentLine.append(ch);
-    } else {
-        currentLine[m_terminalCursorX] = ch;
-    }
-
-    m_terminalCursorX++;
-}
-
-void TabbedReceiveWidget::terminalNewLine()
-{
-    m_terminalCursorY++;
-    m_terminalCursorX = 0;
-
-    // 确保行存在
-    while (m_terminalCursorY >= m_terminalLines.size()) {
-        m_terminalLines.append("");
-    }
-
-    // 限制最大行数
-    const int maxLines = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
-    while (m_terminalLines.size() > maxLines) {
-        m_terminalLines.removeFirst();
-        m_terminalCursorY--;
-    }
-}
-
-void TabbedReceiveWidget::terminalCarriageReturn()
-{
-    m_terminalCursorX = 0;
-}
-
-void TabbedReceiveWidget::terminalBackspace()
-{
-    if (m_terminalCursorX > 0) {
-        m_terminalCursorX--;
-        // 删除字符
-        if (m_terminalCursorY < m_terminalLines.size()) {
-            QString& line = m_terminalLines[m_terminalCursorY];
-            if (m_terminalCursorX < line.length()) {
-                line.remove(m_terminalCursorX, 1);
-            }
-        }
-    }
-}
-
-void TabbedReceiveWidget::terminalTab()
-{
-    // 移动到下一个8字符对齐位置
-    m_terminalCursorX = ((m_terminalCursorX / 8) + 1) * 8;
-}
-
-void TabbedReceiveWidget::terminalClearLine()
-{
-    if (m_terminalCursorY < m_terminalLines.size()) {
-        m_terminalLines[m_terminalCursorY].truncate(m_terminalCursorX);
-    }
-}
-
-void TabbedReceiveWidget::terminalSetColor(int code)
-{
-    // 处理ANSI颜色代码
-    switch (code) {
-        case 0:  // 重置
-            terminalResetFormat();
-            break;
-        case 1:  // 粗体
-            m_terminalBold = true;
-            break;
-        case 30: m_terminalFgColor = QColor(0, 0, 0); break;       // 黑
-        case 31: m_terminalFgColor = QColor(205, 49, 49); break;   // 红
-        case 32: m_terminalFgColor = QColor(13, 188, 121); break;  // 绿
-        case 33: m_terminalFgColor = QColor(229, 229, 16); break;  // 黄
-        case 34: m_terminalFgColor = QColor(36, 114, 200); break;  // 蓝
-        case 35: m_terminalFgColor = QColor(188, 63, 188); break;  // 品红
-        case 36: m_terminalFgColor = QColor(17, 168, 205); break;  // 青
-        case 37: m_terminalFgColor = QColor(229, 229, 229); break; // 白
-        case 39: m_terminalFgColor = QColor(0, 255, 0); break;     // 默认（绿）
-    }
-}
-
-void TabbedReceiveWidget::terminalResetFormat()
-{
-    m_terminalFgColor = QColor(0, 255, 0);  // 默认绿色
-    m_terminalBgColor = QColor(26, 26, 26); // 默认黑色
-    m_terminalBold = false;
+    // 委托给 AnsiParser 处理终端数据（支持完整的 ANSI/VT100 转义序列）
+    // AnsiParser 内部会调用 TerminalBuffer 的方法来更新屏幕状态
+    // TerminalBuffer 的 screenUpdated 信号会触发 scheduleTerminalDisplayUpdate
+    m_ansiParser->process(data);
 }
 
 void TabbedReceiveWidget::updateTerminalDisplay()
 {
-    const int maxLines = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
-    while (m_terminalLines.size() > maxLines) {
-        m_terminalLines.removeFirst();
-        if (m_terminalCursorY > 0) {
-            --m_terminalCursorY;
+    if (!m_terminalBuffer) return;
+
+    // 使用 blockSignals 防止中间信号，减少 UI 更新开销
+    m_mainTextEdit->setUpdatesEnabled(false);
+
+    // 从 TerminalBuffer 渲染带颜色的文本
+    // TerminalBuffer 的屏幕是一个 2D 字符矩阵，每行有独立的字符属性
+    QTextCursor cursor(m_mainTextEdit->document());
+    cursor.beginEditBlock();
+
+    // 清空现有内容
+    cursor.select(QTextCursor::Document);
+    cursor.removeSelectedText();
+
+    // 获取 TerminalBuffer 的屏幕数据
+    const auto& screen = m_terminalBuffer->screen();
+    int rows = m_terminalBuffer->rows();
+    int cols = m_terminalBuffer->cols();
+
+    for (int r = 0; r < rows; ++r) {
+        if (r > 0) {
+            cursor.insertBlock();
+        }
+
+        // 构建当前行的文本和格式
+        QString lineText;
+        lineText.reserve(cols);
+
+        for (int c = 0; c < cols; ++c) {
+            const TerminalCell& cell = screen[r][c];
+            lineText += cell.character;
+        }
+
+        // 移除行尾空格
+        lineText = lineText.trimmed();
+
+        if (!lineText.isEmpty()) {
+            // 使用默认终端颜色（绿色前景，黑色背景）
+            QTextCharFormat format;
+            format.setForeground(QColor(0, 255, 0));  // 绿色
+            format.setBackground(QColor(26, 26, 26));  // 黑色
+
+            cursor.insertText(lineText, format);
         }
     }
 
-    // 将终端行缓冲更新到显示
-    QString text = m_terminalLines.join('\n');
-    m_mainTextEdit->setPlainText(text);
+    cursor.endEditBlock();
+    m_mainTextEdit->setUpdatesEnabled(true);
 
     // 智能滚屏：仅在未暂停时滚动到底部
     if (m_autoScrollEnabled && !m_smartScrollPaused) {
@@ -870,14 +748,9 @@ void TabbedReceiveWidget::appendDebugMode(const QByteArray& data, bool isSent)
             text = QString::fromUtf8(line);
         }
 
-        // 使用HTML格式插入带颜色的文本
-        QString html = QString("<span style=\"%1\">%2%3</span><br>")
-            .arg(style)
-            .arg(prefix.toHtmlEscaped())
-            .arg(text.toHtmlEscaped());
-
+        Q_UNUSED(style);
         m_mainTextEdit->moveCursor(QTextCursor::End);
-        m_mainTextEdit->insertHtml(html);
+        m_mainTextEdit->insertPlainText(prefix + text + "\n");
 
         m_lineHistory.append(prefix + text);
         trimLineHistory();
@@ -899,7 +772,10 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
 
     // 根据当前HEX显示设置转换数据
     if (m_hexDisplayEnabled) {
-        // HEX显示模式 - 直接处理原始字节
+        // HEX显示模式 - 使用查表法，预分配 buffer 减少内存分配
+        // 每个字节最多 3 字符（HEX + 空格），加上可能的时间戳和换行
+        text.reserve(data.size() * 3 + 64);
+
         for (int i = 0; i < data.size(); ++i) {
             unsigned char byte = static_cast<unsigned char>(data[i]);
 
@@ -909,7 +785,8 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
                 m_needTimestamp = false;
             }
 
-            text += QString("%1 ").arg(byte, 2, 16, QChar('0')).toUpper();
+            // 使用查表法，直接从表中复制 3 个字符（XX ）
+            text += QString::fromLatin1(&HEX_LOOKUP_TABLE[byte * 3], 3);
 
             // 遇到换行符(0x0A)时添加实际换行，并标记下一行需要时间戳
             if (byte == 0x0A) {
@@ -994,7 +871,7 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
         m_mainTextEdit->insertPlainText(text);
 
         // 记录历史（限长）
-        const QStringList lines = text.split('\n', Qt::SkipEmptyParts);
+        const QStringList lines = text.split('\n', QString::SkipEmptyParts);
         if (!lines.isEmpty()) {
             m_lineHistory.append(lines);
             trimLineHistory();
@@ -1118,13 +995,13 @@ void TabbedReceiveWidget::clear()
     m_smartScrollPaused = false;
     hideSmartScrollIndicator();
 
-    // 重置终端模式状态
-    m_terminalLines.clear();
-    m_terminalLines.append("");
-    m_terminalCursorX = 0;
-    m_terminalCursorY = 0;
-    m_ansiBuffer.clear();
-    m_inAnsiEscape = false;
+    // 重置终端模式状态（使用 TerminalBuffer 和 AnsiParser）
+    if (m_terminalBuffer) {
+        m_terminalBuffer->clearScreen();
+    }
+    if (m_ansiParser) {
+        m_ansiParser->reset();
+    }
 
     m_perfRxBytes = 0;
     m_perfRenderCostSumMs = 0.0;
@@ -1232,12 +1109,9 @@ void TabbedReceiveWidget::setMaxLines(int maxLines)
     }
     trimLineHistory();
 
-    const int terminalLimit = qMax(200, qMin(m_terminalMaxLines, m_maxLines));
-    while (m_terminalLines.size() > terminalLimit) {
-        m_terminalLines.removeFirst();
-        if (m_terminalCursorY > 0) {
-            --m_terminalCursorY;
-        }
+    // 更新 TerminalBuffer 的历史行数限制
+    if (m_terminalBuffer) {
+        m_terminalBuffer->setMaxHistoryLines(m_maxLines);
     }
 }
 
@@ -1263,15 +1137,18 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
 
     // 清空当前显示，准备切换模式
     m_mainTextEdit->clear();
-    m_terminalLines.clear();
-    m_terminalCursorX = 0;
-    m_terminalCursorY = 0;
     m_frameCounter = 0;
     m_frameBuffer.clear();
-    m_ansiBuffer.clear();
-    m_inAnsiEscape = false;
     m_debugRxBuffer.clear();
     m_debugTxBuffer.clear();
+
+    // 清空终端缓冲区和解析器
+    if (m_terminalBuffer) {
+        m_terminalBuffer->clearScreen();
+    }
+    if (m_ansiParser) {
+        m_ansiParser->reset();
+    }
 
     // 根据显示模式调整UI外观
     switch (m_displayMode) {
@@ -1297,8 +1174,6 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
             m_timestampEnabled = false;
             if (m_timestampCheck) m_timestampCheck->setChecked(false);
             m_tabWidget->setTabText(0, tr("终端"));
-            // 初始化终端行
-            m_terminalLines.append("");
             break;
 
         case ReceiveDisplayMode::Frame:
@@ -1651,14 +1526,17 @@ void TabbedReceiveWidget::scheduleTerminalDisplayUpdate()
 void TabbedReceiveWidget::trimLineHistory()
 {
     if (m_lineHistory.size() > m_maxLines) {
-        m_lineHistory = m_lineHistory.mid(m_lineHistory.size() - m_maxLines);
+        // 使用 erase 前半段，避免 mid() 产生的深拷贝
+        m_lineHistory.erase(m_lineHistory.begin(),
+                            m_lineHistory.begin() + (m_lineHistory.size() - m_maxLines));
     }
 }
 
 void TabbedReceiveWidget::trimRawDataBuffer()
 {
     if (m_rawData.size() > m_maxRawDataBytes) {
-        m_rawData = m_rawData.right(m_maxRawDataBytes);
+        // 使用 remove 前半段，避免 right() 产生的深拷贝
+        m_rawData.remove(0, m_rawData.size() - m_maxRawDataBytes);
     }
 }
 

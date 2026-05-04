@@ -86,8 +86,12 @@ void loadTranslation(QApplication& app)
 int main(int argc, char *argv[])
 {
     // 高DPI支持
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     QApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+#else
+    QApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
 
     // 创建应用程序
     QApplication app(argc, argv);
@@ -103,8 +107,8 @@ int main(int argc, char *argv[])
 
     // 初始化核心系统
     if (!initializeCoreSystem(appDataPath)) {
-        QMessageBox::critical(nullptr, "Error",
-            "Failed to initialize core system.\nPlease check application permissions.");
+        QMessageBox::critical(nullptr, QObject::tr("Error"),
+            QObject::tr("Failed to initialize core system.\nPlease check application permissions."));
         return -1;
     }
 

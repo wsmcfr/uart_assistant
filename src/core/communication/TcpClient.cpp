@@ -21,7 +21,7 @@ TcpClient::TcpClient(const NetworkConfig& config, QObject* parent)
     connect(m_socket, &QTcpSocket::disconnected, this, &TcpClient::onDisconnected);
     connect(m_socket, &QTcpSocket::readyRead, this, &TcpClient::onReadyRead);
     connect(m_socket, &QTcpSocket::stateChanged, this, &TcpClient::onStateChanged);
-    connect(m_socket, &QTcpSocket::errorOccurred, this, &TcpClient::onError);
+    connect(m_socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onError(QAbstractSocket::SocketError)));
     connect(m_reconnectTimer, &QTimer::timeout, this, &TcpClient::tryReconnect);
 }
 

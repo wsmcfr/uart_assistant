@@ -9,6 +9,7 @@
 #include "utils/Logger.h"
 #include <QMutexLocker>
 #include <QUuid>
+#include <QVariant>
 
 namespace ComAssistant {
 
@@ -66,8 +67,8 @@ QString MultiPortManager::createPort(const QString& portName)
     // 连接信号
     connect(instance->port, &QSerialPort::readyRead,
             this, &MultiPortManager::onReadyRead);
-    connect(instance->port, &QSerialPort::errorOccurred,
-            this, &MultiPortManager::onErrorOccurred);
+    connect(instance->port, SIGNAL(error(QSerialPort::SerialPortError)),
+            this, SLOT(onErrorOccurred(QSerialPort::SerialPortError)));
 
     // 存储实例ID到串口对象属性
     instance->port->setProperty("instanceId", id);

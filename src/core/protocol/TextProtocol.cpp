@@ -90,7 +90,7 @@ PlotData TextProtocol::parsePlotData(const QByteArray& data)
     QString valuesStr = match.captured(2);
 
     // 解析数值
-    QStringList valueList = valuesStr.split(',', Qt::SkipEmptyParts);
+    QStringList valueList = valuesStr.split(',', QString::SkipEmptyParts);
     for (const QString& valueStr : valueList) {
         bool ok;
         double value = valueStr.trimmed().toDouble(&ok);

@@ -123,8 +123,12 @@ private:
     int readLengthField(const QByteArray& data, int offset, int size, bool bigEndian);
 
 private:
+    // 压缩缓冲区：移除已处理的数据，重置偏移量
+    void compactBuffer();
+
     FrameConfig m_config;
     QByteArray m_buffer;
+    int m_bufferOffset = 0;  // 当前处理偏移量，避免频繁 remove(0, pos)
     QTimer* m_timeoutTimer = nullptr;
     std::function<int(const QByteArray&)> m_customParser;
 };

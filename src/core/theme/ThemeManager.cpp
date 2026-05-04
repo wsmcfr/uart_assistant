@@ -129,7 +129,7 @@ bool ThemeManager::saveTheme(const QString& themeName, const QString& qssContent
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
     stream << qssContent;
     file.close();
 
@@ -222,7 +222,7 @@ bool ThemeManager::exportTheme(const QString& themeName, const QString& filePath
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
     stream << content;
     file.close();
 
@@ -372,7 +372,7 @@ QString ThemeManager::loadQssFile(const QString& filePath) const
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
     QString content = stream.readAll();
     file.close();
 

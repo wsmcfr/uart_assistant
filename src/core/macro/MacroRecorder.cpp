@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QDir>
 #include <QStandardPaths>
+#include <QVariant>
 
 namespace ComAssistant {
 

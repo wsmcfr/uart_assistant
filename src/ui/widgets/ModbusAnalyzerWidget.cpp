@@ -86,14 +86,14 @@ void ModbusAnalyzerWidget::setupUi()
     toolLayout->addWidget(m_functionFilterLabel);
     m_functionFilterCombo = new QComboBox(this);
     m_functionFilterCombo->addItem(tr("全部"), -1);
-    m_functionFilterCombo->addItem("0x01 读线圈", 0x01);
-    m_functionFilterCombo->addItem("0x02 读离散输入", 0x02);
-    m_functionFilterCombo->addItem("0x03 读保持寄存器", 0x03);
-    m_functionFilterCombo->addItem("0x04 读输入寄存器", 0x04);
-    m_functionFilterCombo->addItem("0x05 写单线圈", 0x05);
-    m_functionFilterCombo->addItem("0x06 写单寄存器", 0x06);
-    m_functionFilterCombo->addItem("0x0F 写多线圈", 0x0F);
-    m_functionFilterCombo->addItem("0x10 写多寄存器", 0x10);
+    m_functionFilterCombo->addItem(tr("0x01 读线圈"), 0x01);
+    m_functionFilterCombo->addItem(tr("0x02 读离散输入"), 0x02);
+    m_functionFilterCombo->addItem(tr("0x03 读保持寄存器"), 0x03);
+    m_functionFilterCombo->addItem(tr("0x04 读输入寄存器"), 0x04);
+    m_functionFilterCombo->addItem(tr("0x05 写单线圈"), 0x05);
+    m_functionFilterCombo->addItem(tr("0x06 写单寄存器"), 0x06);
+    m_functionFilterCombo->addItem(tr("0x0F 写多线圈"), 0x0F);
+    m_functionFilterCombo->addItem(tr("0x10 写多寄存器"), 0x10);
     toolLayout->addWidget(m_functionFilterCombo);
 
     m_autoScrollCheck = new QCheckBox(tr("自动滚动"), this);
@@ -170,12 +170,12 @@ void ModbusAnalyzerWidget::setupUi()
     m_functionLabel = new QLabel(tr("功能:"), this);
     genLayout->addWidget(m_functionLabel);
     m_functionCombo = new QComboBox(this);
-    m_functionCombo->addItem("0x03 读保持寄存器", 0x03);
-    m_functionCombo->addItem("0x04 读输入寄存器", 0x04);
-    m_functionCombo->addItem("0x01 读线圈", 0x01);
-    m_functionCombo->addItem("0x02 读离散输入", 0x02);
-    m_functionCombo->addItem("0x06 写单寄存器", 0x06);
-    m_functionCombo->addItem("0x05 写单线圈", 0x05);
+    m_functionCombo->addItem(tr("0x03 读保持寄存器"), 0x03);
+    m_functionCombo->addItem(tr("0x04 读输入寄存器"), 0x04);
+    m_functionCombo->addItem(tr("0x01 读线圈"), 0x01);
+    m_functionCombo->addItem(tr("0x02 读离散输入"), 0x02);
+    m_functionCombo->addItem(tr("0x06 写单寄存器"), 0x06);
+    m_functionCombo->addItem(tr("0x05 写单线圈"), 0x05);
     genLayout->addWidget(m_functionCombo);
 
     m_startAddrLabel = new QLabel(tr("起始地址:"), this);
@@ -417,7 +417,7 @@ void ModbusAnalyzerWidget::addFrameToTable(const ModbusFrame& frame)
 
     // 原始数据
     m_frameTable->setItem(row, 6, new QTableWidgetItem(
-        frame.rawData.toHex(' ').toUpper()));
+        QString::fromLatin1(frame.rawData.toHex(' ').toUpper())));
 
     // 自动滚动
     if (m_autoScrollCheck->isChecked()) {

@@ -72,6 +72,30 @@ void TerminalBuffer::setScrollRegion(int top, int bottom)
 
 void TerminalBuffer::putChar(QChar ch)
 {
+    putCharInternal(ch);
+
+    // 非批量模式下立即触发信号
+    if (m_batchUpdateCount <= 0) {
+        emit screenUpdated();
+    } else {
+        m_screenDirty = true;
+    }
+}
+
+void TerminalBuffer::putString(const QString& str)
+{
+    if (str.isEmpty()) return;
+
+    // 批量写入，只触发一次信号
+    beginBatchUpdate();
+    for (const QChar& ch : str) {
+        putCharInternal(ch);
+    }
+    endBatchUpdate();
+}
+
+void TerminalBuffer::putCharInternal(QChar ch)
+{
     if (m_cursorCol >= m_cols) {
         // 自动换行
         carriageReturn();
@@ -81,14 +105,21 @@ void TerminalBuffer::putChar(QChar ch)
     m_screen[m_cursorRow][m_cursorCol].character = ch;
     m_screen[m_cursorRow][m_cursorCol].attr = m_currentAttr;
     m_cursorCol++;
-
-    emit screenUpdated();
 }
 
-void TerminalBuffer::putString(const QString& str)
+void TerminalBuffer::beginBatchUpdate()
 {
-    for (const QChar& ch : str) {
-        putChar(ch);
+    ++m_batchUpdateCount;
+}
+
+void TerminalBuffer::endBatchUpdate()
+{
+    if (m_batchUpdateCount > 0) {
+        --m_batchUpdateCount;
+        if (m_batchUpdateCount <= 0 && m_screenDirty) {
+            m_screenDirty = false;
+            emit screenUpdated();
+        }
     }
 }
 
@@ -117,19 +148,24 @@ void TerminalBuffer::resetAttribute()
 
 void TerminalBuffer::clearScreen()
 {
+    beginBatchUpdate();
     for (int r = 0; r < m_rows; ++r) {
         for (int c = 0; c < m_cols; ++c) {
             m_screen[r][c].character = ' ';
             m_screen[r][c].attr = m_currentAttr;
         }
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::clearToEndOfScreen()
 {
+    beginBatchUpdate();
     // 清除光标位置到行末
-    clearToEndOfLine();
+    for (int c = m_cursorCol; c < m_cols; ++c) {
+        m_screen[m_cursorRow][c].character = ' ';
+        m_screen[m_cursorRow][c].attr = m_currentAttr;
+    }
     // 清除后续所有行
     for (int r = m_cursorRow + 1; r < m_rows; ++r) {
         for (int c = 0; c < m_cols; ++c) {
@@ -137,13 +173,17 @@ void TerminalBuffer::clearToEndOfScreen()
             m_screen[r][c].attr = m_currentAttr;
         }
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::clearToStartOfScreen()
 {
+    beginBatchUpdate();
     // 清除光标位置到行首
-    clearToStartOfLine();
+    for (int c = 0; c <= m_cursorCol; ++c) {
+        m_screen[m_cursorRow][c].character = ' ';
+        m_screen[m_cursorRow][c].attr = m_currentAttr;
+    }
     // 清除前面所有行
     for (int r = 0; r < m_cursorRow; ++r) {
         for (int c = 0; c < m_cols; ++c) {
@@ -151,39 +191,44 @@ void TerminalBuffer::clearToStartOfScreen()
             m_screen[r][c].attr = m_currentAttr;
         }
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::clearLine()
 {
+    beginBatchUpdate();
     for (int c = 0; c < m_cols; ++c) {
         m_screen[m_cursorRow][c].character = ' ';
         m_screen[m_cursorRow][c].attr = m_currentAttr;
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::clearToEndOfLine()
 {
+    beginBatchUpdate();
     for (int c = m_cursorCol; c < m_cols; ++c) {
         m_screen[m_cursorRow][c].character = ' ';
         m_screen[m_cursorRow][c].attr = m_currentAttr;
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::clearToStartOfLine()
 {
+    beginBatchUpdate();
     for (int c = 0; c <= m_cursorCol; ++c) {
         m_screen[m_cursorRow][c].character = ' ';
         m_screen[m_cursorRow][c].attr = m_currentAttr;
     }
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::scrollUp(int lines)
 {
     if (lines <= 0) return;
+
+    beginBatchUpdate();
 
     // 将顶行保存到历史
     for (int i = 0; i < lines && m_scrollTop + i <= m_scrollBottom; ++i) {
@@ -207,12 +252,14 @@ void TerminalBuffer::scrollUp(int lines)
         }
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::scrollDown(int lines)
 {
     if (lines <= 0) return;
+
+    beginBatchUpdate();
 
     // 在滚动区域内滚动
     for (int r = m_scrollBottom; r >= m_scrollTop + lines; --r) {
@@ -229,12 +276,14 @@ void TerminalBuffer::scrollDown(int lines)
         }
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::insertLines(int count)
 {
     if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) return;
+
+    beginBatchUpdate();
 
     // 从当前行开始，向下移动内容
     for (int r = m_scrollBottom; r >= m_cursorRow + count; --r) {
@@ -249,12 +298,14 @@ void TerminalBuffer::insertLines(int count)
         }
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::deleteLines(int count)
 {
     if (m_cursorRow < m_scrollTop || m_cursorRow > m_scrollBottom) return;
+
+    beginBatchUpdate();
 
     // 从当前行开始，向上移动内容
     for (int r = m_cursorRow; r <= m_scrollBottom - count; ++r) {
@@ -271,11 +322,13 @@ void TerminalBuffer::deleteLines(int count)
         }
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::insertChars(int count)
 {
+    beginBatchUpdate();
+
     // 向右移动字符
     for (int c = m_cols - 1; c >= m_cursorCol + count; --c) {
         m_screen[m_cursorRow][c] = m_screen[m_cursorRow][c - count];
@@ -287,11 +340,13 @@ void TerminalBuffer::insertChars(int count)
         m_screen[m_cursorRow][c].attr = m_currentAttr;
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::deleteChars(int count)
 {
+    beginBatchUpdate();
+
     // 向左移动字符
     for (int c = m_cursorCol; c < m_cols - count; ++c) {
         m_screen[m_cursorRow][c] = m_screen[m_cursorRow][c + count];
@@ -305,7 +360,7 @@ void TerminalBuffer::deleteChars(int count)
         }
     }
 
-    emit screenUpdated();
+    endBatchUpdate();
 }
 
 void TerminalBuffer::newLine()

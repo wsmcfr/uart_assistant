@@ -539,6 +539,7 @@ private:
     int m_decimationCounter = 0;           ///< 抽稀计数器
     bool m_throttleAutoRangeUpdates = false;  ///< 是否节流Y轴范围更新
     int m_autoRangeUpdateCounter = 0;      ///< 自动范围更新节流计数器（高性能模式）
+    int m_valuePanelUpdateCounter = 0;     ///< 数值面板更新节流计数器
     double m_sampleRate = 1000.0;          ///< 采样率 (Hz)，用于FFT分析
     bool m_diffRealtimeEnabled = true;     ///< 差值曲线是否实时更新
     bool m_filterRealtimeEnabled = true;   ///< 滤波曲线是否实时更新

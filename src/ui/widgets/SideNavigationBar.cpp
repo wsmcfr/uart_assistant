@@ -7,6 +7,7 @@
 
 #include "SideNavigationBar.h"
 #include <QStyle>
+#include <QVariant>
 
 namespace ComAssistant {
 
@@ -58,7 +59,7 @@ void SideNavigationBar::setupUI()
     m_layout->addWidget(m_helpBtn);
 
     // 信号连接
-    connect(m_buttonGroup, &QButtonGroup::idClicked, this, [this](int id) {
+    connect(m_buttonGroup, QOverload<int>::of(&QButtonGroup::buttonClicked), this, [this](int id) {
         m_currentItem = static_cast<NavItem>(id);
         emit itemClicked(m_currentItem);
     });
@@ -111,7 +112,7 @@ QPushButton* SideNavigationBar::createNavButton(const QString& icon, const QStri
     btn->setFixedSize(42, 42);
     btn->setCheckable(true);
     btn->setToolTip(tooltip);
-    btn->setProperty("navItem", static_cast<int>(item));
+    btn->setProperty("navItem", QVariant(static_cast<int>(item)));
 
     m_buttonGroup->addButton(btn, static_cast<int>(item));
     return btn;

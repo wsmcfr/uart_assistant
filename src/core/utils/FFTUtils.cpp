@@ -562,10 +562,10 @@ FFTResult FFTUtils::averageSpectrum(const QVector<FFTResult>& spectrums)
 
     int n = spectrums[0].magnitudes.size();
     result.frequencies = spectrums[0].frequencies;
-    result.magnitudes.resize(n, 0);
-    result.phases.resize(n, 0);
-    result.powerSpectrum.resize(n, 0);
-    result.powerSpectrumDB.resize(n, 0);
+    result.magnitudes.resize(n);
+    result.phases.resize(n);
+    result.powerSpectrum.resize(n);
+    result.powerSpectrumDB.resize(n);
 
     for (const auto& s : spectrums) {
         for (int i = 0; i < qMin(n, s.magnitudes.size()); ++i) {

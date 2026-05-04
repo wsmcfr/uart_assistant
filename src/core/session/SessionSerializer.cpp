@@ -23,7 +23,7 @@ bool SessionSerializer::saveToFile(const SessionData& data, const QString& fileP
     }
 
     QDataStream stream(&file);
-    stream.setVersion(QDataStream::Qt_6_0);
+    stream.setVersion(QDataStream::Qt_5_12);
 
     // 写入文件头
     stream.writeRawData(FILE_MAGIC, 4);
@@ -58,7 +58,7 @@ bool SessionSerializer::loadFromFile(const QString& filePath, SessionData& data)
     }
 
     QDataStream stream(&file);
-    stream.setVersion(QDataStream::Qt_6_0);
+    stream.setVersion(QDataStream::Qt_5_12);
 
     // 读取文件头
     char magic[4];

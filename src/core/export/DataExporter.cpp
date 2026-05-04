@@ -139,8 +139,7 @@ bool DataExporter::exportToFile(const QString& filePath)
 
         QString content = exportToString();
         QTextStream stream(&file);
-        stream.setEncoding(QStringConverter::encodingForName(
-            m_options.encoding.toUtf8()).value_or(QStringConverter::Utf8));
+        stream.setCodec(m_options.encoding.toUtf8().constData());
         stream << content;
         m_statistics.exportedBytes = content.toUtf8().size();
         success = true;

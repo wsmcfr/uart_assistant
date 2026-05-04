@@ -237,7 +237,7 @@ void TcpServer::onNewConnection()
 
         connect(socket, &QTcpSocket::readyRead, this, &TcpServer::onClientReadyRead);
         connect(socket, &QTcpSocket::disconnected, this, &TcpServer::onClientDisconnected);
-        connect(socket, &QTcpSocket::errorOccurred, this, &TcpServer::onClientError);
+        connect(socket, SIGNAL(error(QAbstractSocket::SocketError)), this, SLOT(onClientError(QAbstractSocket::SocketError)));
 
         socket->setReadBufferSize(m_bufferSize);
 

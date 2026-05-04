@@ -332,7 +332,7 @@ void QuickSendWidget::onDeleteItem(int index)
 void QuickSendWidget::onMoveUp(int index)
 {
     if (index > 0 && index < m_items.size()) {
-        m_items.swapItemsAt(index, index - 1);
+        m_items.insert(index - 1, m_items.takeAt(index));
         rebuildButtons();
         emit configChanged();
     }
@@ -341,7 +341,7 @@ void QuickSendWidget::onMoveUp(int index)
 void QuickSendWidget::onMoveDown(int index)
 {
     if (index >= 0 && index < m_items.size() - 1) {
-        m_items.swapItemsAt(index, index + 1);
+        m_items.insert(index, m_items.takeAt(index + 1));
         rebuildButtons();
         emit configChanged();
     }

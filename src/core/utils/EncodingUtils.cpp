@@ -8,7 +8,7 @@
 #include "EncodingUtils.h"
 #include <QUrl>
 #include <QRegularExpression>
-#include <QStringConverter>
+#include <QTextCodec>
 
 namespace ComAssistant {
 
@@ -18,36 +18,20 @@ QByteArray EncodingUtils::convertEncoding(const QByteArray& data,
                                            const QString& fromCodec,
                                            const QString& toCodec)
 {
-    // Qt6 使用 QStringConverter，但对 GBK 等编码支持有限
-    // 简化实现：只处理 UTF-8 和 Latin-1
+    // 使用 Qt5 的 QTextCodec 进行编码转换
+    QTextCodec* fromCodecPtr = QTextCodec::codecForName(fromCodec.toUtf8());
+    QTextCodec* toCodecPtr = QTextCodec::codecForName(toCodec.toUtf8());
 
-    if (fromCodec.compare("UTF-8", Qt::CaseInsensitive) == 0) {
-        QString text = QString::fromUtf8(data);
-        if (toCodec.compare("UTF-8", Qt::CaseInsensitive) == 0) {
-            return text.toUtf8();
-        } else if (toCodec.compare("ISO-8859-1", Qt::CaseInsensitive) == 0 ||
-                   toCodec.compare("Latin-1", Qt::CaseInsensitive) == 0) {
-            return text.toLatin1();
-        } else if (toCodec.compare("UTF-16", Qt::CaseInsensitive) == 0) {
-            QStringEncoder encoder(QStringConverter::Utf16);
-            return encoder.encode(text);
-        }
-    } else if (fromCodec.compare("ISO-8859-1", Qt::CaseInsensitive) == 0 ||
-               fromCodec.compare("Latin-1", Qt::CaseInsensitive) == 0) {
-        QString text = QString::fromLatin1(data);
-        if (toCodec.compare("UTF-8", Qt::CaseInsensitive) == 0) {
-            return text.toUtf8();
-        }
-    } else if (fromCodec.compare("UTF-16", Qt::CaseInsensitive) == 0) {
-        QStringDecoder decoder(QStringConverter::Utf16);
-        QString text = decoder.decode(data);
-        if (toCodec.compare("UTF-8", Qt::CaseInsensitive) == 0) {
-            return text.toUtf8();
-        }
+    if (!fromCodecPtr || !toCodecPtr) {
+        return data;
     }
 
-    // 其他编码暂不支持，返回原数据
-    return data;
+    // 先解码为目标编码的 QString
+    QTextCodec::ConverterState state;
+    QString text = fromCodecPtr->toUnicode(data.constData(), data.size(), &state);
+
+    // 再编码为目标编码
+    return toCodecPtr->fromUnicode(text);
 }
 
 QStringList EncodingUtils::supportedCodecs()

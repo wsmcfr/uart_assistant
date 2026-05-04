@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
@@ -19,8 +19,12 @@ set(CMAKE_AUTORCC ON)
 
 # Windows 特定设置
 if(WIN32)
-    # 使用 UTF-8 编码
-    add_compile_options(/utf-8)
+    # 使用 UTF-8 编码（兼容 MSVC 和 MinGW）
+    if(MSVC)
+        add_compile_options(/utf-8)
+    else()
+        add_compile_options(-finput-charset=UTF-8 -fexec-charset=UTF-8)
+    endif()
     # 定义 Windows 版本
     add_definitions(-D_WIN32_WINNT=0x0A00)  # Windows 10
 endif()
@@ -28,23 +32,58 @@ endif()
 # QCustomPlot OpenGL 支持
 add_definitions(-DQCUSTOMPLOT_USE_OPENGL)
 
-# 查找 Qt6 包
-find_package(Qt6 REQUIRED COMPONENTS
+# 查找 Qt5 包
+find_package(Qt5 REQUIRED COMPONENTS
     Core
     Gui
     Widgets
     SerialPort
     Network
     OpenGL
-    OpenGLWidgets
     PrintSupport
     LinguistTools
 )
 
-# 查找第三方库 (通过 vcpkg)
-find_package(spdlog CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(Lua REQUIRED)
+# 第三方库：优先使用 vcpkg，否则通过 FetchContent 自动下载
+include(FetchContent)
+
+# spdlog（header-only 日志库）
+find_package(spdlog CONFIG QUIET)
+if(NOT spdlog_FOUND)
+    message(STATUS "spdlog not found via find_package, fetching via FetchContent...")
+    FetchContent_Declare(
+        spdlog
+        GIT_REPOSITORY https://github.com/gabime/spdlog.git
+        GIT_TAG        v1.12.0
+    )
+    FetchContent_MakeAvailable(spdlog)
+endif()
+
+# nlohmann-json（header-only JSON 库）
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found via find_package, fetching via FetchContent...")
+    FetchContent_Declare(
+        nlohmann_json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.11.3
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
+# Lua（脚本引擎）
+find_package(Lua QUIET)
+if(NOT LUA_FOUND)
+    message(STATUS "Lua not found via find_package, fetching via FetchContent...")
+    FetchContent_Declare(
+        lua
+        GIT_REPOSITORY https://github.com/walterschell/Lua.git
+        GIT_TAG        v5.4.6
+    )
+    FetchContent_MakeAvailable(lua)
+    set(LUA_INCLUDE_DIR "${lua_SOURCE_DIR}/include")
+    set(LUA_LIBRARIES lua_static)
+endif()
 
 # 第三方库源文件 (QCustomPlot)
 set(THIRD_PARTY_SOURCES
@@ -174,7 +213,6 @@ set(UI_SOURCES
     src/ui/widgets/SerialSettingsWidget.cpp
     src/ui/widgets/NetworkSettingsWidget.cpp
     src/ui/widgets/SendWidget.cpp
-    src/ui/widgets/ReceiveWidget.cpp
     src/ui/widgets/TabbedReceiveWidget.cpp
     src/ui/widgets/DataStatistics.cpp
     src/ui/widgets/QuickSendWidget.cpp
@@ -220,7 +258,6 @@ set(UI_HEADERS
     src/ui/widgets/SerialSettingsWidget.h
     src/ui/widgets/NetworkSettingsWidget.h
     src/ui/widgets/SendWidget.h
-    src/ui/widgets/ReceiveWidget.h
     src/ui/widgets/TabbedReceiveWidget.h
     src/ui/widgets/DataStatistics.h
     src/ui/widgets/QuickSendWidget.h
@@ -291,14 +328,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # 链接库
 target_link_libraries(${PROJECT_NAME} PRIVATE
-    Qt6::Core
-    Qt6::Gui
-    Qt6::Widgets
-    Qt6::SerialPort
-    Qt6::Network
-    Qt6::OpenGL
-    Qt6::OpenGLWidgets
-    Qt6::PrintSupport
+    Qt5::Core
+    Qt5::Gui
+    Qt5::Widgets
+    Qt5::SerialPort
+    Qt5::Network
+    Qt5::OpenGL
+    Qt5::PrintSupport
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     ${LUA_LIBRARIES}
@@ -312,21 +348,13 @@ if(WIN32)
     )
 endif()
 
-# 编译翻译文件 (.ts -> .qm)
-qt_add_translations(${PROJECT_NAME}
-    TS_FILES ${TS_FILES}
-    QM_FILES_OUTPUT_VARIABLE QM_FILES
-)
-
-# 确保每次构建应用程序前先更新 qm，避免 ts 已变更但运行时仍加载旧翻译
-if(TARGET ${PROJECT_NAME}_lrelease)
-    add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_lrelease)
-endif()
+# 编译翻译文件 (.ts -> .qm) - Qt5 使用 qt5_add_translation
+qt5_add_translation(QM_FILES ${TS_FILES})
 
 # 在中文路径下增量构建时，Qt 自动 lrelease 的时间戳判定可能失效。
 # 这里显式在构建前刷新一次关键翻译，确保运行时语言切换不会读到旧 qm。
 add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
-    COMMAND $<TARGET_FILE:Qt6::lrelease>
+    COMMAND Qt5::lrelease
             ${CMAKE_CURRENT_SOURCE_DIR}/resources/translations/en_US.ts
             -qm ${CMAKE_CURRENT_BINARY_DIR}/en_US.qm
     COMMENT "Refreshing en_US.qm before build..."
@@ -347,12 +375,13 @@ install(TARGETS ${PROJECT_NAME}
 # 复制 Qt DLL (仅 Windows Debug/Release)
 if(WIN32)
     # 获取 Qt bin 目录
-    get_target_property(QT_QMAKE_EXECUTABLE Qt6::qmake IMPORTED_LOCATION)
+    get_target_property(QT_QMAKE_EXECUTABLE Qt5::qmake IMPORTED_LOCATION)
     get_filename_component(QT_BIN_DIR "${QT_QMAKE_EXECUTABLE}" DIRECTORY)
 
     # 部署 Qt 运行时
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${QT_BIN_DIR}/windeployqt.exe
+            --release
             --no-translations
             --no-system-d3d-compiler
             --no-opengl-sw
@@ -365,7 +394,7 @@ endif()
 message(STATUS "=== ComAssistant Configuration ===")
 message(STATUS "Version: ${PROJECT_VERSION}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "Qt Version: ${Qt6_VERSION}")
+message(STATUS "Qt Version: ${Qt5_VERSION}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 
 # 添加测试子目录（可选）

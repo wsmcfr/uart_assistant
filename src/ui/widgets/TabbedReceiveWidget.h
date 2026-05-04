@@ -27,6 +27,8 @@ namespace ComAssistant {
 
 class ReceiveHighlightHighlighter;
 class ReceiveHexModel;
+class TerminalBuffer;
+class AnsiParser;
 
 /**
  * @brief 高亮规则
@@ -124,17 +126,7 @@ private:
     void appendFrameMode(const QByteArray& data);
     void appendDebugMode(const QByteArray& data, bool isSent = false);
 
-    // 终端模式辅助函数
-    void processAnsiEscape(const QByteArray& data);
-    void terminalWrite(const QString& text);
-    void terminalWriteChar(QChar ch);
-    void terminalNewLine();
-    void terminalCarriageReturn();
-    void terminalBackspace();
-    void terminalTab();
-    void terminalClearLine();
-    void terminalSetColor(int colorCode);
-    void terminalResetFormat();
+    // 终端模式显示更新（从 TerminalBuffer 渲染）
     void updateTerminalDisplay();
 
     void appendToMainView(const QByteArray& data);
@@ -214,15 +206,9 @@ private:
     // 显示模式
     ReceiveDisplayMode m_displayMode = ReceiveDisplayMode::Serial;
 
-    // 终端模式状态
-    QStringList m_terminalLines;        ///< 终端行缓冲
-    int m_terminalCursorX = 0;          ///< 光标X位置
-    int m_terminalCursorY = 0;          ///< 光标Y位置
-    QByteArray m_ansiBuffer;            ///< ANSI转义序列缓冲
-    bool m_inAnsiEscape = false;        ///< 是否在ANSI转义序列中
-    QColor m_terminalFgColor;           ///< 当前前景色
-    QColor m_terminalBgColor;           ///< 当前背景色
-    bool m_terminalBold = false;        ///< 粗体
+    // 终端模式状态（使用 TerminalBuffer + AnsiParser 统一管理）
+    TerminalBuffer* m_terminalBuffer = nullptr;  ///< 终端缓冲区
+    AnsiParser* m_ansiParser = nullptr;          ///< ANSI 解析器
 
     // 帧模式状态
     int m_frameCounter = 0;             ///< 帧计数器

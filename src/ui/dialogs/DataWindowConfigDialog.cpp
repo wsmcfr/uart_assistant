@@ -180,7 +180,7 @@ void DataWindowConfigDialog::onMoveUpClicked()
 {
     int row = m_ruleTable->currentRow();
     if (row > 0 && row < m_rules.size()) {
-        m_rules.swapItemsAt(row, row - 1);
+        m_rules.insert(row - 1, m_rules.takeAt(row));
         updateRuleTable();
         m_ruleTable->selectRow(row - 1);
     }
@@ -190,7 +190,7 @@ void DataWindowConfigDialog::onMoveDownClicked()
 {
     int row = m_ruleTable->currentRow();
     if (row >= 0 && row < m_rules.size() - 1) {
-        m_rules.swapItemsAt(row, row + 1);
+        m_rules.insert(row, m_rules.takeAt(row + 1));
         updateRuleTable();
         m_ruleTable->selectRow(row + 1);
     }

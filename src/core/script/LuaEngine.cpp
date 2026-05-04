@@ -103,7 +103,7 @@ bool LuaEngine::executeFile(const QString& filePath)
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
     QString script = stream.readAll();
     file.close();
 

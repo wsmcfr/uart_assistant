@@ -531,7 +531,7 @@ bool DataTableWidget::exportToCsv(const QString& filename)
     }
 
     QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
+    stream.setCodec("UTF-8");
 
     // 写入BOM以便Excel正确识别UTF-8
     stream << "\xEF\xBB\xBF";

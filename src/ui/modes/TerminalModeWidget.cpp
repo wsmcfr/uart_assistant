@@ -944,9 +944,86 @@ void TerminalModeWidget::setupUi()
     // 连接显示组件的按键信号
     connect(m_display, &VT100Display::keyPressed, this, &TerminalModeWidget::onKeyPressed);
 
-    // 创建隐藏的命令输入组件（用于历史记录和Tab补全逻辑）
+    // 底部命令输入栏 - 可见，方便用户直接输入发送
+    QWidget* inputBar = new QWidget;
+    inputBar->setStyleSheet(R"(
+        QWidget {
+            background-color: #1e1e1e;
+            border-top: 1px solid #333333;
+        }
+    )");
+    QHBoxLayout* inputLayout = new QHBoxLayout(inputBar);
+    inputLayout->setContentsMargins(4, 2, 4, 2);
+    inputLayout->setSpacing(4);
+
+    // 命令提示符标签
+    QLabel* promptLabel = new QLabel(">>>");
+    promptLabel->setStyleSheet("color: #00cc00; font-family: Consolas, monospace; font-size: 12pt; font-weight: bold;");
+
+    // 命令输入框
     m_commandLine = new CommandLineEdit;
-    m_commandLine->hide();
+    m_commandLine->setStyleSheet(R"(
+        QLineEdit {
+            background-color: #2d2d2d;
+            color: #cccccc;
+            border: 1px solid #444444;
+            border-radius: 3px;
+            padding: 3px 6px;
+            font-family: Consolas, monospace;
+            font-size: 12pt;
+        }
+        QLineEdit:focus {
+            border-color: #006600;
+        }
+    )");
+    m_commandLine->setPlaceholderText(tr("输入命令..."));
+
+    // 发送按钮
+    QPushButton* sendBtn = new QPushButton(tr("发送"));
+    sendBtn->setStyleSheet(R"(
+        QPushButton {
+            background-color: #006600;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            padding: 4px 16px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #008800;
+        }
+        QPushButton:pressed {
+            background-color: #004400;
+        }
+        QPushButton:disabled {
+            background-color: #444444;
+            color: #888888;
+        }
+    )");
+
+    inputLayout->addWidget(promptLabel);
+    inputLayout->addWidget(m_commandLine, 1);
+    inputLayout->addWidget(sendBtn);
+
+    mainLayout->addWidget(inputBar);
+
+    // 连接发送逻辑
+    connect(m_commandLine, &QLineEdit::returnPressed, this, [this]() {
+        sendCommand(m_commandLine->text());
+        m_commandLine->clear();
+    });
+    connect(sendBtn, &QPushButton::clicked, this, [this]() {
+        sendCommand(m_commandLine->text());
+        m_commandLine->clear();
+    });
+    connect(m_commandLine, &CommandLineEdit::tabPressed, this, &TerminalModeWidget::onTabPressed);
+
+    // 保存发送按钮引用，用于连接状态更新
+    m_sendBtn = sendBtn;
+
+    // 初始禁用（未连接时）
+    m_commandLine->setEnabled(m_connected);
+    m_sendBtn->setEnabled(m_connected);
 }
 
 void TerminalModeWidget::setupToolBar()
@@ -1114,6 +1191,18 @@ void TerminalModeWidget::appendSentData(const QByteArray& data)
 {
     if (m_display->localEcho()) {
         m_ansiParser->process(data);
+    }
+}
+
+void TerminalModeWidget::setConnected(bool connected)
+{
+    IModeWidget::setConnected(connected);
+    // 更新命令输入栏的启用状态
+    if (m_commandLine) {
+        m_commandLine->setEnabled(connected);
+    }
+    if (m_sendBtn) {
+        m_sendBtn->setEnabled(connected);
     }
 }
 
@@ -1359,7 +1448,7 @@ void TerminalModeWidget::onEditCommands()
     if (ok) {
         // 解析新的命令列表
         m_commands.clear();
-        QStringList lines = newCommands.split('\n', Qt::SkipEmptyParts);
+        QStringList lines = newCommands.split('\n', QString::SkipEmptyParts);
         for (const QString& line : lines) {
             QString trimmed = line.trimmed();
             if (!trimmed.isEmpty()) {

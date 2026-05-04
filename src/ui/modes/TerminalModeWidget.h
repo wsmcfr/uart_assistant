@@ -191,6 +191,7 @@ public:
     void onActivated() override;
     void onDeactivated() override;
     QWidget* modeToolBar() override { return m_toolBar; }
+    void setConnected(bool connected) override;
 
     // 终端设置
     void setLocalEcho(bool enabled);

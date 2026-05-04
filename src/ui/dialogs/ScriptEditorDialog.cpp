@@ -245,7 +245,7 @@ void ScriptEditorDialog::onOpenScript()
     QFile file(filePath);
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream stream(&file);
-        stream.setEncoding(QStringConverter::Utf8);
+        stream.setCodec("UTF-8");
         m_codeEditor->setPlainText(stream.readAll());
         file.close();
 
@@ -268,7 +268,7 @@ void ScriptEditorDialog::onSaveScript()
     QFile file(m_currentFilePath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream stream(&file);
-        stream.setEncoding(QStringConverter::Utf8);
+        stream.setCodec("UTF-8");
         stream << m_codeEditor->toPlainText();
         file.close();
 
@@ -340,7 +340,7 @@ void ScriptEditorDialog::onScriptDoubleClicked(QListWidgetItem* item)
     QFile file(filePath);
     if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QTextStream stream(&file);
-        stream.setEncoding(QStringConverter::Utf8);
+        stream.setCodec("UTF-8");
         m_codeEditor->setPlainText(stream.readAll());
         file.close();
 
@@ -450,7 +450,7 @@ void ScriptEditorDialog::executeSimpleScript(const QString& script)
         if (match.hasMatch()) {
             QString hexStr = match.captured(1);
             QByteArray data;
-            QStringList hexParts = hexStr.split(QRegularExpression("[\\s,]+"), Qt::SkipEmptyParts);
+            QStringList hexParts = hexStr.split(QRegularExpression("[\\s,]+"), QString::SkipEmptyParts);
             for (const QString& hex : hexParts) {
                 bool ok;
                 int value = hex.toInt(&ok, 16);
