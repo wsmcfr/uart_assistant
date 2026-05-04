@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.1.3
+    VERSION 1.2.0
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
