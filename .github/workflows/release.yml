@@ -29,7 +29,6 @@ jobs:
         with:
           version: "5.12.9"
           arch: "win64_msvc2017_64"
-          modules: "qtserialport"
 
       - name: Configure
         shell: pwsh
