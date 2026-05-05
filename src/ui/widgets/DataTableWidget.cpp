@@ -204,13 +204,15 @@ void DataTableWidget::addReceivedData(const QByteArray& data,
     record.timestamp = QDateTime::currentDateTime();
     record.direction = "RX";
     record.rawData = data;
-    record.hexString = formatHexString(data);
-    record.asciiString = formatAsciiString(data);
     record.parsedValues = parsedValues;
     record.protocol = protocol;
 
     QMutexLocker locker(&m_mutex);
     m_pendingRecords.append(record);
+    if (m_pendingRecords.size() > m_maxRecords) {
+        m_pendingRecords.erase(m_pendingRecords.begin(),
+                               m_pendingRecords.begin() + (m_pendingRecords.size() - m_maxRecords));
+    }
 }
 
 void DataTableWidget::addSentData(const QByteArray& data, const QString& protocol)
@@ -224,12 +226,14 @@ void DataTableWidget::addSentData(const QByteArray& data, const QString& protoco
     record.timestamp = QDateTime::currentDateTime();
     record.direction = "TX";
     record.rawData = data;
-    record.hexString = formatHexString(data);
-    record.asciiString = formatAsciiString(data);
     record.protocol = protocol;
 
     QMutexLocker locker(&m_mutex);
     m_pendingRecords.append(record);
+    if (m_pendingRecords.size() > m_maxRecords) {
+        m_pendingRecords.erase(m_pendingRecords.begin(),
+                               m_pendingRecords.begin() + (m_pendingRecords.size() - m_maxRecords));
+    }
 }
 
 void DataTableWidget::updateDisplay()
@@ -306,10 +310,10 @@ void DataTableWidget::addRecords(const QVector<TableDataRecord>& records)
         items.append(dirItem);
 
         // HEX
-        items.append(new QStandardItem(record.hexString));
+        items.append(new QStandardItem(formatHexString(record.rawData)));
 
         // ASCII
-        items.append(new QStandardItem(record.asciiString));
+        items.append(new QStandardItem(formatAsciiString(record.rawData)));
 
         // 解析数值
         items.append(new QStandardItem(formatParsedValues(record.parsedValues)));

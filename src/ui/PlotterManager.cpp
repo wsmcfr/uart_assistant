@@ -48,6 +48,7 @@ PlotterWindow* PlotterManager::createWindow(const QString& windowId, const QStri
 
     // 创建新窗口
     PlotterWindow* window = new PlotterWindow(windowId);
+    window->setAttribute(Qt::WA_DeleteOnClose, true);
 
     // 设置标题
     if (!title.isEmpty()) {
@@ -75,7 +76,6 @@ void PlotterManager::closeWindow(const QString& windowId)
     if (m_windows.contains(windowId)) {
         PlotterWindow* window = m_windows.take(windowId);
         window->close();
-        window->deleteLater();
         LOG_INFO(QString("Closed plot window: %1").arg(windowId));
         emit windowClosed(windowId);
     }

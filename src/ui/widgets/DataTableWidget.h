@@ -33,8 +33,6 @@ struct TableDataRecord {
     QDateTime timestamp;              ///< 时间戳
     QString direction;                ///< 方向（TX/RX）
     QByteArray rawData;               ///< 原始数据
-    QString hexString;                ///< HEX格式字符串
-    QString asciiString;              ///< ASCII格式字符串
     QVector<double> parsedValues;     ///< 解析出的数值
     QString protocol;                 ///< 协议类型
     QString description;              ///< 描述/备注
@@ -226,7 +224,7 @@ private:
     QMutex m_mutex;
 
     // 配置
-    int m_maxRecords = 10000;
+    int m_maxRecords = 3000;          ///< 默认保留 3000 条，控制高频抓包下的表格常驻内存
     int m_recordIndex = 0;
     bool m_autoScroll = true;
     bool m_paused = false;

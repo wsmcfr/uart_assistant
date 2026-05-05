@@ -10,7 +10,7 @@ set(CMAKE_AUTOMOC ON)
 # 查找 Qt5 Test 模块
 # 主工程固定使用 Qt 5.12.9，测试工程必须复用同一套 Qt 版本，避免
 # 在启用 BUILD_TESTS 后同时链接 Qt5/Qt6 导致配置失败或运行时 DLL 混用。
-find_package(Qt5 REQUIRED COMPONENTS Test Core Gui Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Test Core Gui Widgets OpenGL PrintSupport Network SerialPort)
 
 # 测试源文件
 set(TEST_SOURCES
@@ -21,7 +21,10 @@ set(TEST_SOURCES
     unit/TestAnsiParser.cpp
     unit/TestFFTUtils.cpp
     unit/TestFilterUtils.cpp
+    unit/TestDisplaySettingsPolicy.cpp
     unit/TestPlotRenderQuality.cpp
+    unit/TestPlotterManagerLifecycle.cpp
+    unit/TestTabbedReceiveWidget.cpp
     unit/TestTerminalModeWidget.cpp
     unit/TestTranslationCompleteness.cpp
 )
@@ -37,7 +40,12 @@ add_executable(ComAssistant_tests
 target_include_directories(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${spdlog_SOURCE_DIR}/include
+    ${nlohmann_json_SOURCE_DIR}/include
+    ${LUA_INCLUDE_DIR}
 )
 
 target_compile_definitions(ComAssistant_tests PRIVATE
@@ -50,19 +58,44 @@ target_link_libraries(ComAssistant_tests PRIVATE
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
+    Qt5::OpenGL
+    Qt5::PrintSupport
+    Qt5::Network
+    Qt5::SerialPort
+    spdlog::spdlog
+    nlohmann_json::nlohmann_json
 )
+
+if(WIN32)
+    target_link_libraries(ComAssistant_tests PRIVATE
+        opengl32
+        psapi
+    )
+endif()
 
 # 添加被测试的源文件（工具类）
 target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/ChecksumUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/ConversionUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/EncodingUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/DisplaySettingsPolicy.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/SpectrumWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/RealTimeFFTWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/FFTSettingsDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/PlotControlPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/WaterfallWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/third_party/qcustomplot/qcustomplot.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/AnsiParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
 )
 
 # 注册测试

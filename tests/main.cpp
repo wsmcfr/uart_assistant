@@ -16,7 +16,10 @@
 #include "unit/TestAnsiParser.h"
 #include "unit/TestFFTUtils.h"
 #include "unit/TestFilterUtils.h"
+#include "unit/TestDisplaySettingsPolicy.h"
 #include "unit/TestPlotRenderQuality.h"
+#include "unit/TestPlotterManagerLifecycle.h"
+#include "unit/TestTabbedReceiveWidget.h"
 #include "unit/TestTerminalModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
 
@@ -81,8 +84,23 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] DisplaySettingsPolicy";
+        TestDisplaySettingsPolicy test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] PlotRenderQuality";
         TestPlotRenderQuality test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterManagerLifecycle";
+        TestPlotterManagerLifecycle test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] TabbedReceiveWidget";
+        TestTabbedReceiveWidget test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

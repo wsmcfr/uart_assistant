@@ -18,6 +18,7 @@
 #include <QMessageBox>
 #include <QClipboard>
 #include <QApplication>
+#include <QPalette>
 
 namespace ComAssistant {
 
@@ -47,6 +48,8 @@ void ToolboxDialog::setupUi()
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     buttonLayout->addWidget(closeBtn);
     mainLayout->addLayout(buttonLayout);
+
+    applyThemeAwareStyles();
 }
 
 void ToolboxDialog::setupChecksumTab()
@@ -108,7 +111,7 @@ void ToolboxDialog::setupChecksumTab()
 
     m_checksumResult = new QLabel;
     m_checksumResult->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_checksumResult->setStyleSheet("QLabel { font-size: 14px; font-family: Consolas; padding: 10px; background: #f0f0f0; }");
+    m_checksumResult->setWordWrap(true);
     m_checksumResult->setMinimumHeight(60);
     resultLayout->addWidget(m_checksumResult);
 
@@ -569,6 +572,42 @@ void ToolboxDialog::onConvertUrl()
 void ToolboxDialog::onConvertEscape()
 {
     // 由lambda处理
+}
+
+void ToolboxDialog::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::StyleChange) {
+        applyThemeAwareStyles();
+    }
+    QDialog::changeEvent(event);
+}
+
+void ToolboxDialog::applyThemeAwareStyles()
+{
+    if (!m_checksumResult) {
+        return;
+    }
+
+    /*
+     * 工具箱结果区之前写死了浅色背景，在深色主题下会出现刺眼的白块。
+     * 这里改为跟随当前调色板，用主题色自动适配亮色/暗色模式。
+     */
+    const QColor baseColor = palette().color(QPalette::Base);
+    const QColor textColor = palette().color(QPalette::Text);
+    const QColor borderColor = palette().color(QPalette::Mid);
+    const QColor resultBg = baseColor.lighter(baseColor.lightness() < 128 ? 112 : 102);
+
+    m_checksumResult->setStyleSheet(QString(
+        "QLabel {"
+        " font-size: 14px;"
+        " font-family: Consolas;"
+        " padding: 10px;"
+        " border: 1px solid %1;"
+        " border-radius: 4px;"
+        " background: %2;"
+        " color: %3;"
+        "}")
+        .arg(borderColor.name(), resultBg.name(), textColor.name()));
 }
 
 } // namespace ComAssistant

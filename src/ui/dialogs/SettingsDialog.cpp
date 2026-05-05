@@ -7,6 +7,7 @@
 
 #include "SettingsDialog.h"
 #include "core/config/ConfigManager.h"
+#include "core/config/DisplaySettingsPolicy.h"
 #include "core/session/SessionManager.h"
 
 #include <QVBoxLayout>
@@ -196,9 +197,9 @@ void SettingsDialog::setupDisplayTab()
     m_displayLayout->addRow(tr("最大行数:"), m_maxLinesSpin);
 
     m_hexBufferSpin = new QSpinBox;
-    m_hexBufferSpin->setRange(1, 512);
+    m_hexBufferSpin->setRange(1, kMaxRecommendedHexBufferMb);
     m_hexBufferSpin->setSingleStep(1);
-    m_hexBufferSpin->setValue(8);
+    m_hexBufferSpin->setValue(kDefaultHexBufferMb);
     m_hexBufferSpin->setSuffix(tr(" MB"));
     m_displayLayout->addRow(tr("HEX缓冲区:"), m_hexBufferSpin);
 
@@ -293,7 +294,12 @@ void SettingsDialog::loadSettings()
     m_fontCombo->setCurrentFont(QFont(settings.value("Display/Font", "Consolas").toString()));
     m_fontSizeSpin->setValue(settings.value("Display/FontSize", 10).toInt());
     m_maxLinesSpin->setValue(settings.value("Display/MaxLines", 10000).toInt());
-    m_hexBufferSpin->setValue(settings.value("Display/HexBufferMB", 8).toInt());
+    /*
+     * 设置页读取时直接走统一策略：
+     * - 没有历史值时展示新默认 2MB；
+     * - 旧版本遗留的 8MB 默认值在这里也会被一次性迁移掉。
+     */
+    m_hexBufferSpin->setValue(loadHexBufferMbSetting(settings));
     m_showTimestampCheck->setChecked(settings.value("Display/ShowTimestamp", false).toBool());
     m_autoScrollCheck->setChecked(settings.value("Display/AutoScroll", true).toBool());
 
@@ -334,7 +340,7 @@ void SettingsDialog::saveSettings()
     settings.setValue("Display/Font", m_fontCombo->currentFont().family());
     settings.setValue("Display/FontSize", m_fontSizeSpin->value());
     settings.setValue("Display/MaxLines", m_maxLinesSpin->value());
-    settings.setValue("Display/HexBufferMB", m_hexBufferSpin->value());
+    saveHexBufferMbSetting(settings, m_hexBufferSpin->value());
     settings.setValue("Display/ShowTimestamp", m_showTimestampCheck->isChecked());
     settings.setValue("Display/AutoScroll", m_autoScrollCheck->isChecked());
     settings.setValue("Display/Newline", m_newlineCombo->currentData().toString());
@@ -369,7 +375,7 @@ void SettingsDialog::resetToDefaults()
     m_fontCombo->setCurrentFont(QFont("Consolas"));
     m_fontSizeSpin->setValue(10);
     m_maxLinesSpin->setValue(10000);
-    m_hexBufferSpin->setValue(8);
+    m_hexBufferSpin->setValue(kDefaultHexBufferMb);
     m_showTimestampCheck->setChecked(false);
     m_autoScrollCheck->setChecked(true);
     m_newlineCombo->setCurrentIndex(0);

@@ -851,8 +851,30 @@ QCPPaintBufferGlFbo::QCPPaintBufferGlFbo(const QSize &size, double devicePixelRa
 
 QCPPaintBufferGlFbo::~QCPPaintBufferGlFbo()
 {
-  if (mGlFrameBuffer)
+  if (!mGlFrameBuffer)
+    return;
+
+  QSharedPointer<QOpenGLContext> context = mGlContext.toStrongRef();
+  if (context && context->surface())
+  {
+    if (QOpenGLContext::currentContext() != context.data())
+      context->makeCurrent(context->surface());
+    if (mGlFrameBuffer->isBound())
+      mGlFrameBuffer->release();
     delete mGlFrameBuffer;
+    mGlFrameBuffer = 0;
+    /*
+      OpenGL 驱动对资源删除通常是异步提交的。
+      在“关闭 OpenGL/关闭窗口”的低频路径上补一次 glFinish，
+      可以让 FBO 删除更早落地，减少工作集长时间挂在高位。
+    */
+    glFinish();
+    context->doneCurrent();
+    return;
+  }
+
+  delete mGlFrameBuffer;
+  mGlFrameBuffer = 0;
 }
 
 /* inherits documentation from base class */
@@ -937,15 +959,6 @@ void QCPPaintBufferGlFbo::clear(const QColor &color)
 /* inherits documentation from base class */
 void QCPPaintBufferGlFbo::reallocateBuffer()
 {
-  // release and delete possibly existing framebuffer:
-  if (mGlFrameBuffer)
-  {
-    if (mGlFrameBuffer->isBound())
-      mGlFrameBuffer->release();
-    delete mGlFrameBuffer;
-    mGlFrameBuffer = 0;
-  }
-  
   QSharedPointer<QOpenGLPaintDevice> paintDevice = mGlPaintDevice.toStrongRef();
   QSharedPointer<QOpenGLContext> context = mGlContext.toStrongRef();
   if (!paintDevice)
@@ -959,8 +972,20 @@ void QCPPaintBufferGlFbo::reallocateBuffer()
     return;
   }
   
+  if (context->surface())
+    context->makeCurrent(context->surface());
+
+  // release and delete possibly existing framebuffer:
+  if (mGlFrameBuffer)
+  {
+    if (mGlFrameBuffer->isBound())
+      mGlFrameBuffer->release();
+    delete mGlFrameBuffer;
+    mGlFrameBuffer = 0;
+    glFinish();
+  }
+
   // create new fbo with appropriate size:
-  context->makeCurrent(context->surface());
   QOpenGLFramebufferObjectFormat frameBufferFormat;
   frameBufferFormat.setSamples(context->format().samples());
   frameBufferFormat.setAttachment(QOpenGLFramebufferObject::CombinedDepthStencil);
@@ -970,6 +995,7 @@ void QCPPaintBufferGlFbo::reallocateBuffer()
 #ifdef QCP_DEVICEPIXELRATIO_SUPPORTED
   paintDevice->setDevicePixelRatio(mDevicePixelRatio);
 #endif
+  context->doneCurrent();
 }
 #endif // QCP_OPENGL_FBO
 /* end of 'src/paintbuffer.cpp' */
@@ -13694,6 +13720,9 @@ QCustomPlot::QCustomPlot(QWidget *parent) :
 
 QCustomPlot::~QCustomPlot()
 {
+  if (mOpenGl)
+    setOpenGl(false);
+
   clearPlottables();
   clearItems();
 
@@ -14090,10 +14119,17 @@ void QCustomPlot::setOpenGl(bool enabled, int multisampling)
       setAntialiasedElements(mOpenGlAntialiasedElementsBackup);
     if (!mPlottingHints.testFlag(QCP::phCacheLabels))
       setPlottingHint(QCP::phCacheLabels, mOpenGlCacheLabelsBackup);
+    /*
+      关闭 OpenGL 时，必须先销毁依赖当前上下文创建出来的 paint buffers，
+      再释放上下文本身。否则 FBO 析构发生时可能已经拿不到有效上下文，
+      进而让驱动层资源延迟回收，表现为“关掉 OpenGL 了，但内存不下来”。
+    */
+    mPaintBuffers.clear();
     freeOpenGl();
   }
   // recreate all paint buffers:
-  mPaintBuffers.clear();
+  if (enabled)
+    mPaintBuffers.clear();
   setupPaintBuffers();
 #else
   Q_UNUSED(enabled)
@@ -15993,7 +16029,29 @@ bool QCustomPlot::setupOpenGl()
 void QCustomPlot::freeOpenGl()
 {
 #ifdef QCP_OPENGL_FBO
+  if (mGlContext && mGlSurface && QOpenGLContext::currentContext() != mGlContext.data())
+    mGlContext->makeCurrent(mGlSurface.data());
+  /*
+    关闭 OpenGL 时先等待当前上下文里的命令真正完成，
+    再释放 paint device / context / surface，避免驱动延迟回收。
+  */
+  if (mGlContext && mGlSurface)
+    glFinish();
   mGlPaintDevice.clear();
+  if (mGlContext)
+    mGlContext->doneCurrent();
+  /*
+    某些 Windows/Qt 组合下，仅靠 shared pointer 析构释放平台 surface
+    会有轻微延迟。这里显式 destroy，一方面尽快释放原生句柄，
+    另一方面配合后面的工作集收缩，让任务管理器中的内存更及时回落。
+  */
+#ifdef QCP_OPENGL_OFFSCREENSURFACE
+  if (QOffscreenSurface *surface = dynamic_cast<QOffscreenSurface*>(mGlSurface.data()))
+    surface->destroy();
+#else
+  if (QWindow *surface = dynamic_cast<QWindow*>(mGlSurface.data()))
+    surface->destroy();
+#endif
   mGlContext.clear();
   mGlSurface.clear();
 #endif
@@ -35525,5 +35583,3 @@ QVector<QPointF> QCPPolarGraph::dataToLines(const QVector<QCPGraphData> &data) c
   return result;
 }
 /* end of 'src/polar/polargraph.cpp' */
-
-

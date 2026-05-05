@@ -67,6 +67,8 @@ void DataWindow::setupUi()
     m_textEdit->setReadOnly(true);
     m_textEdit->setLineWrapMode(QTextEdit::NoWrap);
     m_textEdit->setFont(QFont("Consolas", 10));
+    m_textEdit->document()->setMaximumBlockCount(m_maxLines);
+    m_textEdit->document()->setUndoRedoEnabled(false);
     m_textEdit->setPlaceholderText(tr("匹配的数据将在这里显示..."));
 
     // 连接滚动条信号实现智能滚屏

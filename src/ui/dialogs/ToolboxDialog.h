@@ -17,6 +17,7 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QSpinBox>
+#include <QEvent>
 
 namespace ComAssistant {
 
@@ -30,6 +31,9 @@ class ToolboxDialog : public QDialog {
 public:
     explicit ToolboxDialog(QWidget* parent = nullptr);
     ~ToolboxDialog() override = default;
+
+protected:
+    void changeEvent(QEvent* event) override;
 
 private slots:
     // 校验和标签页
@@ -52,6 +56,7 @@ private:
     void setupChecksumTab();
     void setupConversionTab();
     void setupEncodingTab();
+    void applyThemeAwareStyles();
 
     QTabWidget* m_tabWidget = nullptr;
 

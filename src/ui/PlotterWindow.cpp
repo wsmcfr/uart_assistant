@@ -15,6 +15,7 @@
 #include "core/utils/Logger.h"
 #include "core/utils/FFTUtils.h"
 #include "core/utils/FilterUtils.h"
+#include "core/utils/MemoryUtils.h"
 
 #include <QToolBar>
 #include <QFileDialog>
@@ -38,10 +39,14 @@
 #include <QRadioButton>
 #include <QColorDialog>
 #include <QApplication>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QEventLoop>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QPixmapCache>
+#include <QScreen>
 #include <QStyle>
 #include <QPalette>
 #include <QLinearGradient>
@@ -231,6 +236,15 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
     , m_legendAction(nullptr)
     , m_openGLAction(nullptr)
 {
+    /*
+     * 绘图窗口的默认后端策略集中由 PlotBackendProfile 决定。
+     * 这里在构造早期就读取配置，保证后续 setupMenuBar/setupPlot
+     * 使用的初始状态一致，避免菜单勾选状态与实际后端不一致。
+     */
+    const PlotBackendProfile backendProfile = makeDefaultPlotBackendProfile();
+    m_openGLEnabled = backendProfile.openGlEnabledByDefault;
+    m_openGlMultisamples = backendProfile.openGlMultisamples;
+
     setObjectName("plotterWindow");
 
     setupUi();
@@ -240,7 +254,18 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
     setupPlot();
 
     setWindowTitle(tr("绘图窗口 - %1").arg(windowId));
-    resize(980, 620);
+    /*
+     * 默认尺寸需要把工具栏、底部当前值区域以及右侧控制面板一并算进去，
+     * 否则首次打开时主图区域虽然在，但整体内容会显得“没有完整展开”。
+     * 这里在常规桌面分辨率下给出更完整的初始尺寸，同时对小屏做上限保护。
+     */
+    QSize initialSize(1520, 900);
+    if (QScreen* screen = QGuiApplication::primaryScreen()) {
+        const QSize available = screen->availableGeometry().size();
+        initialSize.setWidth(qMin(initialSize.width(), qMax(960, available.width() - 80)));
+        initialSize.setHeight(qMin(initialSize.height(), qMax(640, available.height() - 80)));
+    }
+    resize(initialSize);
 
     // 启动更新定时器（默认30fps，具体由渲染质量模式再调整）
     m_updateTimer = new QTimer(this);
@@ -293,6 +318,7 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
     });
     connect(m_controlPanel, &PlotControlPanel::differenceCurveRequested,
             this, &PlotterWindow::onShowDifferenceClicked);
+    m_controlPanel->setOpenGLEnabled(m_openGLEnabled);
     m_controlPanel->updateCurveList();
 
     LOG_INFO(QString("PlotterWindow created: %1").arg(windowId));
@@ -300,6 +326,7 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
 
 PlotterWindow::~PlotterWindow()
 {
+    releasePlotResources();
     if (m_updateTimer) {
         m_updateTimer->stop();
     }
@@ -729,7 +756,23 @@ void PlotterWindow::setupPlot()
     m_plot->setNoAntialiasingOnDrag(false);
     m_plot->setPlottingHints(QCP::phCacheLabels);
 
-    // 默认启用 OpenGL 加速。实际启用前会做上下文能力探测，失败时自动回退软件绘制。
+    /*
+     * QCustomPlot 默认把 overlay 层设为 lmBuffered，这会在软件绘制和 OpenGL 绘制下
+     * 都额外常驻一张与整个绘图区域同尺寸的 paint buffer。当前串口波形窗口里，
+     * overlay 主要承载游标/选择框，刷新频率远低于主曲线本身，因此没必要长期保留
+     * 独立缓冲。改回 lmLogical 后，可以去掉这块几乎常驻空白的全尺寸缓冲内存。
+     */
+    if (QCPLayer* overlayLayer = m_plot->layer(QStringLiteral("overlay"))) {
+        overlayLayer->setMode(QCPLayer::lmLogical);
+    }
+
+    /*
+     * 这里不再默认打开 OpenGL。
+     * 根因是 QCustomPlot 的 OpenGL 模式会为主绘图层和 overlay 缓冲层分配 FBO，
+     * 再叠加多重采样后，新开一个绘图窗口就会出现明显的常驻内存抬升。
+     * 对当前串口波形场景，默认软件绘制即可维持现有画质；用户若需要，
+     * 仍可在菜单中手动开启 OpenGL。
+     */
     if (m_openGLEnabled) {
         trySetOpenGLEnabled(true);
     }
@@ -1244,19 +1287,56 @@ void PlotterWindow::clearCurve(int curveIndex)
 
 void PlotterWindow::clearAll()
 {
-    for (int i = 0; i < m_plot->graphCount(); ++i) {
-        m_plot->graph(i)->data()->clear();
+    clearAll(true);
+}
+
+void PlotterWindow::clearAll(bool releaseCapacity)
+{
+    if (!m_plot) {
+        return;
     }
+
+    /*
+     * 普通 clear() 往往只把 size 清成 0，但历史 capacity 还在。
+     * 在“停止绘图/清空数据”场景下，用户预期看到的是内存随数据真正回落，
+     * 因此这里允许按需直接替换成全新的空容器，把历史容量一起释放掉。
+     */
+    for (int i = 0; i < m_plot->graphCount(); ++i) {
+        if (QCPGraph* graph = m_plot->graph(i)) {
+            if (releaseCapacity) {
+                graph->setData(QSharedPointer<QCPGraphDataContainer>(new QCPGraphDataContainer));
+            } else {
+                graph->data()->clear();
+            }
+        }
+    }
+
+    if (m_xyCurve) {
+        if (releaseCapacity) {
+            m_xyCurve->setData(QSharedPointer<QCPCurveDataContainer>(new QCPCurveDataContainer));
+        } else {
+            m_xyCurve->data()->clear();
+        }
+    }
+
+    if (m_histogramBars) {
+        if (releaseCapacity) {
+            m_histogramBars->setData(QSharedPointer<QCPBarsDataContainer>(new QCPBarsDataContainer));
+        } else {
+            m_histogramBars->data()->clear();
+        }
+    }
+
+    resetTransientPlotState(releaseCapacity);
+
     m_dataIndex = 0;
     m_needReplot = true;
     m_totalDataPoints = 0;
     m_cachedRefGraph = nullptr;
     m_cachedTotalPoints = 0;
-
-    // 重置所有实时滤波状态
-    for (auto& filterInfo : m_realTimeFilters) {
-        FilterUtils::resetState(filterInfo.state);
-    }
+    m_lastDataTime = 0;
+    m_dataCountForRate = 0;
+    m_calculatedSampleRate = 0;
 
     m_perfWindowStartMs = 0;
     m_perfFrameCount = 0;
@@ -1265,7 +1345,10 @@ void PlotterWindow::clearAll()
         m_perfDiagLabel->setText(tr("性能: 等待数据..."));
     }
 
-    LOG_INFO(QString("Cleared all data in window '%1'").arg(m_windowId));
+    trimProcessMemoryIfPossible();
+    LOG_INFO(QString("Cleared all data in window '%1' (releaseCapacity=%2)")
+        .arg(m_windowId)
+        .arg(releaseCapacity ? "true" : "false"));
 }
 
 void PlotterWindow::setXAxisRange(double min, double max)
@@ -1395,8 +1478,61 @@ bool PlotterWindow::exportData(const QString& filename)
 
 void PlotterWindow::closeEvent(QCloseEvent* event)
 {
+    /*
+     * 用户关闭绘图窗口时，必须让旧窗口对象真正进入销毁流程，
+     * 否则高频曲线数据、QCustomPlot 缓冲和可能存在的 OpenGL 资源会继续驻留。
+     *
+     * 这里先主动释放一次主要绘图资源，再允许 Qt 继续关闭并删除窗口对象。
+     * 后续如果同一 windowId 又收到绘图数据，PlotterManager 会创建一个全新的窗口实例。
+     */
+    releasePlotResources();
     emit windowClosed(m_windowId);
     event->accept();
+}
+
+void PlotterWindow::releasePlotResources()
+{
+    if (m_resourcesReleased) {
+        return;
+    }
+    m_resourcesReleased = true;
+
+    if (m_updateTimer) {
+        m_updateTimer->stop();
+    }
+
+    /*
+     * 实时 FFT 子窗口虽然有 WA_DeleteOnClose，但如果主绘图窗口被关掉时这些子窗口
+     * 还活着，它们仍会保留各自的数据副本。这里统一关闭并清理引用，避免父窗口
+     * 已经关闭后，这些分析窗口继续把历史曲线数据留在内存中。
+     */
+    for (auto& conn : m_realTimeFFTWindows) {
+        if (conn.window) {
+            conn.window->close();
+            conn.window->deleteLater();
+            conn.window = nullptr;
+        }
+    }
+    m_realTimeFFTWindows.clear();
+
+    /*
+     * 仅调用 clear() 不一定会把 QCPDataContainer 的容量立刻缩回去，
+     * 所以这里额外替换成全新的空容器，确保历史点缓存随窗口关闭一起释放。
+     */
+    if (m_plot) {
+        clearAll(true);
+
+        /*
+         * 若当前启用了 OpenGL，先在窗口销毁前显式切回软件绘制。
+         * 这样 QCustomPlot 的 OpenGL 缓冲/FBO 会在仍持有有效 widget 生命周期时释放，
+         * 避免资源完全拖到进程稍后某个时刻才被驱动回收。
+         */
+        if (m_plot->openGl()) {
+            m_plot->setOpenGl(false);
+        }
+    }
+
+    trimProcessMemoryIfPossible();
 }
 
 void PlotterWindow::onPauseToggled()
@@ -1707,7 +1843,10 @@ void PlotterWindow::setOpenGLEnabled(bool enabled)
         m_openGLAction->setChecked(actualEnabled);
         m_openGLAction->setEnabled(m_openGLAvailable || !enabled);
     }
-
+    if (m_controlPanel) {
+        m_controlPanel->setOpenGLEnabled(actualEnabled);
+    }
+    m_openGLEnabled = actualEnabled;
     applyRenderQualityMode();
     LOG_INFO(QString("OpenGL %1 for window '%2'")
         .arg(actualEnabled ? "enabled" : "disabled")
@@ -1730,6 +1869,7 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
         m_plot->setOpenGl(false);
         m_openGLEnabled = false;
         m_openGLAvailable = true;
+        trimProcessMemoryIfPossible();
         return false;
     }
 
@@ -1744,7 +1884,11 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
         return false;
     }
 
-    m_plot->setOpenGl(true);
+    /*
+     * 显式指定 multisampling，避免直接使用 QCustomPlot 的 16x 默认值。
+     * 16x 对窗口类实时波形来说内存放大量过高，而 4x 仍可保持平滑边缘质量。
+     */
+    m_plot->setOpenGl(true, effectiveOpenGlMultisamples());
     if (!m_plot->openGl()) {
         m_plot->setOpenGl(false);
         m_openGLEnabled = false;
@@ -1763,6 +1907,140 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
     m_openGLAvailable = false;
     return false;
 #endif
+}
+
+void PlotterWindow::resetTransientPlotState(bool releaseCapacity)
+{
+    /*
+     * 这里集中重置“附属缓存/状态容器”，避免只清主曲线后，
+     * 触发缓存、实时滤波缓冲、最新值缓存等仍握着历史 capacity。
+     */
+    m_latestValues.clear();
+    if (releaseCapacity) {
+        m_latestValues.squeeze();
+    }
+
+    m_lastValueCount = 0;
+    m_valueLabels.clear();
+    if (releaseCapacity) {
+        m_valueLabels.squeeze();
+    }
+
+    m_diffCurves.clear();
+    if (releaseCapacity) {
+        m_diffCurves.squeeze();
+    }
+
+    m_staticCurves.clear();
+    m_rightAxisCurves.clear();
+
+    for (auto& filterInfo : m_realTimeFilters) {
+        FilterUtils::resetState(filterInfo.state);
+        if (releaseCapacity) {
+            filterInfo.state.buffer.squeeze();
+        }
+    }
+    m_realTimeFilters.clear();
+    if (releaseCapacity) {
+        m_realTimeFilters.squeeze();
+    }
+
+    for (auto& triggerBuffer : m_preTriggerBuffer) {
+        triggerBuffer.clear();
+        if (releaseCapacity) {
+            triggerBuffer.squeeze();
+        }
+    }
+    if (releaseCapacity) {
+        m_preTriggerBuffer.clear();
+        m_preTriggerBuffer.squeeze();
+    }
+
+    m_dataMarkers.clear();
+    if (releaseCapacity) {
+        m_dataMarkers.squeeze();
+    }
+
+    m_peakMarkers.clear();
+    if (releaseCapacity) {
+        m_peakMarkers.squeeze();
+    }
+
+    m_peakLabels.clear();
+    if (releaseCapacity) {
+        m_peakLabels.squeeze();
+    }
+
+    m_tracers.clear();
+    if (releaseCapacity) {
+        m_tracers.squeeze();
+    }
+
+    if (releaseCapacity) {
+        m_realTimeFFTWindows.squeeze();
+    }
+}
+
+void PlotterWindow::trimProcessMemoryIfPossible()
+{
+    /*
+     * 先把 Qt 的延迟删除对象和事件队列尽量冲刷掉。
+     * 否则 deleteLater 的对象虽然逻辑上已经“关闭”，
+     * 但真正析构还没发生，后面的工作集回收也就吃不到这部分收益。
+     */
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+
+    /*
+     * 清空 Qt 全局像素图缓存。
+     * 这部分缓存不会影响绘图质量，只是为了减少重复栅格化而保留。
+     * 在关闭 OpenGL / 清空大块绘图资源之后清一次，可以避免缓存把
+     * 之前抬高的工作集一直挂住。
+     */
+    QPixmapCache::clear();
+
+    /*
+     * 只在大块资源明确已经释放之后调用一次。
+     * 这不是“用性能换内存”的持续性操作，而是帮助 Windows
+     * 尽快把已经空出来的页回收到任务管理器可见层面。
+     */
+    MemoryUtils::trimProcessMemory();
+
+    /*
+     * Qt 对象销毁、驱动层资源删除、DeferredDelete 以及显卡命令回收
+     * 不一定都在当前调用栈里完成，所以再补几次延后整理。
+     * 这只发生在“关闭 OpenGL / 清空大块数据 / 关闭窗口”这些低频节点，
+     * 不会影响正常实时绘图吞吐。
+     */
+    if (QCoreApplication* app = QCoreApplication::instance()) {
+        QTimer::singleShot(0, app, []() {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+            QPixmapCache::clear();
+            MemoryUtils::trimProcessMemory();
+        });
+        QTimer::singleShot(250, app, []() {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+            QPixmapCache::clear();
+            MemoryUtils::trimProcessMemory();
+        });
+        QTimer::singleShot(1200, app, []() {
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+            QPixmapCache::clear();
+            MemoryUtils::trimProcessMemory();
+        });
+    }
+}
+
+int PlotterWindow::effectiveOpenGlMultisamples() const
+{
+    /*
+     * 做一层下限保护，防止未来配置被错误写成 0 或负值导致画质回退。
+     * 这里返回值用于“用户主动开启 OpenGL”场景，不影响默认软件绘制路径。
+     */
+    return qMax(1, m_openGlMultisamples);
 }
 
 void PlotterWindow::setRenderQualityMode(RenderQualityMode mode)

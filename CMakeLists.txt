@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.3.2
+    VERSION 1.3.3
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
@@ -108,6 +108,7 @@ set(THIRD_PARTY_HEADERS
 set(CORE_SOURCES
     src/core/utils/Logger.cpp
     src/core/config/ConfigManager.cpp
+    src/core/config/DisplaySettingsPolicy.cpp
     src/core/utils/CrashHandler.cpp
     src/core/utils/AutoSaveManager.cpp
     src/core/utils/FFTUtils.cpp
@@ -115,6 +116,7 @@ set(CORE_SOURCES
     src/core/utils/ChecksumUtils.cpp
     src/core/utils/ConversionUtils.cpp
     src/core/utils/EncodingUtils.cpp
+    src/core/utils/MemoryUtils.cpp
     src/core/script/LuaEngine.cpp
     src/core/theme/ThemeManager.cpp
     src/core/session/SessionSerializer.cpp
@@ -130,6 +132,7 @@ set(CORE_HEADERS
     src/version.h
     src/core/utils/Logger.h
     src/core/config/ConfigManager.h
+    src/core/config/DisplaySettingsPolicy.h
     src/core/config/AppConfig.h
     src/core/utils/CrashHandler.h
     src/core/utils/AutoSaveManager.h
@@ -138,6 +141,7 @@ set(CORE_HEADERS
     src/core/utils/ChecksumUtils.h
     src/core/utils/ConversionUtils.h
     src/core/utils/EncodingUtils.h
+    src/core/utils/MemoryUtils.h
     src/core/script/LuaEngine.h
     src/core/theme/ThemeManager.h
     src/core/session/SessionData.h
@@ -358,6 +362,7 @@ if(WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE
         dbghelp    # 用于崩溃转储
         opengl32   # OpenGL 库
+        psapi      # 工作集回收
     )
 endif()
 

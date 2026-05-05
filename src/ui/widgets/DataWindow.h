@@ -122,6 +122,7 @@ private:
     bool m_smartScrollPaused = false;
     bool m_needTimestamp = true;
     int m_lineCount = 0;
+    int m_maxLines = 5000;           ///< 独立分窗只做辅助观察，限制历史行数避免长时间运行占用过高内存
 };
 
 } // namespace ComAssistant

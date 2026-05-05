@@ -684,11 +684,7 @@ void TabbedReceiveWidget::appendFrameMode(const QByteArray& data)
             .arg(frame.size(), 4)
             .arg(QString::fromUtf8(frame));
 
-        m_mainTextEdit->moveCursor(QTextCursor::End);
         queueMainText(frameText);
-
-        m_lineHistory.append(frameText);
-        trimLineHistory();
     }
 
     scheduleReceiveFlush();
@@ -745,9 +741,6 @@ void TabbedReceiveWidget::appendDebugMode(const QByteArray& data, bool isSent)
 
         Q_UNUSED(style);
         queueMainText(prefix + text + "\n");
-
-        m_lineHistory.append(prefix + text);
-        trimLineHistory();
 
         // 更新时间戳为下一行
         timestamp = QDateTime::currentDateTime();
@@ -857,13 +850,6 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
 
     if (!text.isEmpty()) {
         queueMainText(text);
-
-        // 记录历史（限长）
-        const QStringList lines = text.split('\n', QString::SkipEmptyParts);
-        if (!lines.isEmpty()) {
-            m_lineHistory.append(lines);
-            trimLineHistory();
-        }
         scheduleReceiveFlush();
     }
 
@@ -928,6 +914,7 @@ void TabbedReceiveWidget::flushPendingReceiveViews()
         m_mainTextEdit->setUpdatesEnabled(false);
         m_mainTextEdit->moveCursor(QTextCursor::End);
         m_mainTextEdit->insertPlainText(text);
+        trimMainTextDocument();
         if (m_autoScrollEnabled && !m_smartScrollPaused) {
             m_mainTextEdit->verticalScrollBar()->setValue(
                 m_mainTextEdit->verticalScrollBar()->maximum());
@@ -956,8 +943,14 @@ void TabbedReceiveWidget::updateFilterView()
         return;
     }
 
+    if (!m_mainTextEdit) {
+        m_filterResult->clear();
+        return;
+    }
+
     QString result;
-    for (const QString& line : m_lineHistory) {
+    const QStringList lines = m_mainTextEdit->toPlainText().split('\n', QString::SkipEmptyParts);
+    for (const QString& line : lines) {
         if (line.contains(filter, Qt::CaseInsensitive)) {
             result += line + "\n";
         }
@@ -1020,7 +1013,6 @@ void TabbedReceiveWidget::clear()
 
     m_rawData.clear();
     m_utf8Buffer.clear();  // 清空 UTF-8 缓冲区
-    m_lineHistory.clear();
     m_needTimestamp = true;  // 重置时间戳状态
 
     m_mainTextEdit->clear();
@@ -1160,10 +1152,16 @@ void TabbedReceiveWidget::setDisplayFont(const QFont& font)
 void TabbedReceiveWidget::setMaxLines(int maxLines)
 {
     m_maxLines = qBound(100, maxLines, 100000);
+    /*
+     * 文本区除了按 block 数限制，还要对长字符串无换行场景加字符总量兜底。
+     * 这里按“平均每行约 120 字符”估算一个保守上限，避免高频 HEX/文本流
+     * 因为长行迟迟不换块而持续膨胀。
+     */
+    m_maxMainTextChars = qMax(64 * 1024, m_maxLines * 120);
     if (m_mainTextEdit && m_mainTextEdit->document()) {
         m_mainTextEdit->document()->setMaximumBlockCount(m_maxLines);
+        trimMainTextDocument();
     }
-    trimLineHistory();
 
     // 更新 TerminalBuffer 的历史行数限制
     if (m_terminalBuffer) {
@@ -1173,7 +1171,7 @@ void TabbedReceiveWidget::setMaxLines(int maxLines)
 
 void TabbedReceiveWidget::setHexBufferBytes(int bytes)
 {
-    const int clampedBytes = qMax(1024 * 1024, qMin(bytes, 512 * 1024 * 1024));
+    const int clampedBytes = qMax(256 * 1024, qMin(bytes, 512 * 1024 * 1024));
     if (m_maxRawDataBytes == clampedBytes) {
         return;
     }
@@ -1352,6 +1350,7 @@ void TabbedReceiveWidget::checkScrollPosition()
 void TabbedReceiveWidget::onHexDisplayToggled(bool checked)
 {
     m_hexDisplayEnabled = checked;
+    flushPendingReceiveViews();
     refreshMainView();
 }
 
@@ -1569,21 +1568,42 @@ void TabbedReceiveWidget::scheduleTerminalDisplayUpdate()
     }
 }
 
-void TabbedReceiveWidget::trimLineHistory()
-{
-    if (m_lineHistory.size() > m_maxLines) {
-        // 使用 erase 前半段，避免 mid() 产生的深拷贝
-        m_lineHistory.erase(m_lineHistory.begin(),
-                            m_lineHistory.begin() + (m_lineHistory.size() - m_maxLines));
-    }
-}
-
 void TabbedReceiveWidget::trimRawDataBuffer()
 {
     if (m_rawData.size() > m_maxRawDataBytes) {
         // 使用 remove 前半段，避免 right() 产生的深拷贝
         m_rawData.remove(0, m_rawData.size() - m_maxRawDataBytes);
     }
+}
+
+void TabbedReceiveWidget::trimMainTextDocument()
+{
+    if (!m_mainTextEdit) {
+        return;
+    }
+
+    QTextDocument* document = m_mainTextEdit->document();
+    if (!document) {
+        return;
+    }
+
+    /*
+     * QPlainTextDocumentLayout 的 maximumBlockCount 对“持续追加但没有换行”的
+     * 场景约束很弱，因为整段文本可能长期只有一个 block。这里直接按字符数
+     * 裁剪文档头部，保证高频长流不会把内存顶上去。
+     */
+    const int charCount = document->characterCount();
+    if (charCount <= m_maxMainTextChars) {
+        return;
+    }
+
+    const int removeChars = charCount - m_maxMainTextChars;
+    QTextCursor cursor(document);
+    cursor.beginEditBlock();
+    cursor.setPosition(0);
+    cursor.setPosition(removeChars, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.endEditBlock();
 }
 
 void TabbedReceiveWidget::updatePerformanceStats()

@@ -168,6 +168,20 @@ QGroupBox* PlotControlPanel::createDisplaySettings()
     layout->setContentsMargins(6, 12, 6, 6);
     layout->setSpacing(2);
 
+    /*
+     * OpenGL 开关放到右侧控制面板里显式展示。
+     * 用户已经明确要求它必须看得见、可手动切换，所以这里不再用“抗锯齿”
+     * 这种容易歧义的文案占位，而是直接绑定真实的 OpenGL 状态。
+     */
+    m_openGLCheck = new QCheckBox(tr("启用 OpenGL"));
+    m_openGLCheck->setChecked(m_plotterWindow ? m_plotterWindow->isOpenGLEnabled() : false);
+    connect(m_openGLCheck, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_plotterWindow) {
+            m_plotterWindow->setOpenGLEnabled(checked);
+        }
+    });
+    layout->addWidget(m_openGLCheck);
+
     m_gridCheck = new QCheckBox(tr("显示网格"));
     m_gridCheck->setChecked(true);
     connect(m_gridCheck, &QCheckBox::toggled, this, &PlotControlPanel::gridVisibleChanged);
@@ -177,10 +191,6 @@ QGroupBox* PlotControlPanel::createDisplaySettings()
     m_legendCheck->setChecked(true);
     connect(m_legendCheck, &QCheckBox::toggled, this, &PlotControlPanel::legendVisibleChanged);
     layout->addWidget(m_legendCheck);
-
-    m_antialiasCheck = new QCheckBox(tr("抗锯齿"));
-    m_antialiasCheck->setChecked(true);
-    layout->addWidget(m_antialiasCheck);
 
     return group;
 }
@@ -270,9 +280,10 @@ void PlotControlPanel::retranslateUi()
     const double yMin = m_yMinSpin ? m_yMinSpin->value() : -10.0;
     const double yMax = m_yMaxSpin ? m_yMaxSpin->value() : 10.0;
     const bool autoScale = m_autoScaleCheck ? m_autoScaleCheck->isChecked() : true;
+    const bool openGlEnabled = m_openGLCheck ? m_openGLCheck->isChecked()
+                                             : (m_plotterWindow ? m_plotterWindow->isOpenGLEnabled() : false);
     const bool showGrid = m_gridCheck ? m_gridCheck->isChecked() : true;
     const bool showLegend = m_legendCheck ? m_legendCheck->isChecked() : true;
-    const bool antialias = m_antialiasCheck ? m_antialiasCheck->isChecked() : true;
     const int maxPoints = m_maxPointsSpin ? m_maxPointsSpin->value() : 5000;
 
     QVector<Qt::CheckState> curveStates;
@@ -311,6 +322,10 @@ void PlotControlPanel::retranslateUi()
         QSignalBlocker blocker(*m_autoScaleCheck);
         m_autoScaleCheck->setChecked(autoScale);
     }
+    if (m_openGLCheck) {
+        QSignalBlocker blocker(*m_openGLCheck);
+        m_openGLCheck->setChecked(openGlEnabled);
+    }
     if (m_gridCheck) {
         QSignalBlocker blocker(*m_gridCheck);
         m_gridCheck->setChecked(showGrid);
@@ -318,10 +333,6 @@ void PlotControlPanel::retranslateUi()
     if (m_legendCheck) {
         QSignalBlocker blocker(*m_legendCheck);
         m_legendCheck->setChecked(showLegend);
-    }
-    if (m_antialiasCheck) {
-        QSignalBlocker blocker(*m_antialiasCheck);
-        m_antialiasCheck->setChecked(antialias);
     }
     if (m_maxPointsSpin) {
         QSignalBlocker blocker(*m_maxPointsSpin);
@@ -362,6 +373,16 @@ void PlotControlPanel::setYRange(double min, double max)
     m_yMaxSpin->setValue(max);
     m_yMinSpin->blockSignals(false);
     m_yMaxSpin->blockSignals(false);
+}
+
+void PlotControlPanel::setOpenGLEnabled(bool enabled)
+{
+    if (!m_openGLCheck) {
+        return;
+    }
+
+    QSignalBlocker blocker(*m_openGLCheck);
+    m_openGLCheck->setChecked(enabled);
 }
 
 } // namespace ComAssistant

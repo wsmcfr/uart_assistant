@@ -85,6 +85,24 @@ void loadTranslation(QApplication& app)
 
 int main(int argc, char *argv[])
 {
+    /*
+     * Windows 上的动态 OpenGL 构建默认可能走 ANGLE（libEGL/libGLESV2）。
+     * 一旦进程第一次启用 OpenGL，这套运行时通常会常驻到进程生命周期结束，
+     * 表现为“OpenGL 关了，但内存基线回不到最初值”。
+     *
+     * 这里优先强制使用 Desktop OpenGL（opengl32.dll），尽量避开 ANGLE 的
+     * 额外常驻占用。若目标机器桌面 OpenGL 能力不足，后续绘图窗口里的
+     * OpenGL 开关仍会按现有逻辑自动失败回退到软件绘制，不影响主程序可用性。
+     *
+     * 同时尊重外部环境变量：如果用户或调试脚本显式设置了 QT_OPENGL，
+     * 就不在这里覆盖，便于后续继续诊断兼容性问题。
+     */
+#ifdef Q_OS_WIN
+    if (qEnvironmentVariableIsEmpty("QT_OPENGL")) {
+        QApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+    }
+#endif
+
     // 高DPI支持
 #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
     QApplication::setHighDpiScaleFactorRoundingPolicy(

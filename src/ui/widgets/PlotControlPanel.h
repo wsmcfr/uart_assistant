@@ -56,6 +56,12 @@ public:
      */
     void setYRange(double min, double max);
 
+    /**
+     * @brief 同步 OpenGL 开关显示状态
+     * @param enabled 是否启用 OpenGL
+     */
+    void setOpenGLEnabled(bool enabled);
+
 signals:
     /**
      * @brief 曲线可见性改变
@@ -128,7 +134,7 @@ private:
     // 显示设置
     QCheckBox* m_gridCheck;
     QCheckBox* m_legendCheck;
-    QCheckBox* m_antialiasCheck;
+    QCheckBox* m_openGLCheck;
 
     // 数据设置
     QSpinBox* m_maxPointsSpin;

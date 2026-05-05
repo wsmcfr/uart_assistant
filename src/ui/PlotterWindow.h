@@ -505,11 +505,26 @@ private:
     bool shouldDecimate();  ///< 检查是否应该抽稀当前数据点
     void applyRenderQualityMode();  ///< 应用渲染质量策略
     bool trySetOpenGLEnabled(bool enabled);  ///< 尝试切换 OpenGL，并在失败时安全回退
+    int effectiveOpenGlMultisamples() const;  ///< 获取当前绘图窗口应使用的 OpenGL 多重采样级别
+    void clearAll(bool releaseCapacity);  ///< 清空数据，并可选择是否同步释放历史容量
+    void resetTransientPlotState(bool releaseCapacity);  ///< 重置附加缓存/视图状态
+    void trimProcessMemoryIfPossible();  ///< 在大块资源释放后请求系统回收空闲工作集
 
 private:
+    /**
+     * @brief 在窗口真正销毁前主动释放绘图相关资源。
+     *
+     * 这里专门服务于“用户关闭绘图窗口后，旧窗口内存必须尽快释放”的场景。
+     * 仅依赖 QObject 树析构还不够，因为高频曲线数据和 OpenGL/FBO 资源都比较大，
+     * 主动提前清空能减少旧窗口和新窗口短时间并存时的内存叠加。
+     */
+    void releasePlotResources();
+
     QString m_windowId;                    ///< 窗口ID
     QCustomPlot* m_plot;                   ///< 绑图控件
     QTimer* m_updateTimer;                 ///< 更新定时器
+    bool m_resourcesReleased = false;      ///< 防止关闭流程和析构流程重复释放同一批资源
+
 
     // 工具栏控件
     QAction* m_pauseAction;
@@ -535,8 +550,9 @@ private:
     bool m_autoScale = true;               ///< 自动缩放
     bool m_paused = false;                 ///< 暂停状态
     bool m_needReplot = false;             ///< 需要重绘标志
-    bool m_openGLEnabled = true;           ///< OpenGL加速（默认开启）
+    bool m_openGLEnabled = false;          ///< OpenGL加速（默认按需开启，避免新窗口常驻大块 FBO）
     bool m_openGLAvailable = true;         ///< 当前环境是否可用 OpenGL
+    int m_openGlMultisamples = 4;          ///< OpenGL 多重采样级别，控制 FBO 抗锯齿与内存占用平衡
     int m_valuePanelUpdateEvery = 2;       ///< 数值面板刷新节流间隔
     RenderQualityMode m_renderQualityMode = RenderQualityMode::HighQuality;  ///< 渲染质量模式
     DecimationRatio m_decimationRatio = DecimationRatio::None;  ///< 数据抽稀比例

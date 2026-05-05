@@ -139,8 +139,8 @@ private:
     void applyHighlight();
     void scheduleHighlightUpdate();
     void scheduleTerminalDisplayUpdate();
-    void trimLineHistory();
     void trimRawDataBuffer();
+    void trimMainTextDocument();                    ///< 以字符数裁剪主文本区，覆盖“长数据无换行”场景
     void updatePerformanceStats();
 
     QString formatTimestamp() const;
@@ -178,7 +178,6 @@ private:
     QByteArray m_utf8Buffer;
     QByteArray m_pendingHexData;              ///< 待批量写入 HEX 表格的数据
     QString m_pendingMainText;                ///< 待批量追加到文本区的内容
-    QStringList m_lineHistory;
     QTimer* m_highlightTimer = nullptr;         ///< 高亮延迟应用定时器
     QTimer* m_terminalRefreshTimer = nullptr;   ///< 终端显示节流刷新定时器
     QTimer* m_receiveFlushTimer = nullptr;      ///< 接收区批量刷新定时器
@@ -190,7 +189,8 @@ private:
     bool m_needTimestamp = true;
     int m_maxLines = 10000;
     int m_terminalMaxLines = 1000;
-    int m_maxRawDataBytes = 8 * 1024 * 1024;    ///< 原始数据缓存上限（8MB）
+    int m_maxRawDataBytes = 2 * 1024 * 1024;    ///< 原始数据缓存上限（默认2MB，避免与文档/HEX模型重复持有过多历史）
+    int m_maxMainTextChars = 2 * 1024 * 1024;   ///< 主文本区最大字符数，覆盖无换行大流场景
     int m_receiveFlushIntervalMs = 16;          ///< 接收区刷新间隔，约 60fps，兼顾流畅度和吞吐
     int m_pendingTextFlushThreshold = 512 * 1024; ///< 待显示文本超过该值时立即刷新，避免突发数据占用过多内存
     int m_pendingHexFlushThreshold = 256 * 1024;  ///< 待显示 HEX 数据超过该值时立即刷新，避免表格延迟过高

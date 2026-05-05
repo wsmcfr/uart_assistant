@@ -18,9 +18,11 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
 
+    void testDefaultBackendProfile();
     void testHighQualityProfile();
     void testHighPerformanceProfile();
     void testModeDifference();
+    void testBackendProfileIndependentFromQualityMode();
 };
 
 #endif // TESTPLOTRENDERQUALITY_H

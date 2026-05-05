@@ -34,6 +34,7 @@
 #include "modes/DebugModeWidget.h"
 #include "utils/Logger.h"
 #include "config/ConfigManager.h"
+#include "config/DisplaySettingsPolicy.h"
 #include "communication/TcpClient.h"
 #include "protocol/ProtocolFactory.h"
 #include "macro/MacroRecorder.h"
@@ -650,8 +651,13 @@ void MainWindow::applyDisplaySettings()
     const QString fontFamily = settings.value("Display/Font", "Consolas").toString();
     const int fontSize = settings.value("Display/FontSize", 10).toInt();
     const int maxLines = settings.value("Display/MaxLines", 10000).toInt();
-    const int hexBufferMb = settings.value("Display/HexBufferMB", 8).toInt();
-    const int hexBufferBytes = qMax(1, qMin(hexBufferMb, 512)) * 1024 * 1024;
+    /*
+     * 运行时读取也走统一策略，确保主界面实际使用的缓冲区大小
+     * 与设置对话框显示的值完全一致，不会出现“界面显示 2MB，
+     * 实际仍按旧 8MB 运行”的分叉。
+     */
+    const int hexBufferMb = loadHexBufferMbSetting(settings);
+    const int hexBufferBytes = hexBufferMb * 1024 * 1024;
     QFont displayFont(fontFamily, fontSize);
 
     if (m_serialModeWidget && m_serialModeWidget->receiveWidget()) {
@@ -2239,6 +2245,11 @@ void MainWindow::onDataTableToggled()
         m_dataTableWidget->setWindowFlags(Qt::Window);
         m_dataTableWidget->setWindowTitle(tr("数据表格视图 - 实时数据监控"));
         m_dataTableWidget->resize(900, 500);
+        /*
+         * 数据表格是辅助分析窗口，不需要像主接收区那样保留超长历史。
+         * 这里沿用组件内部的有界记录策略，避免用户开启表格后把整段抓包
+         * 同时复制到 QVector 和 QStandardItemModel 里。
+         */
     }
 
     m_dataTableWidget->show();

@@ -29,11 +29,28 @@ struct RenderQualityProfile {
 };
 
 /**
+ * @brief 绘图后端默认配置
+ *
+ * 这里单独抽出“绘图后端策略”，是为了让内存优化可以通过纯配置测试覆盖，
+ * 避免逻辑散落在 PlotterWindow 构造流程里难以回归。
+ */
+struct PlotBackendProfile {
+    bool openGlEnabledByDefault = false;   ///< 新绘图窗口默认是否开启 OpenGL
+    int openGlMultisamples = 4;            ///< 手动开启 OpenGL 时使用的多重采样级别
+};
+
+/**
  * @brief 根据模式生成渲染参数
  * @param mode 渲染模式
  * @return 渲染配置
  */
 RenderQualityProfile makeRenderQualityProfile(RenderQualityMode mode);
+
+/**
+ * @brief 获取绘图后端默认策略
+ * @return 绘图后端配置
+ */
+PlotBackendProfile makeDefaultPlotBackendProfile();
 
 } // namespace ComAssistant
 
