@@ -56,6 +56,7 @@
 5. 推送标签：`git push origin vX.Y.Z`
 6. 等待 GitHub Actions 完成发布
 7. 在 Release 页面核对资产可下载性
+8. 在 Release 页面核对正文是否已正确提取本版本 `CHANGELOG.md` 段落，不能保留占位提示
 
 ## CHANGELOG 编写模板（每个版本必填）
 
@@ -80,3 +81,4 @@
 注意：
 - 标题必须是 `## [X.Y.Z] - YYYY-MM-DD` 格式，`X.Y.Z` 需与标签 `vX.Y.Z` 一致。
 - 若未找到对应段落，CI 会在 Release 中提示“未同步 CHANGELOG 说明”。
+- 这不是可接受的最终发布状态；若出现该提示，必须补齐 `CHANGELOG.md` 并手动更新对应 Release 正文。
