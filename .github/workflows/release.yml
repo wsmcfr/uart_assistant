@@ -163,9 +163,9 @@ jobs:
 
           $blockLines = @(
             "<!-- LATEST_RELEASE:START -->"
-            "- 当前最新稳定版：$tag（发布于 $releaseDate）"
-            "- 直链下载：<https://github.com/$repo/releases/download/$tag/$zipName>"
-            "- 校验文件：<https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt>"
+            "- 当前最新稳定版 / Latest Stable: $tag（发布于 $releaseDate / released on $releaseDate）"
+            "- 直链下载 / Direct Download: <https://github.com/$repo/releases/download/$tag/$zipName>"
+            "- 校验文件 / Checksum: <https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt>"
             "<!-- LATEST_RELEASE:END -->"
           )
           $newBlock = $blockLines -join "`n"
@@ -197,10 +197,9 @@ jobs:
           $helpMarkerPattern = '(?s)<!-- LATEST_RELEASE_HELP:START -->.*?<!-- LATEST_RELEASE_HELP:END -->'
           $helpBlockLines = @(
             "<!-- LATEST_RELEASE_HELP:START -->"
-            "<p><strong>当前版本：</strong>$tag（发布于 $releaseDate）<br>"
-            "<strong>Current:</strong> $tag (released on $releaseDate)</p>"
-            "<p><strong>直链下载：</strong><a href='https://github.com/$repo/releases/download/$tag/$zipName'>$zipName</a><br>"
-            "<strong>校验文件：</strong><a href='https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt'>SHA256SUMS.txt</a></p>"
+            "    <p><strong>当前版本 / Current Version:</strong> $tag（发布于 $releaseDate / released on $releaseDate）</p>"
+            "    <p><strong>直链下载 / Direct Download:</strong> <a href=""https://github.com/$repo/releases/download/$tag/$zipName"">$zipName</a><br>"
+            "    <strong>校验文件 / Checksum:</strong> <a href=""https://github.com/$repo/releases/download/$tag/SHA256SUMS.txt"">SHA256SUMS.txt</a></p>"
             "<!-- LATEST_RELEASE_HELP:END -->"
           )
           $newHelpBlock = $helpBlockLines -join "`n"
