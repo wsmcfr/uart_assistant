@@ -17,7 +17,7 @@
 - 所有历史版本：<https://github.com/wsmcfr/uart_assistant/releases>
 
 <!-- LATEST_RELEASE:START -->
-- 当前最新稳定版 / Latest Stable: v1.3.3（发布于 2026-05-06 / released on 2026-05-06）
+- 当前最新稳定版 / Latest Stable: v1.3.3（发布于 2026-05-05 / released on 2026-05-05）
 - 直链下载 / Direct Download: <https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/ComAssistant_v1.3.3_Windows_x64_Portable.zip>
 - 校验文件 / Checksum: <https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/SHA256SUMS.txt>
 <!-- LATEST_RELEASE:END -->
@@ -51,5 +51,6 @@
 详细规则见：
 
 - [发布与版本管理规范](docs/developer-guide/release-management.md)
+
 
 
