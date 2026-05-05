@@ -3,7 +3,7 @@
  * @brief 版本信息定义
  * @author ComAssistant Team
  * @date 2026-01-16
- * @version 1.3.0 Release
+ * @version 1.3.2 Release
  */
 
 #ifndef COMASSISTANT_VERSION_H
@@ -11,12 +11,12 @@
 
 #define APP_NAME "ComAssistant"
 #define APP_NAME_CN "串口调试助手"
-#define APP_VERSION "1.3.0"
+#define APP_VERSION "1.3.2"
 #define APP_VERSION_MAJOR 1
 #define APP_VERSION_MINOR 3
-#define APP_VERSION_PATCH 0
+#define APP_VERSION_PATCH 2
 #define APP_VERSION_BUILD 0
-#define APP_VERSION_STRING "1.3.0.0"
+#define APP_VERSION_STRING "1.3.2.0"
 
 #define APP_ORGANIZATION "ComAssistant"
 #define APP_DOMAIN "comassistant.github.io"

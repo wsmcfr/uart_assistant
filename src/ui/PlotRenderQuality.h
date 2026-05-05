@@ -25,6 +25,7 @@ struct RenderQualityProfile {
     bool useFastPolylines = false;           ///< 启用快速折线渲染
     bool antialiasPlottables = true;         ///< 曲线是否抗锯齿
     bool throttleAutoRangeUpdates = false;   ///< 是否节流Y轴自动范围更新
+    int valuePanelUpdateEvery = 2;            ///< 数值面板每 N 次绘图刷新一次
 };
 
 /**

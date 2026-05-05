@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.3.0
+    VERSION 1.3.2
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
@@ -11,6 +11,12 @@ project(ComAssistant
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+# 单配置生成器默认使用 Release，避免 MinGW/Ninja 未设置 CMAKE_BUILD_TYPE
+# 时，windeployqt 和编译产物配置不一致。
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
 # Qt 自动化工具
 set(CMAKE_AUTOMOC ON)
@@ -80,6 +86,10 @@ if(NOT LUA_FOUND)
         GIT_REPOSITORY https://github.com/walterschell/Lua.git
         GIT_TAG        v5.4.6
     )
+    # 该 Lua CMake 包默认注册 lua-testsuite，但作为依赖下载时测试数据目录名
+    # 会误用主工程版本号，导致 ctest 出现不存在的 lua-<项目版本>-tests。
+    # 主工程只需要 lua_static，因此在引入前关闭第三方测试。
+    set(LUA_ENABLE_TESTING OFF CACHE BOOL "Disable bundled Lua tests" FORCE)
     FetchContent_MakeAvailable(lua)
     set(LUA_INCLUDE_DIR "${lua_SOURCE_DIR}/include")
     set(LUA_LIBRARIES lua_static)
@@ -351,24 +361,30 @@ if(WIN32)
     )
 endif()
 
-# 编译翻译文件 (.ts -> .qm) - Qt5 使用 qt5_add_translation
+# 编译翻译文件 (.ts -> .qm) - Qt5 使用 qt5_add_translation。
 qt5_add_translation(QM_FILES ${TS_FILES})
 
-# 在中文路径下增量构建时，Qt 自动 lrelease 的时间戳判定可能失效。
-# 这里显式在构建前刷新一次关键翻译，确保运行时语言切换不会读到旧 qm。
-add_custom_command(TARGET ${PROJECT_NAME} PRE_BUILD
-    COMMAND Qt5::lrelease
-            ${CMAKE_CURRENT_SOURCE_DIR}/resources/translations/en_US.ts
-            -qm ${CMAKE_CURRENT_BINARY_DIR}/en_US.qm
-    COMMENT "Refreshing en_US.qm before build..."
-)
+# 计算运行时翻译目录。
+# 单配置生成器（MinGW Makefiles/Ninja）默认把 ComAssistant.exe 放在构建根目录；
+# 多配置生成器（Visual Studio/Ninja Multi-Config）默认放在构建根目录下的配置目录。
+# 这里不用 $<TARGET_FILE_DIR:${PROJECT_NAME}>，避免翻译目标和主程序目标形成 CMake 依赖环。
+if(CMAKE_CONFIGURATION_TYPES)
+    set(COMASSISTANT_RUNTIME_TRANSLATION_DIR "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/translations")
+else()
+    set(COMASSISTANT_RUNTIME_TRANSLATION_DIR "${CMAKE_CURRENT_BINARY_DIR}/translations")
+endif()
 
-# 复制翻译文件到输出目录
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${PROJECT_NAME}>/translations"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${QM_FILES} "$<TARGET_FILE_DIR:${PROJECT_NAME}>/translations/"
-    COMMENT "Copying translation files..."
+# 翻译文件必须独立成为构建目标，不能只挂在主程序 PRE_BUILD/POST_BUILD 上。
+# 原因：只修改 .ts 时主程序可能不会重新链接，导致 PRE_BUILD/POST_BUILD 不执行，
+# 运行时仍加载旧的 translations/en_US.qm，语言切换后菜单文本会继续显示中文。
+add_custom_target(${PROJECT_NAME}_translations ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${COMASSISTANT_RUNTIME_TRANSLATION_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${QM_FILES} "${COMASSISTANT_RUNTIME_TRANSLATION_DIR}/"
+    DEPENDS ${QM_FILES}
+    COMMENT "Refreshing and copying translation files..."
+    VERBATIM
 )
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_translations)
 
 # 安装规则
 install(TARGETS ${PROJECT_NAME}
@@ -384,7 +400,8 @@ if(WIN32)
     # 部署 Qt 运行时
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${QT_BIN_DIR}/windeployqt.exe
-            --release
+            $<$<CONFIG:Debug>:--debug>
+            $<$<NOT:$<CONFIG:Debug>>:--release>
             --no-translations
             --no-system-d3d-compiler
             --no-opengl-sw
@@ -400,8 +417,8 @@ message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Qt Version: ${Qt5_VERSION}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 
-# 添加测试子目录（可选）
-option(BUILD_TESTS "Build unit tests" OFF)
+# 添加测试子目录（默认开启，确保配置和基础工具类问题在本地构建阶段暴露）
+option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)

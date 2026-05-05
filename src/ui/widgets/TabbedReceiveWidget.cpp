@@ -27,6 +27,8 @@
 #include <QSyntaxHighlighter>
 #include <QRegularExpression>
 #include <QElapsedTimer>
+#include <QGridLayout>
+#include <QSizePolicy>
 
 namespace ComAssistant {
 
@@ -358,6 +360,10 @@ TabbedReceiveWidget::TabbedReceiveWidget(QWidget* parent)
     m_terminalRefreshTimer->setSingleShot(true);
     connect(m_terminalRefreshTimer, &QTimer::timeout, this, &TabbedReceiveWidget::updateTerminalDisplay);
 
+    m_receiveFlushTimer = new QTimer(this);
+    m_receiveFlushTimer->setSingleShot(true);
+    connect(m_receiveFlushTimer, &QTimer::timeout, this, &TabbedReceiveWidget::flushPendingReceiveViews);
+
     m_perfTimer = new QTimer(this);
     connect(m_perfTimer, &QTimer::timeout, this, &TabbedReceiveWidget::updatePerformanceStats);
     m_perfTimer->start(1000);
@@ -374,12 +380,13 @@ void TabbedReceiveWidget::setupUi()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(0, 0, 0, 0);
-    mainLayout->setSpacing(4);
+    mainLayout->setSpacing(2);
 
-    // 选项栏
-    QHBoxLayout* optionsLayout = new QHBoxLayout;
-    optionsLayout->setContentsMargins(4, 4, 4, 4);
-    optionsLayout->setSpacing(12);
+    // 选项栏：使用栅格布局和弹性性能标签，避免英文翻译较长时把清空按钮挤出窗口。
+    QGridLayout* optionsLayout = new QGridLayout;
+    optionsLayout->setContentsMargins(4, 2, 4, 2);
+    optionsLayout->setHorizontalSpacing(8);
+    optionsLayout->setVerticalSpacing(2);
 
     m_timestampCheck = new QCheckBox(tr("时间戳"));
     m_timestampCheck->setChecked(m_timestampEnabled);
@@ -402,28 +409,28 @@ void TabbedReceiveWidget::setupUi()
             this, &TabbedReceiveWidget::onHighlightToggled);
 
     m_highlightSettingsBtn = new QPushButton(tr("设置"));
-    m_highlightSettingsBtn->setFixedWidth(60);
+    m_highlightSettingsBtn->setMinimumWidth(64);
     m_highlightSettingsBtn->setToolTip(tr("高亮规则设置"));
     connect(m_highlightSettingsBtn, &QPushButton::clicked,
             this, &TabbedReceiveWidget::onHighlightSettingsClicked);
 
     m_perfLabel = new QLabel(tr("性能: 接收 0 B/s | 渲染 0 ms"));
     m_perfLabel->setObjectName("perfLabel");
-    m_perfLabel->setMinimumWidth(220);
+    m_perfLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_perfLabel->setMinimumWidth(160);
 
     m_clearBtn = new QPushButton(tr("清空"));
-    m_clearBtn->setFixedWidth(60);
+    m_clearBtn->setMinimumWidth(64);
     connect(m_clearBtn, &QPushButton::clicked, this, &TabbedReceiveWidget::onClearClicked);
 
-    optionsLayout->addWidget(m_timestampCheck);
-    optionsLayout->addWidget(m_autoScrollCheck);
-    optionsLayout->addWidget(m_hexDisplayCheck);
-    optionsLayout->addSpacing(8);
-    optionsLayout->addWidget(m_highlightCheck);
-    optionsLayout->addWidget(m_highlightSettingsBtn);
-    optionsLayout->addWidget(m_perfLabel);
-    optionsLayout->addStretch();
-    optionsLayout->addWidget(m_clearBtn);
+    optionsLayout->addWidget(m_timestampCheck, 0, 0);
+    optionsLayout->addWidget(m_autoScrollCheck, 0, 1);
+    optionsLayout->addWidget(m_hexDisplayCheck, 0, 2);
+    optionsLayout->addWidget(m_highlightCheck, 0, 3);
+    optionsLayout->addWidget(m_highlightSettingsBtn, 0, 4);
+    optionsLayout->addWidget(m_perfLabel, 0, 5);
+    optionsLayout->addWidget(m_clearBtn, 0, 6);
+    optionsLayout->setColumnStretch(5, 1);
 
     mainLayout->addLayout(optionsLayout);
 
@@ -678,17 +685,13 @@ void TabbedReceiveWidget::appendFrameMode(const QByteArray& data)
             .arg(QString::fromUtf8(frame));
 
         m_mainTextEdit->moveCursor(QTextCursor::End);
-        m_mainTextEdit->insertPlainText(frameText);
+        queueMainText(frameText);
 
         m_lineHistory.append(frameText);
         trimLineHistory();
     }
 
-    // 智能滚屏：仅在未暂停时滚动到底部
-    if (m_autoScrollEnabled && !m_smartScrollPaused) {
-        m_mainTextEdit->verticalScrollBar()->setValue(
-            m_mainTextEdit->verticalScrollBar()->maximum());
-    }
+    scheduleReceiveFlush();
 }
 
 // ==================== 调试模式 ====================
@@ -741,8 +744,7 @@ void TabbedReceiveWidget::appendDebugMode(const QByteArray& data, bool isSent)
         }
 
         Q_UNUSED(style);
-        m_mainTextEdit->moveCursor(QTextCursor::End);
-        m_mainTextEdit->insertPlainText(prefix + text + "\n");
+        queueMainText(prefix + text + "\n");
 
         m_lineHistory.append(prefix + text);
         trimLineHistory();
@@ -751,11 +753,7 @@ void TabbedReceiveWidget::appendDebugMode(const QByteArray& data, bool isSent)
         timestamp = QDateTime::currentDateTime();
     }
 
-    // 智能滚屏：仅在未暂停时滚动到底部
-    if (m_autoScrollEnabled && !m_smartScrollPaused) {
-        m_mainTextEdit->verticalScrollBar()->setValue(
-            m_mainTextEdit->verticalScrollBar()->maximum());
-    }
+    scheduleReceiveFlush();
 }
 
 void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
@@ -858,9 +856,7 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
     }
 
     if (!text.isEmpty()) {
-        m_mainTextEdit->setUpdatesEnabled(false);
-        m_mainTextEdit->moveCursor(QTextCursor::End);
-        m_mainTextEdit->insertPlainText(text);
+        queueMainText(text);
 
         // 记录历史（限长）
         const QStringList lines = text.split('\n', QString::SkipEmptyParts);
@@ -868,12 +864,7 @@ void TabbedReceiveWidget::appendToMainView(const QByteArray& data)
             m_lineHistory.append(lines);
             trimLineHistory();
         }
-        // 智能滚屏：仅在未暂停时滚动到底部
-        if (m_autoScrollEnabled && !m_smartScrollPaused) {
-            m_mainTextEdit->verticalScrollBar()->setValue(
-                m_mainTextEdit->verticalScrollBar()->maximum());
-        }
-        m_mainTextEdit->setUpdatesEnabled(true);
+        scheduleReceiveFlush();
     }
 
 }
@@ -884,12 +875,77 @@ void TabbedReceiveWidget::appendToHexView(const QByteArray& data)
         return;
     }
 
-    m_hexTable->setUpdatesEnabled(false);
-    m_hexModel->appendData(data);
-    if (m_autoScrollEnabled) {
-        m_hexTable->scrollToBottom();
+    m_pendingHexData.append(data);
+    scheduleReceiveFlush();
+}
+
+void TabbedReceiveWidget::queueMainText(const QString& text)
+{
+    /*
+     * 高频串口/网络数据如果每包都 insertPlainText，会让 QTextDocument、
+     * 滚动条和高亮器反复工作。这里先合并到待刷新字符串，后续由
+     * flushPendingReceiveViews 统一落屏；数据内容不丢，显示质量不变。
+     */
+    if (text.isEmpty()) {
+        return;
     }
-    m_hexTable->setUpdatesEnabled(true);
+
+    m_pendingMainText += text;
+}
+
+void TabbedReceiveWidget::scheduleReceiveFlush()
+{
+    /*
+     * 正常情况下按 16ms 合并刷新，接近 60fps；突发数据很大时立即刷新，
+     * 防止待显示缓存无限增长，同时仍避免每个小包触发一次 UI 重绘。
+     */
+    const bool overTextThreshold = m_pendingMainText.size() >= m_pendingTextFlushThreshold;
+    const bool overHexThreshold = m_pendingHexData.size() >= m_pendingHexFlushThreshold;
+    if (overTextThreshold || overHexThreshold) {
+        flushPendingReceiveViews();
+        return;
+    }
+
+    if (m_receiveFlushTimer && !m_receiveFlushTimer->isActive()) {
+        m_receiveFlushTimer->start(m_receiveFlushIntervalMs);
+    }
+}
+
+void TabbedReceiveWidget::flushPendingReceiveViews()
+{
+    /*
+     * 统一刷新文本区和 HEX 表格。刷新期间关闭 updates，减少中间状态 repaint；
+     * 最后只滚动一次到底部，避免高频数据到来时滚动条频繁触发布局。
+     */
+    if (m_receiveFlushTimer) {
+        m_receiveFlushTimer->stop();
+    }
+
+    if (m_mainTextEdit && !m_pendingMainText.isEmpty()) {
+        const QString text = m_pendingMainText;
+        m_pendingMainText.clear();
+
+        m_mainTextEdit->setUpdatesEnabled(false);
+        m_mainTextEdit->moveCursor(QTextCursor::End);
+        m_mainTextEdit->insertPlainText(text);
+        if (m_autoScrollEnabled && !m_smartScrollPaused) {
+            m_mainTextEdit->verticalScrollBar()->setValue(
+                m_mainTextEdit->verticalScrollBar()->maximum());
+        }
+        m_mainTextEdit->setUpdatesEnabled(true);
+    }
+
+    if (m_hexTable && m_hexModel && !m_pendingHexData.isEmpty()) {
+        const QByteArray data = m_pendingHexData;
+        m_pendingHexData.clear();
+
+        m_hexTable->setUpdatesEnabled(false);
+        m_hexModel->appendData(data);
+        if (m_autoScrollEnabled) {
+            m_hexTable->scrollToBottom();
+        }
+        m_hexTable->setUpdatesEnabled(true);
+    }
 }
 
 void TabbedReceiveWidget::updateFilterView()
@@ -956,6 +1012,12 @@ void TabbedReceiveWidget::refreshMainView()
 
 void TabbedReceiveWidget::clear()
 {
+    if (m_receiveFlushTimer) {
+        m_receiveFlushTimer->stop();
+    }
+    m_pendingMainText.clear();
+    m_pendingHexData.clear();
+
     m_rawData.clear();
     m_utf8Buffer.clear();  // 清空 UTF-8 缓冲区
     m_lineHistory.clear();
@@ -1005,6 +1067,8 @@ void TabbedReceiveWidget::clear()
 
 void TabbedReceiveWidget::exportToFile(const QString& fileName)
 {
+    flushPendingReceiveViews();
+
     QFile file(fileName);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream stream(&file);

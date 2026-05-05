@@ -465,13 +465,13 @@
         <location filename="../../src/ui/widgets/DataWindow.cpp" line="38" />
         <location filename="../../src/ui/widgets/DataWindow.cpp" line="259" />
         <source>时间戳</source>
-        <translation>Timestamp</translation>
+        <translation>Time</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/DataWindow.cpp" line="43" />
         <location filename="../../src/ui/widgets/DataWindow.cpp" line="260" />
         <source>自动滚动</source>
-        <translation>Auto Scroll</translation>
+        <translation>Auto</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/DataWindow.cpp" line="50" />
@@ -989,7 +989,7 @@ Rules are matched sequentially, and one data can match multiple rules.</translat
     <message>
         <location filename="../../src/ui/dialogs/ExportDialog.cpp" line="152" />
         <source>时间戳</source>
-        <translation>Timestamp</translation>
+        <translation>Time</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/ExportDialog.cpp" line="156" />
@@ -1742,25 +1742,25 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="129" />
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="543" />
         <source>带帧头尾发送</source>
-        <translation>Send with frame header and tail</translation>
+        <translation>Send Framed</translation>
     </message>
     <message>
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="147" />
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="546" />
         <source>帧头:</source>
-        <translation>Frame header:</translation>
+        <translation>Header:</translation>
     </message>
     <message>
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="156" />
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="547" />
         <source>帧尾:</source>
-        <translation>Frame trailer:</translation>
+        <translation>Footer:</translation>
     </message>
     <message>
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="167" />
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="548" />
         <source>校验:</source>
-        <translation>Correction</translation>
+        <translation>Checksum:</translation>
     </message>
     <message>
         <location filename="../../src/ui/modes/FrameModeWidget.cpp" line="170" />
@@ -2426,6 +2426,138 @@ Time spent: % 4</translation>
 <context>
     <name>ComAssistant::MainWindow</name>
     <message>
+        <source>文件</source>
+        <translation>File</translation>
+    </message>
+    <message>
+        <source>新建会话</source>
+        <translation>New Session</translation>
+    </message>
+    <message>
+        <source>编辑</source>
+        <translation>Edit</translation>
+    </message>
+    <message>
+        <source>清空全部</source>
+        <translation>Clear All</translation>
+    </message>
+    <message>
+        <source>视图</source>
+        <translation>View</translation>
+    </message>
+    <message>
+        <source>语言</source>
+        <translation>Language</translation>
+    </message>
+    <message>
+        <source>工具</source>
+        <translation>Tools</translation>
+    </message>
+    <message>
+        <source>绘图</source>
+        <translation>Plot</translation>
+    </message>
+    <message>
+        <source>绘图协议</source>
+        <translation>Plot Protocol</translation>
+    </message>
+    <message>
+        <source>窗口同步</source>
+        <translation>Window Sync</translation>
+    </message>
+    <message>
+        <source>帮助</source>
+        <translation>Help</translation>
+    </message>
+    <message>
+        <source>菜单</source>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>导出数据...</source>
+        <translation>Export Data...</translation>
+    </message>
+    <message>
+        <source>退出</source>
+        <translation>Exit</translation>
+    </message>
+    <message>
+        <source>数据搜索...</source>
+        <translation>Data Search...</translation>
+    </message>
+    <message>
+        <source>置顶显示</source>
+        <translation>Always on Top</translation>
+    </message>
+    <message>
+        <source>工具箱...</source>
+        <translation>Toolbox...</translation>
+    </message>
+    <message>
+        <source>脚本编辑器...</source>
+        <translation>Script Editor...</translation>
+    </message>
+    <message>
+        <source>文件传输...</source>
+        <translation>File Transfer...</translation>
+    </message>
+    <message>
+        <source>IAP升级...</source>
+        <translation>IAP Upgrade...</translation>
+    </message>
+    <message>
+        <source>宏录制/回放...</source>
+        <translation>Macro Record/Playback...</translation>
+    </message>
+    <message>
+        <source>多端口管理...</source>
+        <translation>Multi-Port Manager...</translation>
+    </message>
+    <message>
+        <source>Modbus分析...</source>
+        <translation>Modbus Analyzer...</translation>
+    </message>
+    <message>
+        <source>数据分窗...</source>
+        <translation>Data Window Layout...</translation>
+    </message>
+    <message>
+        <source>控件面板...</source>
+        <translation>Control Panel...</translation>
+    </message>
+    <message>
+        <source>数据表格...</source>
+        <translation>Data Table...</translation>
+    </message>
+    <message>
+        <source>设置...</source>
+        <translation>Settings...</translation>
+    </message>
+    <message>
+        <source>新建绘图窗口</source>
+        <translation>New Plot Window</translation>
+    </message>
+    <message>
+        <source>关闭所有绘图窗口</source>
+        <translation>Close All Plot Windows</translation>
+    </message>
+    <message>
+        <source>帮助文档</source>
+        <translation>Help Documentation</translation>
+    </message>
+    <message>
+        <source>检查更新...</source>
+        <translation>Check Updates...</translation>
+    </message>
+    <message>
+        <source>关于</source>
+        <translation>About</translation>
+    </message>
+    <message>
+        <source>关于 Qt</source>
+        <translation>About Qt</translation>
+    </message>
+    <message>
         <location filename="../../src/ui/MainWindow.cpp" line="232" />
         <source>文件(&amp;F)</source>
         <translation>&amp;File</translation>
@@ -3068,7 +3200,7 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="440" />
         <source>选择显示模式</source>
-        <translation>Select Display Mode</translation>
+        <translation>Select display mode</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="339" />
@@ -3084,7 +3216,7 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="443" />
         <source>帧模式</source>
-        <translation>Frame</translation>
+        <translation>Frame Mode</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="444" />
@@ -6578,7 +6710,7 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="55" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="307" />
         <source>时间戳</source>
-        <translation>Timestamp</translation>
+        <translation>Time</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="61" />
@@ -6590,7 +6722,7 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="70" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="310" />
         <source>循环发送</source>
-        <translation>Auto Send</translation>
+        <translation>Auto</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="75" />
@@ -6602,25 +6734,25 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="84" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="313" />
         <source>HEX显示</source>
-        <translation>HEX Display</translation>
+        <translation>HEX</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="85" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="316" />
         <source>HEX发送</source>
-        <translation>HEX Send</translation>
+        <translation>HEX TX</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="93" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="319" />
         <source>回车发送</source>
-        <translation>Enter Send</translation>
+        <translation>Enter</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="94" />
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="322" />
         <source>追加新行</source>
-        <translation>Append Newline</translation>
+        <translation>Newline</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/SendWidget.cpp" line="105" />
@@ -7494,19 +7626,19 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="384" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1612" />
         <source>时间戳</source>
-        <translation>Timestamp</translation>
+        <translation>Time</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="389" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1615" />
         <source>自动滚动</source>
-        <translation>Auto Scroll</translation>
+        <translation>Auto</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="394" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1618" />
         <source>HEX显示</source>
-        <translation>HEX Display</translation>
+        <translation>HEX</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="399" />
@@ -7518,21 +7650,21 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="404" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1624" />
         <source>设置</source>
-        <translation>Settings</translation>
+        <translation>Rules</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="406" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1321" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1625" />
         <source>高亮规则设置</source>
-        <translation>Highlight Rules Settings</translation>
+        <translation>Highlight Rules</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="410" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1010" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1631" />
         <source>性能: 接收 0 B/s | 渲染 0 ms</source>
-        <translation>Performance: Receive 0 B/s | Render 0 ms</translation>
+        <translation>RX 0 B/s | Render 0 ms</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="414" />
@@ -7646,7 +7778,7 @@ Alarm with Temperature Range</translation>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1569" />
         <source>性能: 接收 %1 | 渲染 %2 ms</source>
-        <translation>Performance: Receive % 1 | Render % 2 ms</translation>
+        <translation>RX %1 | Render %2 ms</translation>
     </message>
     <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="527" />

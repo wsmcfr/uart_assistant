@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QScrollBar>
 #include <QEvent>
+#include <QPointer>
 
 #include "qcustomplot/qcustomplot.h"
 #include "core/utils/FilterUtils.h"
@@ -503,6 +504,7 @@ private:
     void trimData();
     bool shouldDecimate();  ///< 检查是否应该抽稀当前数据点
     void applyRenderQualityMode();  ///< 应用渲染质量策略
+    bool trySetOpenGLEnabled(bool enabled);  ///< 尝试切换 OpenGL，并在失败时安全回退
 
 private:
     QString m_windowId;                    ///< 窗口ID
@@ -534,6 +536,8 @@ private:
     bool m_paused = false;                 ///< 暂停状态
     bool m_needReplot = false;             ///< 需要重绘标志
     bool m_openGLEnabled = true;           ///< OpenGL加速（默认开启）
+    bool m_openGLAvailable = true;         ///< 当前环境是否可用 OpenGL
+    int m_valuePanelUpdateEvery = 2;       ///< 数值面板刷新节流间隔
     RenderQualityMode m_renderQualityMode = RenderQualityMode::HighQuality;  ///< 渲染质量模式
     DecimationRatio m_decimationRatio = DecimationRatio::None;  ///< 数据抽稀比例
     int m_decimationCounter = 0;           ///< 抽稀计数器

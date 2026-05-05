@@ -12,6 +12,7 @@
 #include <QHeaderView>
 #include <QFileDialog>
 #include <QTextStream>
+#include <QSignalBlocker>
 
 namespace ComAssistant {
 
@@ -64,6 +65,10 @@ ModbusAnalyzerWidget::ModbusAnalyzerWidget(QWidget* parent)
     : QWidget(parent)
 {
     setupUi();
+
+    m_frameFlushTimer = new QTimer(this);
+    m_frameFlushTimer->setSingleShot(true);
+    connect(m_frameFlushTimer, &QTimer::timeout, this, &ModbusAnalyzerWidget::flushPendingFrames);
 }
 
 void ModbusAnalyzerWidget::setupUi()
@@ -80,6 +85,8 @@ void ModbusAnalyzerWidget::setupUi()
     for (int i = 1; i <= 247; ++i) {
         m_slaveFilterCombo->addItem(QString::number(i), i);
     }
+    connect(m_slaveFilterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &ModbusAnalyzerWidget::onFilterChanged);
     toolLayout->addWidget(m_slaveFilterCombo);
 
     m_functionFilterLabel = new QLabel(tr("功能码:"), this);
@@ -94,6 +101,8 @@ void ModbusAnalyzerWidget::setupUi()
     m_functionFilterCombo->addItem(tr("0x06 写单寄存器"), 0x06);
     m_functionFilterCombo->addItem(tr("0x0F 写多线圈"), 0x0F);
     m_functionFilterCombo->addItem(tr("0x10 写多寄存器"), 0x10);
+    connect(m_functionFilterCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &ModbusAnalyzerWidget::onFilterChanged);
     toolLayout->addWidget(m_functionFilterCombo);
 
     m_autoScrollCheck = new QCheckBox(tr("自动滚动"), this);
@@ -211,7 +220,9 @@ void ModbusAnalyzerWidget::appendData(const QByteArray& data, bool isRequest)
 
         if (frame.type != ModbusFrameType::Unknown && frame.rawData.size() > 0) {
             m_frames.append(frame);
-            addFrameToTable(frame);
+            m_pendingFrames.append(frame);
+            trimFrames();
+            scheduleFrameFlush();
             emit frameParsed(frame);
 
             m_receiveBuffer.remove(0, frame.rawData.size());
@@ -374,13 +385,18 @@ ModbusFrame ModbusAnalyzerWidget::parseFrame(const QByteArray& data, bool isRequ
 void ModbusAnalyzerWidget::addFrameToTable(const ModbusFrame& frame)
 {
     // 检查过滤
-    if (m_slaveFilter > 0 && frame.slaveAddress != m_slaveFilter) {
+    if (!frameMatchesFilter(frame)) {
         return;
     }
 
     int row = m_frameTable->rowCount();
-    m_frameTable->insertRow(row);
+    m_frameTable->setRowCount(row + 1);
+    fillFrameTableRow(row, frame);
+    m_visibleFrames.append(frame);
+}
 
+void ModbusAnalyzerWidget::fillFrameTableRow(int row, const ModbusFrame& frame)
+{
     // 时间
     m_frameTable->setItem(row, 0, new QTableWidgetItem(
         frame.timestamp.toString("hh:mm:ss.zzz")));
@@ -418,18 +434,160 @@ void ModbusAnalyzerWidget::addFrameToTable(const ModbusFrame& frame)
     // 原始数据
     m_frameTable->setItem(row, 6, new QTableWidgetItem(
         QString::fromLatin1(frame.rawData.toHex(' ').toUpper())));
+}
 
-    // 自动滚动
-    if (m_autoScrollCheck->isChecked()) {
+void ModbusAnalyzerWidget::scheduleFrameFlush()
+{
+    if (m_pendingFrames.size() >= m_frameFlushBatchSize) {
+        flushPendingFrames();
+        return;
+    }
+
+    if (m_frameFlushTimer && !m_frameFlushTimer->isActive()) {
+        m_frameFlushTimer->start(m_frameFlushIntervalMs);
+    }
+}
+
+void ModbusAnalyzerWidget::flushPendingFrames()
+{
+    if (m_frameFlushTimer) {
+        m_frameFlushTimer->stop();
+    }
+    if (!m_frameTable || m_pendingFrames.isEmpty()) {
+        return;
+    }
+
+    /*
+     * Modbus 连续帧解析可能在同一个 readyRead 周期内产生大量记录。
+     * 批量扩表并关闭中间 repaint，避免每帧 insertRow/scrollToBottom 抢占 UI。
+     */
+    m_frameTable->setUpdatesEnabled(false);
+    const int count = qMin(m_pendingFrames.size(), m_frameFlushBatchSize);
+    const int firstRow = m_frameTable->rowCount();
+    int accepted = 0;
+    for (int i = 0; i < count; ++i) {
+        const ModbusFrame& frame = m_pendingFrames.at(i);
+        if (!frameMatchesFilter(frame)) {
+            continue;
+        }
+
+        ++accepted;
+    }
+
+    m_frameTable->setRowCount(firstRow + accepted);
+    int row = firstRow;
+    for (int i = 0; i < count; ++i) {
+        const ModbusFrame& frame = m_pendingFrames.at(i);
+        if (!frameMatchesFilter(frame)) {
+            continue;
+        }
+
+        fillFrameTableRow(row++, frame);
+        m_visibleFrames.append(frame);
+    }
+
+    m_pendingFrames.erase(m_pendingFrames.begin(), m_pendingFrames.begin() + count);
+    if (!m_pendingFrames.isEmpty()) {
+        scheduleFrameFlush();
+    }
+    if (m_autoScrollCheck && m_autoScrollCheck->isChecked()) {
         m_frameTable->scrollToBottom();
     }
+    m_frameTable->setUpdatesEnabled(true);
+}
+
+void ModbusAnalyzerWidget::trimFrames()
+{
+    /*
+     * 限制 Modbus 分析记录数量，避免长时间抓包时 QVector 和 QTableWidget
+     * 无限增长。只删除被裁旧帧对应的可见行，过滤状态下也不会误删仍存在的帧。
+     */
+    const int overflow = m_frames.size() - m_maxFrames;
+    if (overflow <= 0) {
+        return;
+    }
+
+    const QVector<ModbusFrame> trimmedFrames = m_frames.mid(0, overflow);
+    m_frames.erase(m_frames.begin(), m_frames.begin() + overflow);
+
+    int visibleTrim = 0;
+    for (const ModbusFrame& frame : trimmedFrames) {
+        if (frameMatchesFilter(frame)) {
+            ++visibleTrim;
+        }
+    }
+
+    if (m_frameTable && visibleTrim > 0) {
+        /*
+         * 表格可能经过过滤，只能按实际可见行数裁剪。同步裁剪 m_visibleFrames，
+         * 避免点击详情时用过滤后的 row 去索引完整 m_frames。
+         */
+        const int rowsToRemove = qMin(visibleTrim, m_frameTable->rowCount());
+        m_frameTable->model()->removeRows(0, rowsToRemove);
+        m_visibleFrames.erase(m_visibleFrames.begin(), m_visibleFrames.begin() + qMin(rowsToRemove, m_visibleFrames.size()));
+    }
+}
+
+bool ModbusAnalyzerWidget::frameMatchesFilter(const ModbusFrame& frame) const
+{
+    /*
+     * 表格过滤只影响显示，不影响 m_frames 中的完整抓包记录。
+     * 功能码异常响应带 0x80 标志，过滤时使用低 7 位匹配基础功能码。
+     */
+    if (m_slaveFilter > 0 && frame.slaveAddress != m_slaveFilter) {
+        return false;
+    }
+
+    const int functionFilter = m_functionFilterCombo ? m_functionFilterCombo->currentData().toInt() : -1;
+    if (functionFilter >= 0 && ((frame.functionCode & 0x7F) != functionFilter)) {
+        return false;
+    }
+
+    return true;
+}
+
+void ModbusAnalyzerWidget::rebuildVisibleFrameTable()
+{
+    /*
+     * 过滤条件改变时批量重建可见表格，比逐行 hide/insert 更稳定；
+     * 同时刷新 m_visibleFrames，保证点击详情始终对应当前可见行。
+     */
+    flushPendingFrames();
+
+    m_visibleFrames.clear();
+    m_frameTable->setUpdatesEnabled(false);
+    m_frameTable->setRowCount(0);
+
+    int visibleCount = 0;
+    for (const ModbusFrame& frame : m_frames) {
+        if (frameMatchesFilter(frame)) {
+            ++visibleCount;
+        }
+    }
+
+    m_frameTable->setRowCount(visibleCount);
+    int row = 0;
+    m_visibleFrames.reserve(visibleCount);
+    for (const ModbusFrame& frame : m_frames) {
+        if (!frameMatchesFilter(frame)) {
+            continue;
+        }
+
+        fillFrameTableRow(row++, frame);
+        m_visibleFrames.append(frame);
+    }
+
+    if (m_autoScrollCheck && m_autoScrollCheck->isChecked()) {
+        m_frameTable->scrollToBottom();
+    }
+    m_frameTable->setUpdatesEnabled(true);
 }
 
 void ModbusAnalyzerWidget::onFrameSelected()
 {
     int row = m_frameTable->currentRow();
-    if (row >= 0 && row < m_frames.size()) {
-        showFrameDetails(m_frames[row]);
+    if (row >= 0 && row < m_visibleFrames.size()) {
+        showFrameDetails(m_visibleFrames[row]);
     }
 }
 
@@ -531,7 +689,12 @@ void ModbusAnalyzerWidget::onGenerateRequest()
 
 void ModbusAnalyzerWidget::onClearClicked()
 {
+    if (m_frameFlushTimer) {
+        m_frameFlushTimer->stop();
+    }
     m_frames.clear();
+    m_visibleFrames.clear();
+    m_pendingFrames.clear();
     m_frameTable->setRowCount(0);
     m_detailTree->clear();
     m_rawDataEdit->clear();
@@ -553,8 +716,16 @@ void ModbusAnalyzerWidget::onAutoScrollToggled(bool checked)
     Q_UNUSED(checked)
 }
 
+void ModbusAnalyzerWidget::onFilterChanged()
+{
+    m_slaveFilter = m_slaveFilterCombo ? m_slaveFilterCombo->currentData().toInt() : -1;
+    rebuildVisibleFrameTable();
+}
+
 bool ModbusAnalyzerWidget::exportReport(const QString& filePath)
 {
+    flushPendingFrames();
+
     QFile file(filePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
@@ -592,8 +763,19 @@ void ModbusAnalyzerWidget::clear()
 void ModbusAnalyzerWidget::setSlaveFilter(int address)
 {
     m_slaveFilter = address;
-    m_slaveFilterCombo->setCurrentIndex(
-        m_slaveFilterCombo->findData(address));
+    if (m_slaveFilterCombo) {
+        const int index = m_slaveFilterCombo->findData(address);
+        if (index >= 0) {
+            /*
+             * 外部恢复会话或脚本设置过滤条件时，setCurrentIndex 会发出
+             * currentIndexChanged。这里主动屏蔽信号，避免 onFilterChanged 和
+             * 函数尾的 rebuildVisibleFrameTable 连续重建两次大表。
+             */
+            QSignalBlocker blocker(m_slaveFilterCombo);
+            m_slaveFilterCombo->setCurrentIndex(index);
+        }
+    }
+    rebuildVisibleFrameTable();
 }
 
 quint16 ModbusAnalyzerWidget::calculateCRC16(const QByteArray& data)

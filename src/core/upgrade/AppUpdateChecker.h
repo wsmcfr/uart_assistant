@@ -14,6 +14,7 @@
 
 class QNetworkAccessManager;
 class QNetworkReply;
+class QTimer;
 
 namespace ComAssistant {
 
@@ -72,6 +73,7 @@ private slots:
 
 private:
     QUrl makeLatestReleaseApiUrl() const;
+    QString buildNetworkErrorMessage(QNetworkReply* reply) const;
     static QString normalizeVersion(const QString& rawVersion);
     static QUrl selectDownloadUrl(const QJsonObject& releaseObject);
     static bool parseReleaseInfo(const QJsonObject& releaseObject, ReleaseInfo& info);
@@ -79,9 +81,11 @@ private:
 private:
     QNetworkAccessManager* m_networkManager = nullptr;
     QHash<QNetworkReply*, bool> m_requestManualMap;
+    QHash<QNetworkReply*, QTimer*> m_requestTimeoutMap;
     QString m_owner;
     QString m_repo;
     QString m_currentVersion;
+    static constexpr int REQUEST_TIMEOUT_MS = 15000;  ///< GitHub API 请求超时时间，避免后台检查长期占用状态
 };
 
 } // namespace ComAssistant

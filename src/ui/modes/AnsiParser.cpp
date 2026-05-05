@@ -72,6 +72,12 @@ void AnsiParser::processNormal(unsigned char byte)
     case 0x0A:  // LF - 换行
     case 0x0B:  // VT - 垂直制表符（同LF）
     case 0x0C:  // FF - 换页（同LF）
+        /*
+         * 很多串口设备只输出 LF，而不会额外输出 CR。作为调试助手的
+         * 接收终端，应当把这种常见日志流显示为“下一行从行首开始”，
+         * 避免连续日志在屏幕上呈阶梯状偏移。
+         */
+        m_buffer->carriageReturn();
         m_buffer->newLine();
         break;
     case 0x0D:  // CR - 回车

@@ -32,6 +32,8 @@ private slots:
     void testPlotterRenderQualityTranslations();
     void testSettingsDialogTranslations();
     void testMainWindowLanguageCriticalTranslations();
+    void testMainWindowHamburgerMenuTranslations();
+    void testMainWindowToolbarTranslations();
     void testQuickSendTranslations();
 
 private:

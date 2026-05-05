@@ -244,10 +244,8 @@ void DataTableWidget::updateDisplay()
         m_pendingRecords.clear();
     }
 
-    // 批量添加记录
-    for (const auto& record : recordsToAdd) {
-        addRecord(record);
-    }
+    // 批量添加记录，避免每条数据都触发表格视图和代理模型的中间刷新。
+    addRecords(recordsToAdd);
 
     // 裁剪过多的记录
     trimRecords();
@@ -261,58 +259,111 @@ void DataTableWidget::updateDisplay()
     }
 }
 
-void DataTableWidget::addRecord(const TableDataRecord& record)
+void DataTableWidget::addRecords(const QVector<TableDataRecord>& records)
 {
-    m_records.append(record);
-
-    QList<QStandardItem*> items;
-
-    // 序号
-    auto* indexItem = new QStandardItem(QString::number(record.index));
-    indexItem->setTextAlignment(Qt::AlignCenter);
-    items.append(indexItem);
-
-    // 时间戳
-    auto* timeItem = new QStandardItem(record.timestamp.toString("HH:mm:ss.zzz"));
-    timeItem->setTextAlignment(Qt::AlignCenter);
-    items.append(timeItem);
-
-    // 方向
-    auto* dirItem = new QStandardItem(record.direction);
-    dirItem->setTextAlignment(Qt::AlignCenter);
-    if (record.direction == "RX") {
-        dirItem->setForeground(QColor("#2196F3"));  // 蓝色
-    } else {
-        dirItem->setForeground(QColor("#4CAF50"));  // 绿色
+    /*
+     * 高频接收时 updateDisplay 一次可能拿到几十到几百条记录。
+     * 逐条 appendRow 会反复触发代理过滤/排序、视图布局和 repaint；
+     * 这里把 UI 更新窗口合并为一次，显示内容、排序能力和过滤结果保持不变。
+     */
+    if (records.isEmpty()) {
+        return;
     }
-    items.append(dirItem);
 
-    // HEX
-    items.append(new QStandardItem(record.hexString));
+    const bool sortingEnabled = m_tableView->isSortingEnabled();
+    const int sortColumn = m_tableView->horizontalHeader()->sortIndicatorSection();
+    const Qt::SortOrder sortOrder = m_tableView->horizontalHeader()->sortIndicatorOrder();
+    const bool dynamicSortFilter = m_proxyModel->dynamicSortFilter();
 
-    // ASCII
-    items.append(new QStandardItem(record.asciiString));
+    m_tableView->setUpdatesEnabled(false);
+    m_tableView->setSortingEnabled(false);
+    m_proxyModel->setDynamicSortFilter(false);
 
-    // 解析数值
-    items.append(new QStandardItem(formatParsedValues(record.parsedValues)));
+    m_records.reserve(m_records.size() + records.size());
+    for (const auto& record : records) {
+        m_records.append(record);
 
-    // 协议
-    auto* protoItem = new QStandardItem(record.protocol);
-    protoItem->setTextAlignment(Qt::AlignCenter);
-    items.append(protoItem);
+        QList<QStandardItem*> items;
 
-    // 描述
-    items.append(new QStandardItem(record.description));
+        // 序号
+        auto* indexItem = new QStandardItem(QString::number(record.index));
+        indexItem->setTextAlignment(Qt::AlignCenter);
+        items.append(indexItem);
 
-    m_model->appendRow(items);
+        // 时间戳
+        auto* timeItem = new QStandardItem(record.timestamp.toString("HH:mm:ss.zzz"));
+        timeItem->setTextAlignment(Qt::AlignCenter);
+        items.append(timeItem);
+
+        // 方向
+        auto* dirItem = new QStandardItem(record.direction);
+        dirItem->setTextAlignment(Qt::AlignCenter);
+        if (record.direction == "RX") {
+            dirItem->setForeground(QColor("#2196F3"));  // 蓝色
+        } else {
+            dirItem->setForeground(QColor("#4CAF50"));  // 绿色
+        }
+        items.append(dirItem);
+
+        // HEX
+        items.append(new QStandardItem(record.hexString));
+
+        // ASCII
+        items.append(new QStandardItem(record.asciiString));
+
+        // 解析数值
+        items.append(new QStandardItem(formatParsedValues(record.parsedValues)));
+
+        // 协议
+        auto* protoItem = new QStandardItem(record.protocol);
+        protoItem->setTextAlignment(Qt::AlignCenter);
+        items.append(protoItem);
+
+        // 描述
+        items.append(new QStandardItem(record.description));
+
+        m_model->appendRow(items);
+    }
+
+    m_proxyModel->setDynamicSortFilter(dynamicSortFilter);
+    m_proxyModel->invalidate();
+    m_tableView->setSortingEnabled(sortingEnabled);
+    if (sortingEnabled && sortColumn >= 0) {
+        m_tableView->sortByColumn(sortColumn, sortOrder);
+    }
+    m_tableView->setUpdatesEnabled(true);
 }
 
 void DataTableWidget::trimRecords()
 {
-    while (m_records.size() > m_maxRecords) {
-        m_records.removeFirst();
-        m_model->removeRow(0);
+    /*
+     * 裁剪旧记录时一次性删除，避免长时间抓包后逐行 removeFirst/removeRow
+     * 造成 O(n²) 搬移和连续 model reset。
+     */
+    const int overflow = m_records.size() - m_maxRecords;
+    if (overflow <= 0) {
+        return;
     }
+
+    const bool sortingEnabled = m_tableView->isSortingEnabled();
+    const int sortColumn = m_tableView->horizontalHeader()->sortIndicatorSection();
+    const Qt::SortOrder sortOrder = m_tableView->horizontalHeader()->sortIndicatorOrder();
+    const bool dynamicSortFilter = m_proxyModel->dynamicSortFilter();
+
+    m_tableView->setUpdatesEnabled(false);
+    m_tableView->setSortingEnabled(false);
+    m_proxyModel->setDynamicSortFilter(false);
+
+    m_records.erase(m_records.begin(), m_records.begin() + overflow);
+    m_model->removeRows(0, qMin(overflow, m_model->rowCount()));
+
+    m_proxyModel->setDynamicSortFilter(dynamicSortFilter);
+    m_proxyModel->invalidate();
+    m_tableView->setSortingEnabled(sortingEnabled);
+    if (sortingEnabled && sortColumn >= 0) {
+        m_tableView->sortByColumn(sortColumn, sortOrder);
+    }
+    m_tableView->setUpdatesEnabled(true);
 }
 
 void DataTableWidget::clearAll()

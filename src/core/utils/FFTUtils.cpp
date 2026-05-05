@@ -8,6 +8,7 @@
 #include "FFTUtils.h"
 #include <algorithm>
 #include <numeric>
+#include <limits>
 
 namespace ComAssistant {
 
@@ -17,8 +18,12 @@ const double PI = 3.14159265358979323846;
 
 int FFTUtils::nextPowerOfTwo(int n)
 {
+    if (n <= 1) {
+        return 1;
+    }
+
     int power = 1;
-    while (power < n) {
+    while (power < n && power <= (std::numeric_limits<int>::max() / 2)) {
         power *= 2;
     }
     return power;
@@ -864,25 +869,58 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
         return result;
     }
 
-    int n = data.size();
-    result.validPoints = n;
-
-    double sampleRate = config.sampleRate > 0 ? config.sampleRate : n;
-
-    // 计算时域参数（基于原始数据）
-    calculateTimeDomainParams(data, result);
-
-    // 去除直流分量（减去均值），避免DC泄漏污染低频谱线
-    double dcOffset = std::accumulate(data.begin(), data.end(), 0.0) / n;
-    QVector<double> dcRemovedData(n);
-    for (int i = 0; i < n; ++i) {
-        dcRemovedData[i] = data[i] - dcOffset;
+    /*
+     * 串口解析、Lua 脚本或会话恢复可能把 NaN/Inf 写入曲线。
+     * FFT 内核只接受有限实数；这里保留原始顺序并跳过非法采样，避免
+     * 一个异常点把均值、幅度谱和坐标轴全部污染成 NaN。
+     */
+    QVector<double> finiteData;
+    finiteData.reserve(data.size());
+    for (double value : data) {
+        if (std::isfinite(value)) {
+            finiteData.append(value);
+        }
     }
 
-    // 确定FFT大小
-    int fftSize = config.fftSize;
-    if (fftSize <= 0) {
-        fftSize = config.zeroPadding ? nextPowerOfTwo(n) : n;
+    if (finiteData.size() < 4) {
+        result.validPoints = finiteData.size();
+        calculateTimeDomainParams(finiteData, result);
+        return result;
+    }
+
+    int n = finiteData.size();
+    result.validPoints = n;
+
+    /*
+     * 采样率来自用户输入或恢复配置，必须同时检查正数和有限性。
+     * 无效值回退为有效采样点数，确保频率分辨率和频率数组始终可用。
+     */
+    double sampleRate = (std::isfinite(config.sampleRate) && config.sampleRate > 0.0)
+        ? config.sampleRate
+        : static_cast<double>(n);
+
+    // 计算时域参数（基于原始数据）
+    calculateTimeDomainParams(finiteData, result);
+
+    // 去除直流分量（减去均值），避免DC泄漏污染低频谱线
+    double dcOffset = std::accumulate(finiteData.begin(), finiteData.end(), 0.0) / n;
+    QVector<double> dcRemovedData(n);
+    for (int i = 0; i < n; ++i) {
+        dcRemovedData[i] = finiteData[i] - dcOffset;
+    }
+
+    /*
+     * 当前 fft() 实现是 radix-2 Cooley-Tukey，非 2 次幂输入会被内部补零。
+     * 分析层先把配置规整成明确的 2 次幂，可避免分段平均时不同路径对
+     * fftSize 的解释不一致，也避免用户配置 1000 点时触发越界风险。
+     */
+    int requestedFftSize = config.fftSize;
+    if (requestedFftSize <= 0) {
+        requestedFftSize = config.zeroPadding ? nextPowerOfTwo(n) : n;
+    }
+    int fftSize = nextPowerOfTwo(qMax(requestedFftSize, 4));
+    if (fftSize < n && config.fftSize > 0) {
+        fftSize = nextPowerOfTwo(n);
     }
 
     // 窗口相干增益补偿（Kaiser/Gaussian使用参数化动态计算）
@@ -894,6 +932,9 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
     } else {
         windowGain = getWindowCoherentGain(config.windowType);
     }
+    if (!std::isfinite(windowGain) || windowGain <= 1e-12) {
+        windowGain = 1.0;
+    }
 
     // 频谱平均：将数据分成 averageCount 段，分别做FFT后平均
     int avgCount = qMax(1, config.averageCount);
@@ -902,6 +943,7 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
         avgCount = 1;
         segLen = n;
     }
+    avgCount = qMax(1, qMin(avgCount, n / qMax(4, segLen)));
 
     // 累加缓冲区
     int halfSize = 0;
@@ -914,6 +956,10 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
 
     for (int avg = 0; avg < avgCount; ++avg) {
         int segStart = avg * segLen;
+        if (segStart + segLen > dcRemovedData.size()) {
+            break;
+        }
+
         QVector<double> segment(segLen);
         for (int i = 0; i < segLen; ++i) {
             segment[i] = dcRemovedData[segStart + i];
@@ -930,8 +976,9 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
         }
 
         // 转换为复数并零填充
-        int segFftSize = config.fftSize > 0 ? config.fftSize :
-            (config.zeroPadding ? nextPowerOfTwo(segLen) : segLen);
+        int segFftSize = config.fftSize > 0 ? fftSize :
+            (config.zeroPadding ? nextPowerOfTwo(segLen) : nextPowerOfTwo(segLen));
+        segFftSize = nextPowerOfTwo(qMax(segFftSize, segLen));
         QVector<std::complex<double>> complexData(segFftSize, std::complex<double>(0, 0));
         for (int i = 0; i < segLen; ++i) {
             complexData[i] = std::complex<double>(windowedData[i], 0);
@@ -954,6 +1001,7 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
         // 累加幅度和功率谱
         double segDomMag = 0;
         int curFFTSize = fftData.size();
+        Q_UNUSED(curFFTSize);
         for (int i = 0; i < qMin(halfSize, curHalfSize); ++i) {
             double magnitude = std::abs(fftData[i]) * 2.0 / segLen / windowGain;
             if (i == 0) magnitude /= 2.0;
@@ -972,6 +1020,10 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
             bestFFTIdx = avg;
             accFFT = fftData;
         }
+    }
+
+    if (accFFT.isEmpty() || halfSize <= 0) {
+        return result;
     }
 
     // 计算平均值

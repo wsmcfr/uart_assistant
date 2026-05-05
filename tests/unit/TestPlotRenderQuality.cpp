@@ -29,6 +29,7 @@ void TestPlotRenderQuality::testHighQualityProfile()
     QCOMPARE(profile.useFastPolylines, false);
     QCOMPARE(profile.antialiasPlottables, true);
     QCOMPARE(profile.throttleAutoRangeUpdates, false);
+    QCOMPARE(profile.valuePanelUpdateEvery, 2);
 }
 
 void TestPlotRenderQuality::testHighPerformanceProfile()
@@ -40,6 +41,7 @@ void TestPlotRenderQuality::testHighPerformanceProfile()
     QCOMPARE(profile.useFastPolylines, true);
     QCOMPARE(profile.antialiasPlottables, false);
     QCOMPARE(profile.throttleAutoRangeUpdates, true);
+    QCOMPARE(profile.valuePanelUpdateEvery, 4);
 }
 
 void TestPlotRenderQuality::testModeDifference()

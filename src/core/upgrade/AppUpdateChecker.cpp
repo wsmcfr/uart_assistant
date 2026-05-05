@@ -14,6 +14,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QRegularExpression>
+#include <QTimer>
 #include <QVector>
 
 namespace ComAssistant {
@@ -41,6 +42,13 @@ void AppUpdateChecker::setCurrentVersion(const QString& version)
 
 void AppUpdateChecker::checkForUpdates(bool manualTriggered)
 {
+    if (!m_requestManualMap.isEmpty()) {
+        if (manualTriggered) {
+            emit checkFailed(tr("已有更新检查正在进行，请稍后再试"), manualTriggered);
+        }
+        return;
+    }
+
     const QUrl apiUrl = makeLatestReleaseApiUrl();
     if (!apiUrl.isValid()) {
         emit checkFailed(tr("更新源配置无效"), manualTriggered);
@@ -54,21 +62,49 @@ void AppUpdateChecker::checkForUpdates(bool manualTriggered)
 
     QNetworkReply* reply = m_networkManager->get(request);
     m_requestManualMap.insert(reply, manualTriggered);
+
+    // Qt 5.12 的 QNetworkRequest 没有统一可靠的传输超时属性，
+    // 使用单次 QTimer 主动 abort，避免 GitHub 或代理无响应时请求永久挂起。
+    QTimer* timeoutTimer = new QTimer(reply);
+    timeoutTimer->setSingleShot(true);
+    timeoutTimer->setInterval(REQUEST_TIMEOUT_MS);
+    connect(timeoutTimer, &QTimer::timeout, this, [this, reply]() {
+        if (!m_requestManualMap.contains(reply)) {
+            return;
+        }
+        reply->setProperty("updateCheckTimedOut", true);
+        reply->abort();
+    });
+    m_requestTimeoutMap.insert(reply, timeoutTimer);
+    timeoutTimer->start();
 }
 
 void AppUpdateChecker::onReplyFinished(QNetworkReply* reply)
 {
     const bool manualTriggered = m_requestManualMap.take(reply);
+    if (QTimer* timer = m_requestTimeoutMap.take(reply)) {
+        timer->stop();
+        timer->deleteLater();
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
-        const QString error = tr("检查更新失败: %1").arg(reply->errorString());
+        const QString error = buildNetworkErrorMessage(reply);
         emit checkFailed(error, manualTriggered);
         reply->deleteLater();
         return;
     }
 
     const QByteArray payload = reply->readAll();
-    const QJsonDocument doc = QJsonDocument::fromJson(payload);
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        emit checkFailed(tr("更新响应 JSON 无效: %1（偏移 %2）")
+                             .arg(parseError.errorString())
+                             .arg(parseError.offset),
+                         manualTriggered);
+        reply->deleteLater();
+        return;
+    }
     if (!doc.isObject()) {
         emit checkFailed(tr("更新响应格式错误"), manualTriggered);
         reply->deleteLater();
@@ -98,6 +134,42 @@ QUrl AppUpdateChecker::makeLatestReleaseApiUrl() const
         return {};
     }
     return QUrl(QString("https://api.github.com/repos/%1/%2/releases/latest").arg(m_owner, m_repo));
+}
+
+/**
+ * @brief 构建网络失败提示。
+ *
+ * 主要流程：优先识别主动超时；其次读取 GitHub API HTTP 状态码和限流头；
+ * 最后回退到 Qt 网络错误字符串。这样用户手动检查更新失败时能知道是超时、
+ * 限流、仓库不存在，还是普通网络错误。
+ */
+QString AppUpdateChecker::buildNetworkErrorMessage(QNetworkReply* reply) const
+{
+    if (reply->property("updateCheckTimedOut").toBool()) {
+        return tr("检查更新超时，请稍后重试");
+    }
+
+    const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    if (statusCode == 403) {
+        const QByteArray remaining = reply->rawHeader("X-RateLimit-Remaining");
+        const QByteArray reset = reply->rawHeader("X-RateLimit-Reset");
+        if (remaining == "0") {
+            return tr("GitHub API 访问频率受限，请稍后重试（reset=%1）")
+                .arg(QString::fromLatin1(reset));
+        }
+        return tr("GitHub 拒绝了更新检查请求（HTTP 403）");
+    }
+    if (statusCode == 404) {
+        return tr("未找到更新源仓库或 Release（HTTP 404）");
+    }
+    if (statusCode >= 500) {
+        return tr("GitHub 服务暂时不可用（HTTP %1）").arg(statusCode);
+    }
+
+    if (statusCode > 0) {
+        return tr("检查更新失败（HTTP %1）: %2").arg(statusCode).arg(reply->errorString());
+    }
+    return tr("检查更新失败: %1").arg(reply->errorString());
 }
 
 QString AppUpdateChecker::normalizeVersion(const QString& rawVersion)

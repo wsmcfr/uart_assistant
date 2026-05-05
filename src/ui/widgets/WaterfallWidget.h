@@ -10,6 +10,7 @@
 
 #include <QWidget>
 #include <QVector>
+#include <QTimer>
 #include "qcustomplot/qcustomplot.h"
 
 namespace ComAssistant {
@@ -92,7 +93,7 @@ public:
     /**
      * @brief 设置是否暂停更新
      */
-    void setPaused(bool paused) { m_paused = paused; }
+    void setPaused(bool paused);
 
     /**
      * @brief 获取是否暂停
@@ -118,7 +119,10 @@ signals:
 private:
     void setupUi();
     void setupColorMap(ColorMap type);
-    void shiftDataUp();
+    void shiftDataUp(int rows);
+    QVector<double> normalizeSpectrumLine(const QVector<double>& spectrum) const;
+    void scheduleSpectrumFlush();
+    void flushPendingSpectra();
 
 private:
     QCustomPlot* m_plot;
@@ -133,6 +137,10 @@ private:
     double m_maxDb = 0;             ///< 最大dB
     int m_currentRow = 0;           ///< 当前行
     bool m_paused = false;
+    QVector<QVector<double>> m_pendingSpectra; ///< 待批量写入颜色图的频谱行，保持原始时间顺序
+    QTimer* m_spectrumFlushTimer = nullptr;    ///< 瀑布图批量刷新定时器，用于合并高频重绘
+    int m_spectrumFlushIntervalMs = 33;        ///< 瀑布图刷新间隔，约 30fps
+    int m_spectrumFlushBatchSize = 16;         ///< 单次最多合并的频谱行数，避免连续数据重复搬移整张色图
 };
 
 } // namespace ComAssistant

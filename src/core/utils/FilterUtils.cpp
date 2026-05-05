@@ -245,17 +245,26 @@ QVector<double> FilterUtils::kalmanFilter(const QVector<double>& data,
 
 double FilterUtils::filterPoint(double value, const FilterConfig& config, FilterState& state)
 {
+    /*
+     * 实时滤波配置可能来自旧会话、脚本或未来的自动恢复，不能假设窗口大小
+     * 始终来自当前对话框范围。这里统一规整到可用窗口，避免空缓冲、除零和
+     * removeFirst 在异常配置下反复触发。
+     */
+    const int safeWindowSize = qMax(1, config.windowSize);
+
     // 初始化
     if (!state.initialized) {
         state.lastOutput = value;
         state.kalmanEstimate = value;
         state.kalmanError = 1.0;
+        state.runningSum = 0.0;
         state.initialized = true;
 
         if (config.type == DigitalFilterType::MovingAverage ||
             config.type == DigitalFilterType::Median) {
-            state.buffer.resize(config.windowSize);
+            state.buffer.resize(safeWindowSize);
             state.buffer.fill(value);
+            state.runningSum = value * safeWindowSize;
         }
 
         return value;
@@ -265,24 +274,29 @@ double FilterUtils::filterPoint(double value, const FilterConfig& config, Filter
 
     switch (config.type) {
     case DigitalFilterType::MovingAverage: {
-        // 滑动窗口
+        /*
+         * 滑动平均处在绘图实时滤波高频路径。维护运行和可把每点复杂度从
+         * O(windowSize) 降到 O(1)，窗口过大时不再拖慢 UI 刷新。
+         */
         state.buffer.append(value);
-        if (state.buffer.size() > config.windowSize) {
-            state.buffer.removeFirst();
+        state.runningSum += value;
+        const int overflow = state.buffer.size() - safeWindowSize;
+        if (overflow > 0) {
+            for (int i = 0; i < overflow; ++i) {
+                state.runningSum -= state.buffer[i];
+            }
+            state.buffer.remove(0, overflow);
         }
-        double sum = 0;
-        for (double v : state.buffer) {
-            sum += v;
-        }
-        output = sum / state.buffer.size();
+        output = state.runningSum / state.buffer.size();
         break;
     }
 
     case DigitalFilterType::Median: {
-        // 中值滤波
+        // 中值滤波同样使用安全窗口，并一次性裁剪溢出旧点。
         state.buffer.append(value);
-        if (state.buffer.size() > config.windowSize) {
-            state.buffer.removeFirst();
+        const int overflow = state.buffer.size() - safeWindowSize;
+        if (overflow > 0) {
+            state.buffer.remove(0, overflow);
         }
         QVector<double> sorted = state.buffer;
         std::sort(sorted.begin(), sorted.end());
@@ -344,6 +358,7 @@ double FilterUtils::filterPoint(double value, const FilterConfig& config, Filter
 void FilterUtils::resetState(FilterState& state)
 {
     state.buffer.clear();
+    state.runningSum = 0;
     state.lastOutput = 0;
     state.kalmanEstimate = 0;
     state.kalmanError = 1.0;

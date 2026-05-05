@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QScrollBar>
 #include <QEvent>
+#include <QSizePolicy>
 
 namespace ComAssistant {
 
@@ -30,8 +31,12 @@ SendWidget::SendWidget(QWidget* parent)
 void SendWidget::setupUi()
 {
     QHBoxLayout* mainLayout = new QHBoxLayout(this);
-    mainLayout->setContentsMargins(4, 4, 4, 4);
-    mainLayout->setSpacing(8);
+    /*
+     * 串口模式的发送区位于垂直 splitter 底部，默认高度有限。这里压缩外边距
+     * 并使用紧凑网格放置选项，保证中英文界面下输入框和按钮都不会被挤变形。
+     */
+    mainLayout->setContentsMargins(4, 3, 4, 3);
+    mainLayout->setSpacing(6);
 
     // 左侧：输入框
     m_inputEdit = new QTextEdit;
@@ -45,58 +50,69 @@ void SendWidget::setupUi()
 
     // 右侧：选项面板
     QWidget* optionsWidget = new QWidget;
-    optionsWidget->setFixedWidth(280);
+    /*
+     * 英文界面下复选项文字更长，完全固定宽度会导致右侧选项换行或被截断。
+     * 使用较窄的弹性上限，并让复选框占据网格单元，既保留文本可读性，也把
+     * 更多横向空间留给左侧发送输入框。
+     */
+    optionsWidget->setMinimumWidth(280);
+    optionsWidget->setMaximumWidth(340);
+    optionsWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
     QVBoxLayout* optionsLayout = new QVBoxLayout(optionsWidget);
     optionsLayout->setContentsMargins(0, 0, 0, 0);
-    optionsLayout->setSpacing(6);
+    optionsLayout->setSpacing(4);
+
+    // 发送选项：两列网格比多行 HBox 更抗压缩，英文文本也不容易把按钮顶出可视区。
+    QGridLayout* optionsGrid = new QGridLayout;
+    optionsGrid->setContentsMargins(0, 0, 0, 0);
+    optionsGrid->setHorizontalSpacing(8);
+    optionsGrid->setVerticalSpacing(4);
 
     // 时间戳选项
-    QHBoxLayout* timestampLayout = new QHBoxLayout;
     m_timestampCheck = new QCheckBox(tr("时间戳"));
+    m_timestampCheck->setMinimumWidth(86);
     m_timestampSpin = new QSpinBox;
     m_timestampSpin->setRange(1, 9999);
     m_timestampSpin->setValue(20);
     m_timestampSpin->setSuffix(" ms");
-    m_timestampSpin->setFixedWidth(80);
+    m_timestampSpin->setFixedWidth(78);
     m_timeoutLabel = new QLabel(tr("超时"));
-    timestampLayout->addWidget(m_timestampCheck);
-    timestampLayout->addWidget(m_timestampSpin);
-    timestampLayout->addWidget(m_timeoutLabel);
-    timestampLayout->addStretch();
-    optionsLayout->addLayout(timestampLayout);
+    optionsGrid->addWidget(m_timestampCheck, 0, 0);
+    optionsGrid->addWidget(m_timestampSpin, 0, 1);
+    optionsGrid->addWidget(m_timeoutLabel, 0, 2);
 
     // 循环发送选项
-    QHBoxLayout* autoSendLayout = new QHBoxLayout;
     m_autoSendCheck = new QCheckBox(tr("循环发送"));
+    m_autoSendCheck->setMinimumWidth(86);
     m_intervalSpin = new QSpinBox;
     m_intervalSpin->setRange(10, 60000);
     m_intervalSpin->setValue(100);
-    m_intervalSpin->setFixedWidth(80);
+    m_intervalSpin->setFixedWidth(78);
     m_intervalLabel = new QLabel(tr("ms/次"));
-    autoSendLayout->addWidget(m_autoSendCheck);
-    autoSendLayout->addWidget(m_intervalSpin);
-    autoSendLayout->addWidget(m_intervalLabel);
-    autoSendLayout->addStretch();
-    optionsLayout->addLayout(autoSendLayout);
+    optionsGrid->addWidget(m_autoSendCheck, 1, 0);
+    optionsGrid->addWidget(m_intervalSpin, 1, 1);
+    optionsGrid->addWidget(m_intervalLabel, 1, 2);
 
     // HEX 选项
-    QHBoxLayout* hexLayout = new QHBoxLayout;
     m_hexDisplayCheck = new QCheckBox(tr("HEX显示"));
     m_hexSendCheck = new QCheckBox(tr("HEX发送"));
-    hexLayout->addWidget(m_hexDisplayCheck);
-    hexLayout->addWidget(m_hexSendCheck);
-    hexLayout->addStretch();
-    optionsLayout->addLayout(hexLayout);
+    m_hexDisplayCheck->setMinimumWidth(110);
+    m_hexSendCheck->setMinimumWidth(96);
+    optionsGrid->addWidget(m_hexDisplayCheck, 2, 0, 1, 2);
+    optionsGrid->addWidget(m_hexSendCheck, 2, 2);
 
     // 回车发送和追加新行
-    QHBoxLayout* enterLayout = new QHBoxLayout;
     m_enterSendCheck = new QCheckBox(tr("回车发送"));
     m_appendNewlineCheck = new QCheckBox(tr("追加新行"));
+    m_enterSendCheck->setMinimumWidth(110);
+    m_appendNewlineCheck->setMinimumWidth(110);
     m_appendNewlineCheck->setChecked(true);
-    enterLayout->addWidget(m_enterSendCheck);
-    enterLayout->addWidget(m_appendNewlineCheck);
-    enterLayout->addStretch();
-    optionsLayout->addLayout(enterLayout);
+    optionsGrid->addWidget(m_enterSendCheck, 3, 0, 1, 2);
+    optionsGrid->addWidget(m_appendNewlineCheck, 3, 2);
+    optionsGrid->setColumnStretch(0, 1);
+    optionsGrid->setColumnStretch(1, 0);
+    optionsGrid->setColumnStretch(2, 1);
+    optionsLayout->addLayout(optionsGrid);
 
     optionsLayout->addStretch();
 

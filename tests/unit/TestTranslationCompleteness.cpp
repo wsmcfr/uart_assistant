@@ -127,6 +127,88 @@ void TestTranslationCompleteness::testMainWindowLanguageCriticalTranslations()
         });
 }
 
+void TestTranslationCompleteness::testMainWindowHamburgerMenuTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+    verifyTranslations(
+        translations,
+        QStringLiteral("ComAssistant::MainWindow"),
+        {
+            /*
+             * 这里覆盖汉堡菜单运行时真正使用的无快捷键文本。
+             * Qt 翻译匹配要求 source 完全一致，旧菜单栏的“工具箱(&B)...”
+             * 无法匹配汉堡菜单的“工具箱...”，因此这些词条需要单独测试。
+             */
+            {QStringLiteral("文件"), QStringLiteral("File")},
+            {QStringLiteral("新建会话"), QStringLiteral("New Session")},
+            {QStringLiteral("保存会话"), QStringLiteral("Save Session")},
+            {QStringLiteral("加载会话"), QStringLiteral("Load Session")},
+            {QStringLiteral("导出数据..."), QStringLiteral("Export Data...")},
+            {QStringLiteral("退出"), QStringLiteral("Exit")},
+            {QStringLiteral("编辑"), QStringLiteral("Edit")},
+            {QStringLiteral("清空全部"), QStringLiteral("Clear All")},
+            {QStringLiteral("数据搜索..."), QStringLiteral("Data Search...")},
+            {QStringLiteral("视图"), QStringLiteral("View")},
+            {QStringLiteral("置顶显示"), QStringLiteral("Always on Top")},
+            {QStringLiteral("语言"), QStringLiteral("Language")},
+            {QStringLiteral("简体中文"), QStringLiteral("Simplified Chinese")},
+            {QStringLiteral("工具"), QStringLiteral("Tools")},
+            {QStringLiteral("工具箱..."), QStringLiteral("Toolbox...")},
+            {QStringLiteral("脚本编辑器..."), QStringLiteral("Script Editor...")},
+            {QStringLiteral("文件传输..."), QStringLiteral("File Transfer...")},
+            {QStringLiteral("IAP升级..."), QStringLiteral("IAP Upgrade...")},
+            {QStringLiteral("宏录制/回放..."), QStringLiteral("Macro Record/Playback...")},
+            {QStringLiteral("多端口管理..."), QStringLiteral("Multi-Port Manager...")},
+            {QStringLiteral("Modbus分析..."), QStringLiteral("Modbus Analyzer...")},
+            {QStringLiteral("数据分窗..."), QStringLiteral("Data Window Layout...")},
+            {QStringLiteral("控件面板..."), QStringLiteral("Control Panel...")},
+            {QStringLiteral("数据表格..."), QStringLiteral("Data Table...")},
+            {QStringLiteral("设置..."), QStringLiteral("Settings...")},
+            {QStringLiteral("绘图"), QStringLiteral("Plot")},
+            {QStringLiteral("新建绘图窗口"), QStringLiteral("New Plot Window")},
+            {QStringLiteral("关闭所有绘图窗口"), QStringLiteral("Close All Plot Windows")},
+            {QStringLiteral("绘图协议"), QStringLiteral("Plot Protocol")},
+            {QStringLiteral("无"), QStringLiteral("None")},
+            {QStringLiteral("TEXT绘图"), QStringLiteral("TEXT Plot")},
+            {QStringLiteral("STAMP绘图"), QStringLiteral("STAMP Plot")},
+            {QStringLiteral("CSV绘图"), QStringLiteral("CSV Plot")},
+            {QStringLiteral("JustFloat"), QStringLiteral("JustFloat")},
+            {QStringLiteral("窗口同步"), QStringLiteral("Window Sync")},
+            {QStringLiteral("启用后，所有绘图窗口的暂停状态将同步"), QStringLiteral("When enabled, the paused state of all drawing windows will be synchronized")},
+            {QStringLiteral("帮助"), QStringLiteral("Help")},
+            {QStringLiteral("帮助文档"), QStringLiteral("Help Documentation")},
+            {QStringLiteral("检查更新..."), QStringLiteral("Check Updates...")},
+            {QStringLiteral("启动时自动检查更新"), QStringLiteral("Automatically check for updates on startup")},
+            {QStringLiteral("关于"), QStringLiteral("About")},
+            {QStringLiteral("关于 Qt"), QStringLiteral("About Qt")}
+        });
+}
+
+void TestTranslationCompleteness::testMainWindowToolbarTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+    verifyTranslations(
+        translations,
+        QStringLiteral("ComAssistant::MainWindow"),
+        {
+            {QStringLiteral("菜单"), QStringLiteral("Menu")},
+            {QStringLiteral("类型:"), QStringLiteral("Type:")},
+            {QStringLiteral("串口"), QStringLiteral("Serial")},
+            {QStringLiteral("TCP客户端"), QStringLiteral("TCP Client")},
+            {QStringLiteral("TCP服务器"), QStringLiteral("TCP Server")},
+            {QStringLiteral("选择通信类型"), QStringLiteral("Select communication type")},
+            {QStringLiteral("端口:"), QStringLiteral("Port:")},
+            {QStringLiteral("模式:"), QStringLiteral("Mode:")},
+            {QStringLiteral("选择显示模式"), QStringLiteral("Select display mode")},
+            {QStringLiteral("终端"), QStringLiteral("Terminal")},
+            {QStringLiteral("帧模式"), QStringLiteral("Frame Mode")},
+            {QStringLiteral("调试"), QStringLiteral("Debug")},
+            {QStringLiteral("断开"), QStringLiteral("Disconnect")},
+            {QStringLiteral("停止服务"), QStringLiteral("Stop Service")},
+            {QStringLiteral("解绑"), QStringLiteral("Unbind")}
+        });
+}
+
 void TestTranslationCompleteness::testQuickSendTranslations()
 {
     const ContextTranslations translations = loadTranslations();

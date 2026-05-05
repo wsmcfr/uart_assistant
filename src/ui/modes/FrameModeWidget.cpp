@@ -18,6 +18,7 @@
 #include <QTextStream>
 #include <QMessageBox>
 #include <QPalette>
+#include <QSizePolicy>
 
 namespace ComAssistant {
 
@@ -31,6 +32,10 @@ FrameModeWidget::FrameModeWidget(QWidget* parent)
     m_timeoutTimer = new QTimer(this);
     m_timeoutTimer->setSingleShot(true);
     connect(m_timeoutTimer, &QTimer::timeout, this, &FrameModeWidget::onFrameTimeout);
+
+    m_frameFlushTimer = new QTimer(this);
+    m_frameFlushTimer->setSingleShot(true);
+    connect(m_frameFlushTimer, &QTimer::timeout, this, &FrameModeWidget::flushPendingFrames);
 
     // 默认帧配置
     m_config.header = QByteArray::fromHex("AA");
@@ -72,13 +77,15 @@ void FrameModeWidget::setupUi()
     m_frameTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
     m_frameTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     m_frameTable->setColumnWidth(0, 60);
-    m_frameTable->setColumnWidth(1, 100);
-    m_frameTable->setColumnWidth(2, 50);
-    m_frameTable->setColumnWidth(3, 50);
+    m_frameTable->setColumnWidth(1, 150);
+    m_frameTable->setColumnWidth(2, 80);
+    m_frameTable->setColumnWidth(3, 90);
     m_frameTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_frameTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_frameTable->setAlternatingRowColors(true);
     m_frameTable->setFont(QFont("Consolas", 9));
+    m_frameTable->setWordWrap(false);
+    m_frameTable->horizontalHeader()->setMinimumSectionSize(42);
     connect(m_frameTable, &QTableWidget::cellClicked, this, &FrameModeWidget::onFrameSelected);
     leftLayout->addWidget(m_frameTable);
 
@@ -91,6 +98,8 @@ void FrameModeWidget::setupUi()
 
     // 右侧：帧详情
     QWidget* rightWidget = new QWidget;
+    rightWidget->setMinimumWidth(280);
+    rightWidget->setMaximumWidth(520);
     QVBoxLayout* rightLayout = new QVBoxLayout(rightWidget);
     rightLayout->setContentsMargins(5, 5, 5, 5);
 
@@ -104,29 +113,43 @@ void FrameModeWidget::setupUi()
     rightLayout->addWidget(m_detailView);
 
     m_splitter->addWidget(rightWidget);
-    m_splitter->setStretchFactor(0, 2);
+    m_splitter->setStretchFactor(0, 3);
     m_splitter->setStretchFactor(1, 1);
+    m_splitter->setCollapsible(0, false);
+    m_splitter->setCollapsible(1, false);
 
     mainLayout->addWidget(m_splitter);
 
-    // 发送区
+    // 发送区：固定为一条紧凑操作栏，避免按钮在宽屏或窄屏下被纵向拉伸成大块。
     QWidget* sendWidget = new QWidget;
     sendWidget->setObjectName("frameSendWidget");
+    sendWidget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sendWidget->setFixedHeight(58);
     QHBoxLayout* sendLayout = new QHBoxLayout(sendWidget);
     sendLayout->setContentsMargins(10, 8, 10, 8);
+    sendLayout->setSpacing(8);
 
     m_sendLabel = new QLabel(tr("发送帧:"));
+    m_sendLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     sendLayout->addWidget(m_sendLabel);
     m_sendEdit = new QLineEdit;
     m_sendEdit->setPlaceholderText(tr("输入十六进制数据，如: 01 02 03"));
     m_sendEdit->setFont(QFont("Consolas", 10));
-    sendLayout->addWidget(m_sendEdit);
+    m_sendEdit->setMinimumWidth(220);
+    m_sendEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sendLayout->addWidget(m_sendEdit, 1);
 
     m_sendBtn = new QPushButton(tr("发送"));
+    m_sendBtn->setMinimumWidth(72);
+    m_sendBtn->setFixedHeight(36);
+    m_sendBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(m_sendBtn, &QPushButton::clicked, this, &FrameModeWidget::onSendFrame);
     sendLayout->addWidget(m_sendBtn);
 
     m_sendWithHeaderBtn = new QPushButton(tr("带帧头尾发送"));
+    m_sendWithHeaderBtn->setMinimumWidth(132);
+    m_sendWithHeaderBtn->setFixedHeight(36);
+    m_sendWithHeaderBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     connect(m_sendWithHeaderBtn, &QPushButton::clicked, [this]() {
         QString text = m_sendEdit->text().simplified().remove(' ');
         if (text.isEmpty()) return;
@@ -142,21 +165,28 @@ void FrameModeWidget::setupUi()
 void FrameModeWidget::setupToolBar()
 {
     m_toolBar = new QToolBar;
+    m_toolBar->setMovable(false);
+    m_toolBar->setFloatable(false);
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     // 帧头设置
     m_headerLabel = new QLabel(tr("帧头:"));
+    m_headerLabel->setMinimumWidth(48);
     m_toolBar->addWidget(m_headerLabel);
     m_headerEdit = new QLineEdit("AA");
-    m_headerEdit->setMaximumWidth(60);
+    m_headerEdit->setMinimumWidth(64);
+    m_headerEdit->setMaximumWidth(90);
     m_headerEdit->setFont(QFont("Consolas", 9));
     connect(m_headerEdit, &QLineEdit::textChanged, this, &FrameModeWidget::onConfigChanged);
     m_toolBar->addWidget(m_headerEdit);
 
     // 帧尾设置
     m_footerLabel = new QLabel(tr("帧尾:"));
+    m_footerLabel->setMinimumWidth(48);
     m_toolBar->addWidget(m_footerLabel);
     m_footerEdit = new QLineEdit("55");
-    m_footerEdit->setMaximumWidth(60);
+    m_footerEdit->setMinimumWidth(64);
+    m_footerEdit->setMaximumWidth(90);
     m_footerEdit->setFont(QFont("Consolas", 9));
     connect(m_footerEdit, &QLineEdit::textChanged, this, &FrameModeWidget::onConfigChanged);
     m_toolBar->addWidget(m_footerEdit);
@@ -165,12 +195,15 @@ void FrameModeWidget::setupToolBar()
 
     // 校验方式
     m_checksumLabel = new QLabel(tr("校验:"));
+    m_checksumLabel->setMinimumWidth(48);
     m_toolBar->addWidget(m_checksumLabel);
     m_checksumCombo = new QComboBox;
     m_checksumCombo->addItem(tr("无"), 0);
     m_checksumCombo->addItem("XOR", 1);
     m_checksumCombo->addItem("SUM", 2);
     m_checksumCombo->addItem("CRC16", 3);
+    m_checksumCombo->setMinimumWidth(100);
+    m_checksumCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(m_checksumCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this](int index) {
         m_config.checksumType = index;
     });
@@ -179,12 +212,12 @@ void FrameModeWidget::setupToolBar()
     m_toolBar->addSeparator();
 
     // 清空
-    QAction* clearAction = m_toolBar->addAction(tr("清空"));
-    connect(clearAction, &QAction::triggered, this, &FrameModeWidget::onClearFrames);
+    m_clearAction = m_toolBar->addAction(tr("清空"));
+    connect(m_clearAction, &QAction::triggered, this, &FrameModeWidget::onClearFrames);
 
     // 导出
-    QAction* exportAction = m_toolBar->addAction(tr("导出"));
-    connect(exportAction, &QAction::triggered, this, &FrameModeWidget::onExportFrames);
+    m_exportAction = m_toolBar->addAction(tr("导出"));
+    connect(m_exportAction, &QAction::triggered, this, &FrameModeWidget::onExportFrames);
 }
 
 void FrameModeWidget::appendReceivedData(const QByteArray& data)
@@ -305,11 +338,18 @@ bool FrameModeWidget::validateFrame(const QByteArray& data, QString& error)
 
 void FrameModeWidget::addFrame(const FrameData& frame)
 {
+    /*
+     * 记录先进入内存列表，再批量刷新到表格。这样导出和详情查看仍基于完整
+     * FrameData，而 UI 不会因为高频 insertRow/scrollToBottom 被每帧打断。
+     */
     m_frames.append(frame);
+    m_pendingFrames.append(frame);
+    trimFrameRecords();
+    scheduleFrameFlush();
+}
 
-    int row = m_frameTable->rowCount();
-    m_frameTable->insertRow(row);
-
+void FrameModeWidget::fillFrameRow(int row, const FrameData& frame)
+{
     // 序号
     m_frameTable->setItem(row, 0, new QTableWidgetItem(QString::number(frame.index)));
 
@@ -331,8 +371,76 @@ void FrameModeWidget::addFrame(const FrameData& frame)
     }
     m_frameTable->setItem(row, 4, new QTableWidgetItem(hexStr.trimmed()));
 
-    // 滚动到底部
+    // 滚动由 flushPendingFrames 统一处理，避免批量追加时每行都触发布局。
+}
+
+void FrameModeWidget::trimFrameRecords()
+{
+    /*
+     * 表格和记录列表都设置硬上限，避免长时间抓包后内存无限增长。
+     * 删除旧行时保持 m_frames 与表格行号一致，详情选择仍可直接用 row 取记录。
+     */
+    const int overflow = m_frames.size() - m_maxFrameRecords;
+    if (overflow <= 0) {
+        return;
+    }
+
+    m_frames.erase(m_frames.begin(), m_frames.begin() + overflow);
+
+    /*
+     * 已显示旧行优先裁掉；只有表格行数不足时，才裁还没落表的 pending。
+     * 这样保持 m_frames 与表格 row 的对应关系，详情选择不会错位。
+     */
+    const int tableTrim = m_frameTable ? qMin(overflow, m_frameTable->rowCount()) : 0;
+    if (m_frameTable && tableTrim > 0) {
+        /*
+         * 通过底层模型批量删除旧行，避免逐行 removeRow 在大数据量下反复刷新。
+         */
+        m_frameTable->model()->removeRows(0, qMin(tableTrim, m_frameTable->rowCount()));
+    }
+
+    const int pendingTrim = qMin(overflow - tableTrim, m_pendingFrames.size());
+    if (pendingTrim > 0) {
+        m_pendingFrames.erase(m_pendingFrames.begin(), m_pendingFrames.begin() + pendingTrim);
+    }
+}
+
+void FrameModeWidget::scheduleFrameFlush()
+{
+    if (m_pendingFrames.size() >= m_frameFlushBatchSize) {
+        flushPendingFrames();
+        return;
+    }
+
+    if (m_frameFlushTimer && !m_frameFlushTimer->isActive()) {
+        m_frameFlushTimer->start(m_frameFlushIntervalMs);
+    }
+}
+
+void FrameModeWidget::flushPendingFrames()
+{
+    if (m_frameFlushTimer) {
+        m_frameFlushTimer->stop();
+    }
+    if (!m_frameTable || m_pendingFrames.isEmpty()) {
+        return;
+    }
+
+    m_frameTable->setUpdatesEnabled(false);
+    const int count = qMin(m_pendingFrames.size(), m_frameFlushBatchSize);
+    const int firstRow = m_frameTable->rowCount();
+    m_frameTable->setRowCount(firstRow + count);
+    for (int i = 0; i < count; ++i) {
+        fillFrameRow(firstRow + i, m_pendingFrames.at(i));
+    }
+    if (count > 0) {
+        m_pendingFrames.erase(m_pendingFrames.begin(), m_pendingFrames.begin() + count);
+    }
+    if (!m_pendingFrames.isEmpty()) {
+        scheduleFrameFlush();
+    }
     m_frameTable->scrollToBottom();
+    m_frameTable->setUpdatesEnabled(true);
 }
 
 void FrameModeWidget::onFrameSelected(int row, int column)
@@ -468,6 +576,10 @@ void FrameModeWidget::onSendFrame()
 
 void FrameModeWidget::clear()
 {
+    if (m_frameFlushTimer) {
+        m_frameFlushTimer->stop();
+    }
+    m_pendingFrames.clear();
     m_frames.clear();
     m_frameTable->setRowCount(0);
     m_detailView->clear();
@@ -480,6 +592,8 @@ void FrameModeWidget::clear()
 
 bool FrameModeWidget::exportToFile(const QString& fileName)
 {
+    flushPendingFrames();
+
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
@@ -542,13 +656,17 @@ void FrameModeWidget::retranslateUi()
     if (m_sendBtn) m_sendBtn->setText(tr("发送"));
     if (m_sendWithHeaderBtn) m_sendWithHeaderBtn->setText(tr("带帧头尾发送"));
 
-    // 工具栏
+    // 工具栏标签
     if (m_headerLabel) m_headerLabel->setText(tr("帧头:"));
     if (m_footerLabel) m_footerLabel->setText(tr("帧尾:"));
     if (m_checksumLabel) m_checksumLabel->setText(tr("校验:"));
     if (m_checksumCombo) {
         m_checksumCombo->setItemText(0, tr("无"));
     }
+
+    // 工具栏动作
+    if (m_clearAction) m_clearAction->setText(tr("清空"));
+    if (m_exportAction) m_exportAction->setText(tr("导出"));
 
     // 更新统计
     updateStatistics();

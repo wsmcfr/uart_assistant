@@ -198,7 +198,7 @@ private:
     void setupToolBar();
     void setupTable();
     void retranslateUi();
-    void addRecord(const TableDataRecord& record);
+    void addRecords(const QVector<TableDataRecord>& records);  ///< 批量添加记录到模型，减少高频接收时的表格刷新开销
     void trimRecords();
     QString formatHexString(const QByteArray& data);
     QString formatAsciiString(const QByteArray& data);

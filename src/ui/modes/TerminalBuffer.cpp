@@ -420,6 +420,16 @@ const QVector<TerminalCell>& TerminalBuffer::historyLine(int index) const
     return m_history[index];
 }
 
+void TerminalBuffer::setMaxHistoryLines(int max)
+{
+    /*
+     * 历史行上限可能由设置页动态调整，必须立即裁剪旧历史。
+     * 下限设为 0，允许用户彻底关闭终端回滚以降低内存占用。
+     */
+    m_maxHistoryLines = qMax(0, max);
+    trimHistory();
+}
+
 void TerminalBuffer::ensureCursorInBounds()
 {
     m_cursorRow = qBound(0, m_cursorRow, m_rows - 1);
@@ -429,8 +439,18 @@ void TerminalBuffer::ensureCursorInBounds()
 void TerminalBuffer::addLineToHistory(const QVector<TerminalCell>& line)
 {
     m_history.append(line);
-    while (m_history.size() > m_maxHistoryLines) {
-        m_history.removeFirst();
+    trimHistory();
+}
+
+void TerminalBuffer::trimHistory()
+{
+    /*
+     * 高频终端输出可能持续滚屏。一次性删除溢出历史，比循环 removeFirst
+     * 少做 QVector 头部搬移，降低长时间运行时的 UI 抖动。
+     */
+    const int overflow = m_history.size() - m_maxHistoryLines;
+    if (overflow > 0) {
+        m_history.erase(m_history.begin(), m_history.begin() + overflow);
     }
 }
 

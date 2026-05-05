@@ -26,6 +26,7 @@
 #include <QMessageBox>
 #include <QSettings>
 #include <QInputDialog>
+#include <QSizePolicy>
 
 namespace ComAssistant {
 
@@ -215,6 +216,11 @@ VT100Display::VT100Display(TerminalBuffer* buffer, QWidget* parent)
     : QWidget(parent)
     , m_buffer(buffer)
 {
+    /*
+     * Qt 默认会把 Tab/Shift+Tab 当作焦点切换键，导致终端面板失焦、
+     * 光标消失。本终端需要把 Tab 作为补全/发送按键处理，所以禁用
+     * QWidget 的 Tab 焦点导航，让 keyPressEvent 能稳定收到 Tab。
+     */
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_InputMethodEnabled);
     setMouseTracking(true);
@@ -370,6 +376,22 @@ void VT100Display::onScreenUpdated()
     // 有新数据时自动滚动到底部，确保显示最新内容
     m_scrollOffset = 0;
     update();
+}
+
+bool VT100Display::event(QEvent* event)
+{
+    /*
+     * QWidget 会在 keyPressEvent 之前拦截 Tab/Backtab 做焦点切换。
+     * 终端里 Tab 是有效输入键，必须在 event 层转交给 keyPressEvent。
+     */
+    if (event->type() == QEvent::KeyPress) {
+        QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Tab || keyEvent->key() == Qt::Key_Backtab) {
+            keyPressEvent(keyEvent);
+            return true;
+        }
+    }
+    return QWidget::event(event);
 }
 
 void VT100Display::paintEvent(QPaintEvent* event)
@@ -541,14 +563,15 @@ void VT100Display::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Enter:
         // 发送整行 + 换行符
         {
-            // 本地显示换行
-            if (m_localEcho) {
-                m_buffer->newLine();
-            }
+            /*
+             * 串口终端的屏幕只展示用户已经看见的本地输入和设备返回数据。
+             * Enter 后保留当前输入行，但不再通过 appendSentData 额外回显
+             * 一遍；如果设备没有回包，只停在下一行开头等待后续输入/回包。
+             */
             // 发送数据（使用设置的换行符）
             QByteArray data = m_inputBuffer.toUtf8() + m_lineEnding.toUtf8();
+            finishInputLineAfterSubmit();
             emit keyPressed(data);
-            m_inputBuffer.clear();
             scrollToBottom();
         }
         break;
@@ -567,7 +590,7 @@ void VT100Display::keyPressEvent(QKeyEvent* event)
         break;
 
     case Qt::Key_Tab:
-        // Tab键发送到设备
+        // Tab 先交给 TerminalModeWidget 做本地命令补全；没有匹配时才会发送到设备。
         emit keyPressed(QByteArray(1, '\t'));
         break;
 
@@ -620,6 +643,73 @@ void VT100Display::keyPressEvent(QKeyEvent* event)
         }
         break;
     }
+}
+
+void VT100Display::replaceInputBuffer(const QString& text)
+{
+    /*
+     * 本地补全需要把“当前正在输入的这一行”替换掉，而不是在末尾追加。
+     * 这里先退回到本行起点并清到行尾，再重新绘制补全文本，避免旧字符残留。
+     */
+    if (m_inputBuffer == text) {
+        return;
+    }
+
+    if (m_localEcho) {
+        const int row = m_buffer->cursorRow();
+        const int col = qMax(0, m_buffer->cursorCol() - m_inputBuffer.size());
+        m_buffer->setCursorPosition(row, col);
+        m_buffer->clearToEndOfLine();
+        for (const QChar& ch : text) {
+            m_buffer->putChar(ch);
+        }
+        update();
+    }
+
+    m_inputBuffer = text;
+}
+
+void VT100Display::showCompletionCandidates(const QStringList& candidates)
+{
+    /*
+     * 多候选补全模拟 Linux 终端：保留用户已经输入的前缀，换到下一行打印
+     * 候选，再开启一条新的输入行并恢复前缀。这里输出的是本地 UI 提示，
+     * 不会通过 sendDataRequested 发给设备。
+     */
+    if (candidates.isEmpty()) {
+        return;
+    }
+
+    const QString prefix = m_inputBuffer;
+    m_buffer->carriageReturn();
+    m_buffer->newLine();
+    m_buffer->putString(candidates.join(QStringLiteral("  ")));
+    m_buffer->carriageReturn();
+    m_buffer->newLine();
+
+    if (m_localEcho) {
+        for (const QChar& ch : prefix) {
+            m_buffer->putChar(ch);
+        }
+    }
+
+    m_inputBuffer = prefix;
+    m_cursorVisible = true;
+    update();
+}
+
+void VT100Display::finishInputLineAfterSubmit()
+{
+    /*
+     * 提交时保留用户已经输入并看到的内容，避免 Enter 看起来像“清屏”。
+     * 内部输入缓冲必须清空，否则下一次输入/Tab 补全会错误地沿用旧命令。
+     * 发送成功后的 appendSentData 不会写屏幕，因此不会出现本地内容重复显示。
+     */
+    m_buffer->carriageReturn();
+    m_buffer->newLine();
+    m_inputBuffer.clear();
+    m_cursorVisible = true;
+    update();
 }
 
 QByteArray VT100Display::keyToBytes(QKeyEvent* event) const
@@ -819,99 +909,6 @@ void VT100Display::focusOutEvent(QFocusEvent* event)
     update();
 }
 
-// ==================== CommandLineEdit ====================
-
-CommandLineEdit::CommandLineEdit(QWidget* parent)
-    : QLineEdit(parent)
-{
-    setObjectName("terminalInput");
-    setPlaceholderText(tr("输入命令..."));
-    setFont(QFont("Consolas", 11));
-
-    connect(this, &QLineEdit::returnPressed, [this]() {
-        QString cmd = text().trimmed();
-        if (!cmd.isEmpty()) {
-            addToHistory(cmd);
-            emit commandSubmitted(cmd);
-        }
-        clear();
-        m_historyIndex = -1;
-    });
-}
-
-void CommandLineEdit::addToHistory(const QString& command)
-{
-    if (!m_history.isEmpty() && m_history.first() == command) {
-        return;
-    }
-
-    m_history.prepend(command);
-    if (m_history.size() > MAX_HISTORY) {
-        m_history.removeLast();
-    }
-    m_historyIndex = -1;
-}
-
-void CommandLineEdit::clearHistory()
-{
-    m_history.clear();
-    m_historyIndex = -1;
-}
-
-void CommandLineEdit::keyPressEvent(QKeyEvent* event)
-{
-    switch (event->key()) {
-    case Qt::Key_Up:
-        if (m_history.isEmpty()) break;
-        if (m_historyIndex < 0) {
-            m_currentInput = text();
-            m_historyIndex = 0;
-        } else if (m_historyIndex < m_history.size() - 1) {
-            m_historyIndex++;
-        }
-        setText(m_history[m_historyIndex]);
-        break;
-
-    case Qt::Key_Down:
-        if (m_historyIndex < 0) break;
-        if (m_historyIndex > 0) {
-            m_historyIndex--;
-            setText(m_history[m_historyIndex]);
-        } else {
-            m_historyIndex = -1;
-            setText(m_currentInput);
-        }
-        break;
-
-    case Qt::Key_Tab:
-        emit tabPressed();
-        event->accept();
-        return;
-
-    case Qt::Key_Escape:
-        clear();
-        m_historyIndex = -1;
-        break;
-
-    default:
-        QLineEdit::keyPressEvent(event);
-        break;
-    }
-}
-
-void CommandLineEdit::changeEvent(QEvent* event)
-{
-    if (event->type() == QEvent::LanguageChange) {
-        retranslateUi();
-    }
-    QLineEdit::changeEvent(event);
-}
-
-void CommandLineEdit::retranslateUi()
-{
-    setPlaceholderText(tr("输入命令..."));
-}
-
 // ==================== TerminalModeWidget ====================
 
 TerminalModeWidget::TerminalModeWidget(QWidget* parent)
@@ -927,6 +924,18 @@ TerminalModeWidget::TerminalModeWidget(QWidget* parent)
 
     // 初始化VT100Display设置
     m_display->setLineEnding(getLineEnding());
+    /*
+     * 终端模式的输入已经合并到黑色面板内部。默认开启本地回显，
+     * 用户键入字符时才能像普通终端一样立即在光标位置看到输入内容。
+     */
+    m_display->setLocalEcho(true);
+    if (m_echoAction) {
+        /*
+         * 工具栏创建时本地回显还未开启，这里把可见勾选状态同步到真实
+         * 终端输入状态，避免用户看到“未勾选但实际可输入可见”的错觉。
+         */
+        m_echoAction->setChecked(m_display->localEcho());
+    }
 
     // 连接信号
     connect(m_ansiParser, &AnsiParser::bell, this, [this]() {
@@ -948,101 +957,29 @@ void TerminalModeWidget::setupUi()
     mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
-    // VT100终端显示区 - 直接在此输入，像真正的终端
+    // VT100终端显示区：输入、回显、Enter 发送都在同一个面板内完成。
     m_display = new VT100Display(m_termBuffer);
     mainLayout->addWidget(m_display, 1);
 
     // 连接显示组件的按键信号
     connect(m_display, &VT100Display::keyPressed, this, &TerminalModeWidget::onKeyPressed);
-
-    // 底部命令输入栏 - 可见，方便用户直接输入发送
-    QWidget* inputBar = new QWidget;
-    inputBar->setObjectName("terminalInputBar");
-    QHBoxLayout* inputLayout = new QHBoxLayout(inputBar);
-    inputLayout->setContentsMargins(4, 2, 4, 2);
-    inputLayout->setSpacing(4);
-
-    // 命令提示符标签
-    QLabel* promptLabel = new QLabel(">>>");
-    promptLabel->setObjectName("terminalPromptLabel");
-
-    // 命令输入框
-    m_commandLine = new CommandLineEdit;
-    m_commandLine->setPlaceholderText(tr("输入命令..."));
-
-    // 发送按钮
-    QPushButton* sendBtn = new QPushButton(tr("发送"));
-    sendBtn->setObjectName("terminalSendBtn");
-
-    inputLayout->addWidget(promptLabel);
-    inputLayout->addWidget(m_commandLine, 1);
-    inputLayout->addWidget(sendBtn);
-
-    mainLayout->addWidget(inputBar);
-
-    // 连接发送逻辑
-    connect(m_commandLine, &QLineEdit::returnPressed, this, [this]() {
-        sendCommand(m_commandLine->text());
-        m_commandLine->clear();
-    });
-    connect(sendBtn, &QPushButton::clicked, this, [this]() {
-        sendCommand(m_commandLine->text());
-        m_commandLine->clear();
-    });
-    connect(m_commandLine, &CommandLineEdit::tabPressed, this, &TerminalModeWidget::onTabPressed);
-
-    // 保存发送按钮引用，用于连接状态更新
-    m_sendBtn = sendBtn;
-
-    // 初始禁用（未连接时）
-    m_commandLine->setEnabled(m_connected);
-    m_sendBtn->setEnabled(m_connected);
 }
 
 void TerminalModeWidget::setupToolBar()
 {
     m_toolBar = new QToolBar;
     m_toolBar->setObjectName("terminalToolBar");
+    m_toolBar->setMovable(false);
+    m_toolBar->setFloatable(false);
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     // 清屏
-    QAction* clearAction = m_toolBar->addAction(tr("清屏"));
-    connect(clearAction, &QAction::triggered, this, &TerminalModeWidget::onClearScreen);
+    m_clearScreenAction = m_toolBar->addAction(tr("清屏"));
+    connect(m_clearScreenAction, &QAction::triggered, this, &TerminalModeWidget::onClearScreen);
 
     m_toolBar->addSeparator();
 
-    // 本地回显
-    m_echoAction = m_toolBar->addAction(tr("本地回显"));
-    m_echoAction->setCheckable(true);
-    connect(m_echoAction, &QAction::toggled, this, &TerminalModeWidget::onToggleLocalEcho);
-
-    // 时间戳
-    QAction* timestampAction = m_toolBar->addAction(tr("时间戳"));
-    timestampAction->setCheckable(true);
-    connect(timestampAction, &QAction::toggled, this, &TerminalModeWidget::onToggleTimestamp);
-
-    // 日志
-    QAction* logAction = m_toolBar->addAction(tr("记录日志"));
-    logAction->setCheckable(true);
-    connect(logAction, &QAction::toggled, this, &TerminalModeWidget::onToggleLog);
-
-    m_toolBar->addSeparator();
-
-    // 快捷键按钮
-    QAction* ctrlCAction = m_toolBar->addAction("Ctrl+C");
-    ctrlCAction->setToolTip(tr("发送中断信号"));
-    connect(ctrlCAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlC);
-
-    QAction* ctrlDAction = m_toolBar->addAction("Ctrl+D");
-    ctrlDAction->setToolTip(tr("发送 EOF"));
-    connect(ctrlDAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlD);
-
-    QAction* ctrlZAction = m_toolBar->addAction("Ctrl+Z");
-    ctrlZAction->setToolTip(tr("发送挂起信号"));
-    connect(ctrlZAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlZ);
-
-    m_toolBar->addSeparator();
-
-    // 换行模式
+    // 换行模式：放在工具栏前段，保证中英文界面都能直接看到关键收发设置。
     m_newlineLabel = new QLabel(tr("换行:"));
     m_newlineLabel->setObjectName("terminalToolbarLabel");
     m_toolBar->addWidget(m_newlineLabel);
@@ -1052,6 +989,8 @@ void TerminalModeWidget::setupToolBar()
     m_newlineCombo->addItem("CR (\\r)", "CR");
     m_newlineCombo->addItem("CRLF (\\r\\n)", "CRLF");
     m_newlineCombo->setObjectName("terminalToolbarCombo");
+    m_newlineCombo->setMinimumWidth(120);
+    m_newlineCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(m_newlineCombo, &QComboBox::currentTextChanged, [this]() {
         m_newlineMode = m_newlineCombo->currentData().toString();
         // 同步到VT100Display
@@ -1061,7 +1000,7 @@ void TerminalModeWidget::setupToolBar()
 
     m_toolBar->addSeparator();
 
-    // 主题选择
+    // 主题选择：用户截图中此控件被右侧裁剪，所以提升到快捷键之前。
     m_themeLabel = new QLabel(tr("主题:"));
     m_themeLabel->setObjectName("terminalToolbarLabel");
     m_toolBar->addWidget(m_themeLabel);
@@ -1071,6 +1010,8 @@ void TerminalModeWidget::setupToolBar()
         m_themeCombo->addItem(theme.name);
     }
     m_themeCombo->setObjectName("terminalToolbarCombo");
+    m_themeCombo->setMinimumWidth(150);
+    m_themeCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(m_themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TerminalModeWidget::onThemeChanged);
     m_toolBar->addWidget(m_themeCombo);
@@ -1084,16 +1025,50 @@ void TerminalModeWidget::setupToolBar()
     m_fontSizeSpinBox->setRange(6, 72);
     m_fontSizeSpinBox->setValue(12);
     m_fontSizeSpinBox->setObjectName("terminalToolbarSpinBox");
+    m_fontSizeSpinBox->setMinimumWidth(64);
     connect(m_fontSizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &TerminalModeWidget::onFontSizeChanged);
     m_toolBar->addWidget(m_fontSizeSpinBox);
 
     m_toolBar->addSeparator();
 
+    // 本地回显
+    m_echoAction = m_toolBar->addAction(tr("本地回显"));
+    m_echoAction->setCheckable(true);
+    m_echoAction->setChecked(m_display->localEcho());
+    connect(m_echoAction, &QAction::toggled, this, &TerminalModeWidget::onToggleLocalEcho);
+
+    // 时间戳
+    m_timestampAction = m_toolBar->addAction(tr("时间戳"));
+    m_timestampAction->setCheckable(true);
+    connect(m_timestampAction, &QAction::toggled, this, &TerminalModeWidget::onToggleTimestamp);
+
+    // 日志
+    m_logAction = m_toolBar->addAction(tr("记录日志"));
+    m_logAction->setCheckable(true);
+    connect(m_logAction, &QAction::toggled, this, &TerminalModeWidget::onToggleLog);
+
+    m_toolBar->addSeparator();
+
+    // 快捷键按钮
+    m_ctrlCAction = m_toolBar->addAction("Ctrl+C");
+    m_ctrlCAction->setToolTip(tr("发送中断信号"));
+    connect(m_ctrlCAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlC);
+
+    m_ctrlDAction = m_toolBar->addAction("Ctrl+D");
+    m_ctrlDAction->setToolTip(tr("发送 EOF"));
+    connect(m_ctrlDAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlD);
+
+    m_ctrlZAction = m_toolBar->addAction("Ctrl+Z");
+    m_ctrlZAction->setToolTip(tr("发送挂起信号"));
+    connect(m_ctrlZAction, &QAction::triggered, this, &TerminalModeWidget::onSendCtrlZ);
+
+    m_toolBar->addSeparator();
+
     // 编辑命令列表
-    QAction* editCmdsAction = m_toolBar->addAction(tr("编辑命令"));
-    editCmdsAction->setToolTip(tr("编辑本地命令列表（用于Tab补全）"));
-    connect(editCmdsAction, &QAction::triggered, this, &TerminalModeWidget::onEditCommands);
+    m_editCmdsAction = m_toolBar->addAction(tr("编辑命令"));
+    m_editCmdsAction->setToolTip(tr("编辑本地命令列表（用于Tab补全）"));
+    connect(m_editCmdsAction, &QAction::triggered, this, &TerminalModeWidget::onEditCommands);
 }
 
 void TerminalModeWidget::appendReceivedData(const QByteArray& data)
@@ -1114,20 +1089,24 @@ void TerminalModeWidget::appendReceivedData(const QByteArray& data)
 
 void TerminalModeWidget::appendSentData(const QByteArray& data)
 {
-    if (m_display->localEcho()) {
-        m_ansiParser->process(data);
-    }
+    /*
+     * 终端模式不能在“发送成功”回调里把本地发送的数据写回屏幕。
+     * 主窗口会在底层 write 成功后调用 appendSentData；如果这里再交给
+     * ANSI 解析器处理，就会出现用户发送 help 后屏幕立即显示 help 的
+     * 假回包。真实终端界面保留用户在面板内已经输入的命令，并只额外展示
+     * 设备返回的数据；没有回包时不会凭空新增内容。
+     */
+    Q_UNUSED(data);
 }
 
 void TerminalModeWidget::setConnected(bool connected)
 {
     IModeWidget::setConnected(connected);
-    // 更新命令输入栏的启用状态
-    if (m_commandLine) {
-        m_commandLine->setEnabled(connected);
-    }
-    if (m_sendBtn) {
-        m_sendBtn->setEnabled(connected);
+    if (m_display) {
+        m_display->setEnabled(connected);
+        if (connected) {
+            m_display->setFocus();
+        }
     }
 }
 
@@ -1174,7 +1153,9 @@ void TerminalModeWidget::onDeactivated()
 void TerminalModeWidget::setLocalEcho(bool enabled)
 {
     m_display->setLocalEcho(enabled);
-    m_echoAction->setChecked(enabled);
+    if (m_echoAction && m_echoAction->isChecked() != enabled) {
+        m_echoAction->setChecked(enabled);
+    }
 }
 
 bool TerminalModeWidget::localEcho() const
@@ -1212,11 +1193,6 @@ void TerminalModeWidget::setFontSize(int size)
 int TerminalModeWidget::fontSize() const
 {
     return m_display->fontSize();
-}
-
-void TerminalModeWidget::onCommandSubmitted(const QString& command)
-{
-    sendCommand(command);
 }
 
 void TerminalModeWidget::onClearScreen()
@@ -1280,9 +1256,31 @@ void TerminalModeWidget::onSendCtrlZ()
 
 void TerminalModeWidget::onKeyPressed(const QByteArray& data)
 {
+    /*
+     * Tab 在终端面板中优先作为本地命令补全使用。只有没有匹配项时，
+     * performLocalCompletion 会返回 false，此时再把 Tab 发给设备。
+     * 这是纯本地编辑行为，即使当前未连接设备也应当可用，避免用户以为
+     * “编辑命令”保存后没有生效。
+     */
+    if (data == QByteArray(1, '\t')) {
+        if (performLocalCompletion()) {
+            return;
+        }
+    }
+
+    if (data.endsWith(getLineEnding().toUtf8())) {
+        /*
+         * Enter 提交后下一次输入已经是新的命令行。补全轮转状态如果继续保留，
+         * 第二次输入同一前缀再按 Tab 会从上一次匹配项之后开始，表现为 ch
+         * 不再补成 chmod，而是跳到 chown 等后续命令。
+         */
+        resetCompletionState();
+    }
+
     if (!m_connected) {
         return;
     }
+
     emit sendDataRequested(data);
 }
 
@@ -1298,62 +1296,33 @@ void TerminalModeWidget::onFontSizeChanged(int size)
     m_display->setFontSize(size);
 }
 
-void TerminalModeWidget::onTabPressed()
+bool TerminalModeWidget::performLocalCompletion()
 {
-    // 首先尝试本地补全
-    QString currentText = m_commandLine->text();
-    if (!currentText.isEmpty() && !m_commands.isEmpty()) {
-        // 检查是否正在进行补全
-        if (m_completionIndex >= 0 && m_completionPrefix == currentText.left(m_completionPrefix.length())) {
-            // 继续补全：循环到下一个匹配项
-            performLocalCompletion();
-            return;
-        }
-
-        // 开始新的补全
-        m_completionPrefix = currentText;
-        m_completionIndex = -1;
-        performLocalCompletion();
-
-        // 如果找到了匹配项，就不发送Tab到设备
-        if (m_completionIndex >= 0) {
-            return;
-        }
+    const QString currentText = m_display ? m_display->inputBuffer() : QString();
+    if (currentText.isEmpty() || m_commands.isEmpty()) {
+        return false;
     }
 
-    // 没有本地匹配或命令列表为空，发送Tab到设备
-    if (m_connected) {
-        emit sendDataRequested(QByteArray(1, '\t'));
-    }
-}
-
-void TerminalModeWidget::performLocalCompletion()
-{
-    if (m_completionPrefix.isEmpty() || m_commands.isEmpty()) {
-        return;
-    }
-
-    // 收集所有匹配的命令
-    QStringList matches;
-    for (const QString& cmd : m_commands) {
-        if (cmd.startsWith(m_completionPrefix, Qt::CaseInsensitive)) {
-            matches.append(cmd);
-        }
-    }
+    const QStringList matches = matchingCommands(currentText);
 
     if (matches.isEmpty()) {
-        m_completionIndex = -1;
-        return;
+        return false;
     }
 
-    // 移动到下一个匹配项
-    m_completionIndex++;
-    if (m_completionIndex >= matches.size()) {
-        m_completionIndex = 0;
+    if (matches.size() == 1) {
+        /*
+         * 单一候选才直接替换输入行，保持普通终端补全的高效率。
+         */
+        m_display->replaceInputBuffer(matches.first());
+        return true;
     }
 
-    // 设置命令行文本
-    m_commandLine->setText(matches[m_completionIndex]);
+    /*
+     * 多候选时只列出匹配项，不擅自替换为第一个命令。用户继续输入更多
+     * 字符后再按 Tab，会以新的前缀重新过滤候选。
+     */
+    m_display->showCompletionCandidates(matches);
+    return true;
 }
 
 void TerminalModeWidget::onEditCommands()
@@ -1383,10 +1352,6 @@ void TerminalModeWidget::onEditCommands()
 
         // 保存到配置
         saveCommands();
-
-        // 重置补全状态
-        m_completionIndex = -1;
-        m_completionPrefix.clear();
 
         QMessageBox::information(this, tr("命令列表"),
             tr("已保存 %1 个命令").arg(m_commands.size()));
@@ -1430,19 +1395,30 @@ void TerminalModeWidget::saveCommands()
     settings.endGroup();
 }
 
-void TerminalModeWidget::sendCommand(const QString& command)
+QStringList TerminalModeWidget::matchingCommands(const QString& prefix) const
 {
-    if (!m_connected) {
-        emit statusMessage(tr("未连接"));
-        return;
+    /*
+     * 按命令列表原始顺序收集候选，避免 UI 提示顺序和“编辑命令”中的顺序不一致。
+     */
+    QStringList matches;
+    if (prefix.isEmpty()) {
+        return matches;
     }
 
-    // 在终端显示区显示发送的命令（带换行）
-    QString displayText = command + "\n";
-    m_ansiParser->process(displayText.toUtf8());
+    for (const QString& cmd : m_commands) {
+        if (cmd.startsWith(prefix, Qt::CaseInsensitive)) {
+            matches.append(cmd);
+        }
+    }
+    return matches;
+}
 
-    QByteArray data = command.toUtf8() + getLineEnding().toUtf8();
-    emit sendDataRequested(data);
+void TerminalModeWidget::resetCompletionState()
+{
+    /*
+     * 预留状态重置入口。当前 Linux 风格补全每次都根据实时输入前缀重新匹配，
+     * 不再维护跨 Tab 的轮转索引；保留该函数便于 Enter 等流程表达语义。
+     */
 }
 
 QString TerminalModeWidget::getLineEnding() const
@@ -1466,10 +1442,22 @@ void TerminalModeWidget::changeEvent(QEvent* event)
 
 void TerminalModeWidget::retranslateUi()
 {
-    if (m_sendBtn) m_sendBtn->setText(tr("发送"));
     if (m_newlineLabel) m_newlineLabel->setText(tr("换行:"));
     if (m_themeLabel) m_themeLabel->setText(tr("主题:"));
     if (m_fontSizeLabel) m_fontSizeLabel->setText(tr("字号:"));
+
+    // 工具栏按钮翻译
+    if (m_clearScreenAction) m_clearScreenAction->setText(tr("清屏"));
+    if (m_echoAction) m_echoAction->setText(tr("本地回显"));
+    if (m_timestampAction) m_timestampAction->setText(tr("时间戳"));
+    if (m_logAction) m_logAction->setText(tr("记录日志"));
+    if (m_editCmdsAction) {
+        m_editCmdsAction->setText(tr("编辑命令"));
+        m_editCmdsAction->setToolTip(tr("编辑本地命令列表（用于Tab补全）"));
+    }
+    if (m_ctrlCAction) m_ctrlCAction->setToolTip(tr("发送中断信号"));
+    if (m_ctrlDAction) m_ctrlDAction->setToolTip(tr("发送 EOF"));
+    if (m_ctrlZAction) m_ctrlZAction->setToolTip(tr("发送挂起信号"));
 }
 
 } // namespace ComAssistant

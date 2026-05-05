@@ -21,6 +21,10 @@
 #include <QSpinBox>
 #include <QTranslator>
 #include <QUrl>
+#include <QAction>
+#include <QMenu>
+#include <QToolButton>
+#include <QScrollArea>
 #include <memory>
 
 #include "communication/ICommunication.h"
@@ -87,6 +91,7 @@ public:
 protected:
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
 private slots:
     // 连接操作
@@ -177,6 +182,13 @@ private:
     // 语言切换
     void loadLanguage(const QString& language);
     void retranslateUi();
+    void populateHamburgerMenu();  ///< 填充汉堡菜单，供初始化和语言切换复用
+    void rebuildHamburgerMenu();  ///< 重建汉堡菜单（用于语言切换）
+
+    // 工具栏状态同步
+    void updateCommunicationWidgetsForType();  ///< 根据通信类型刷新工具栏显隐和提示
+    void updateConnectionButtonText();         ///< 根据通信类型和连接状态刷新按钮文字
+    void applySessionDataToUi(const SessionData& session);  ///< 将会话数据应用到主窗口和子控件
 
     // 应用更新
     void scheduleAutoUpdateCheck();
@@ -233,6 +245,9 @@ private:
 
     // 工具栏串口控件
     QToolBar* m_mainToolBar = nullptr;
+    QMenu* m_hamburgerMenu = nullptr;  ///< 汉堡菜单（需要保存引用以便重新翻译）
+    QToolButton* m_hamburgerMenuBtn = nullptr;  ///< 汉堡菜单按钮，需要保存以便语言切换时更新提示
+    QLabel* m_commTypeLabel = nullptr;  ///< “类型”标签，需要保存以便语言切换
     QComboBox* m_commTypeCombo = nullptr;  ///< 通信类型选择
     QComboBox* m_portCombo = nullptr;
     QComboBox* m_baudCombo = nullptr;
@@ -244,11 +259,17 @@ private:
     QAction* m_refreshBtnAction = nullptr;
     QAction* m_baudComboAction = nullptr;
     QAction* m_networkWidgetAction = nullptr;
+    QWidget* m_mainToolBarSpacer = nullptr;      ///< 主工具栏弹性空白，把模式/清空等操作推到右侧
 
     // 工具栏网络控件
     QWidget* m_networkToolbarWidget = nullptr;  ///< 网络设置容器
+    QLabel* m_ipLabel = nullptr;                 ///< IP 标签，需要保存以便语言切换
     QLineEdit* m_ipEdit = nullptr;              ///< IP地址输入
+    QLabel* m_networkPortLabel = nullptr;        ///< 网络端口标签，需要保存以便语言切换
     QSpinBox* m_portSpin = nullptr;             ///< 端口号输入
+    QAction* m_clearAction = nullptr;            ///< 清空动作，需要保存以便语言切换
+    QAction* m_exportAction = nullptr;           ///< 导出动作，需要保存以便语言切换
+    QLabel* m_displayModeLabel = nullptr;        ///< “模式”标签，需要保存以便语言切换
 
     // 对话框
     HelpDialog* m_helpDialog = nullptr;
@@ -284,6 +305,7 @@ private:
     FrameModeWidget* m_frameModeWidget = nullptr;
     DebugModeWidget* m_debugModeWidget = nullptr;
     QWidget* m_modeToolBarContainer = nullptr;  ///< 模式专属工具栏容器
+    QScrollArea* m_modeToolBarScrollArea = nullptr;  ///< 横向承载模式工具栏，避免英文长文本被裁剪
 
     // 翻译器
     QTranslator* m_translator = nullptr;

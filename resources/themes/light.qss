@@ -88,7 +88,7 @@ QToolBar {
 QToolBar::separator {
     background-color: #d2d2d7;
     width: 1px;
-    margin: 4px 8px;
+    margin: 3px 6px;
 }
 
 QToolBar#mainToolBar {
@@ -96,8 +96,28 @@ QToolBar#mainToolBar {
     border: none;
     border-bottom: none;
     border-top: none;
-    padding: 6px 10px;
-    spacing: 8px;
+    padding: 3px 6px;
+    spacing: 5px;
+}
+
+QToolBar#mainToolBar QComboBox,
+QToolBar#mainToolBar QLineEdit,
+QToolBar#mainToolBar QSpinBox {
+    min-height: 28px;
+    max-height: 28px;
+    border-radius: 6px;
+    padding: 3px 8px;
+}
+
+QToolBar#mainToolBar QPushButton {
+    min-height: 28px;
+    max-height: 28px;
+    padding: 4px 12px;
+    border-radius: 7px;
+}
+
+QWidget#mainToolBarSpacer {
+    background: transparent;
 }
 
 QToolButton {
@@ -412,6 +432,16 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: transparent;
 }
 
+QScrollArea#modeToolBarScrollArea {
+    background-color: #ffffff;
+    border: none;
+}
+
+QScrollArea#modeToolBarScrollArea > QWidget,
+QWidget#modeToolBarContainer {
+    background-color: #ffffff;
+}
+
 /* ========== 状态栏 ========== */
 QStatusBar {
     background-color: #ffffff;
@@ -671,7 +701,9 @@ QWidget#frameSendWidget QPushButton {
     color: white;
     border: none;
     border-radius: 8px;
-    padding: 8px 16px;
+    padding: 0px 16px;
+    min-height: 36px;
+    max-height: 36px;
 }
 
 QWidget#frameSendWidget QPushButton:hover {
@@ -888,45 +920,6 @@ QPlainTextEdit#terminalOutput {
     font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
     font-size: 10pt;
     selection-background-color: #264f78;
-}
-
-QWidget#terminalInputBar {
-    background-color: #252526;
-    border-top: 1px solid #3c3c3c;
-}
-
-QLineEdit#terminalInput {
-    background-color: #2d2d2d;
-    border: 1px solid #3c3c3c;
-    border-radius: 6px;
-    padding: 6px 10px;
-    color: #cccccc;
-    font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
-    font-size: 10pt;
-}
-
-QLineEdit#terminalInput:focus {
-    border: 1px solid #007AFF;
-}
-
-QPushButton#terminalSendBtn {
-    background-color: #007AFF;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 16px;
-    font-weight: bold;
-}
-
-QPushButton#terminalSendBtn:hover {
-    background-color: #006ae0;
-}
-
-QLabel#terminalPromptLabel {
-    color: #34C759;
-    font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
-    font-size: 10pt;
-    font-weight: bold;
 }
 
 /* ========== 脚本编辑器（始终深色） ========== */

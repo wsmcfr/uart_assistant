@@ -21,6 +21,7 @@
 #include <QDateTime>
 #include <QGroupBox>
 #include <QEvent>
+#include <QTimer>
 
 namespace ComAssistant {
 
@@ -132,6 +133,7 @@ signals:
 
 private slots:
     void onFrameSelected();
+    void onFilterChanged();                 ///< 从站/功能码过滤变化后重建可见表格
     void onGenerateRequest();
     void onClearClicked();
     void onExportClicked();
@@ -143,6 +145,12 @@ protected:
 private:
     void setupUi();
     void addFrameToTable(const ModbusFrame& frame);
+    void fillFrameTableRow(int row, const ModbusFrame& frame); ///< 填充一行 Modbus 帧，批量扩表后复用
+    void scheduleFrameFlush();                                ///< 安排批量刷新 Modbus 帧表格
+    void flushPendingFrames();                                ///< 批量刷新待显示 Modbus 帧
+    void trimFrames();                                        ///< 裁剪旧帧，防止表格和内存无限增长
+    bool frameMatchesFilter(const ModbusFrame& frame) const;  ///< 判断帧是否满足当前过滤条件
+    void rebuildVisibleFrameTable();                          ///< 按当前过滤条件批量重建表格
     void showFrameDetails(const ModbusFrame& frame);
     quint16 calculateCRC16(const QByteArray& data);
     QString formatRegisterValue(quint16 value, int format);
@@ -180,8 +188,14 @@ private:
 
     // 数据
     QVector<ModbusFrame> m_frames;
+    QVector<ModbusFrame> m_visibleFrames;   ///< 当前表格中已显示的帧，用于过滤后正确定位详情
+    QVector<ModbusFrame> m_pendingFrames;  ///< 待批量刷新到表格的帧
     QByteArray m_receiveBuffer;
     int m_slaveFilter = -1;  // -1表示不过滤
+    int m_maxFrames = 10000;                 ///< UI 中保留的最大 Modbus 帧数
+    int m_frameFlushBatchSize = 300;         ///< 单次最多落表帧数，避免一次刷新阻塞过久
+    int m_frameFlushIntervalMs = 33;         ///< 表格刷新间隔，约 30fps
+    QTimer* m_frameFlushTimer = nullptr;     ///< Modbus 表格批量刷新定时器
 
     // 显示格式
     enum class ValueFormat { Decimal, Hex, Binary, Float };

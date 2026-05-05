@@ -5,7 +5,7 @@
  * @date 2026-01-16
  */
 
-#include <QCoreApplication>
+#include <QApplication>
 #include <QTest>
 #include <QDebug>
 
@@ -13,12 +13,20 @@
 #include "unit/TestChecksumUtils.h"
 #include "unit/TestConversionUtils.h"
 #include "unit/TestEncodingUtils.h"
+#include "unit/TestAnsiParser.h"
+#include "unit/TestFFTUtils.h"
+#include "unit/TestFilterUtils.h"
 #include "unit/TestPlotRenderQuality.h"
+#include "unit/TestTerminalModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication app(argc, argv);
+    /*
+     * 部分回归测试需要真实构造 QWidget（例如终端模式的发送/接收显示边界），
+     * 因此测试入口使用 QApplication。纯工具类测试仍可在同一进程内运行。
+     */
+    QApplication app(argc, argv);
     app.setApplicationName("ComAssistant_tests");
 
     int status = 0;
@@ -58,8 +66,28 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] AnsiParser";
+        TestAnsiParser test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] FFTUtils";
+        TestFFTUtils test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] FilterUtils";
+        TestFilterUtils test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] PlotRenderQuality";
         TestPlotRenderQuality test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] TerminalModeWidget";
+        TestTerminalModeWidget test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

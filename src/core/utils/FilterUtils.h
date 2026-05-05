@@ -47,6 +47,7 @@ struct FilterConfig {
  */
 struct FilterState {
     QVector<double> buffer;       ///< 数据缓冲区
+    double runningSum = 0;        ///< 滑动平均运行和，用于实时路径避免每点重新遍历窗口
     double lastOutput = 0;        ///< 上次输出值
     double kalmanEstimate = 0;    ///< 卡尔曼估计值
     double kalmanError = 1.0;     ///< 卡尔曼误差协方差

@@ -282,12 +282,16 @@ void RealTimeFFTWindow::setFFTConfig(const FFTConfig& config)
 void RealTimeFFTWindow::appendData(double value)
 {
     if (m_paused) return;
+    if (!std::isfinite(value)) {
+        return;
+    }
 
     m_timeData.append(value);
 
     // 限制缓冲区大小
-    while (m_timeData.size() > m_bufferSize) {
-        m_timeData.removeFirst();
+    const int overflow = m_timeData.size() - m_bufferSize;
+    if (overflow > 0) {
+        m_timeData.remove(0, overflow);
     }
 
     m_needUpdate = true;
@@ -297,11 +301,25 @@ void RealTimeFFTWindow::appendData(const QVector<double>& values)
 {
     if (m_paused) return;
 
-    m_timeData.append(values);
+    /*
+     * 实时 FFT 来自绘图曲线，仍需过滤 NaN/Inf，防止异常采样污染频谱。
+     * 批量追加后一次性裁剪旧数据，避免 removeFirst 循环造成 O(n²)。
+     */
+    const int oldSize = m_timeData.size();
+    for (double value : values) {
+        if (std::isfinite(value)) {
+            m_timeData.append(value);
+        }
+    }
+
+    if (m_timeData.size() == oldSize) {
+        return;
+    }
 
     // 限制缓冲区大小
-    while (m_timeData.size() > m_bufferSize) {
-        m_timeData.removeFirst();
+    const int overflow = m_timeData.size() - m_bufferSize;
+    if (overflow > 0) {
+        m_timeData.remove(0, overflow);
     }
 
     m_needUpdate = true;
@@ -328,25 +346,30 @@ void RealTimeFFTWindow::clearData()
     // 清除瀑布图
     m_waterfall->clearData();
 
-    m_timePlot->replot();
-    m_freqPlot->replot();
+    m_timePlot->replot(QCustomPlot::rpQueuedReplot);
+    m_freqPlot->replot(QCustomPlot::rpQueuedReplot);
 
     updateInfoLabel();
 }
 
 void RealTimeFFTWindow::setSampleRate(double rate)
 {
-    m_fftConfig.sampleRate = rate;
-    m_sampleRateSpin->setValue(rate);
-    m_freqPlot->xAxis->setRange(0, rate / 2);
+    /*
+     * 采样率可能来自外部配置，必须防止 0、负数或无穷进入坐标轴。
+     */
+    const double safeRate = (std::isfinite(rate) && rate > 0.0) ? rate : 1000.0;
+    m_fftConfig.sampleRate = safeRate;
+    m_sampleRateSpin->setValue(safeRate);
+    m_freqPlot->xAxis->setRange(0, safeRate / 2);
 }
 
 void RealTimeFFTWindow::setFFTSize(int size)
 {
-    m_fftConfig.fftSize = size;
-    m_bufferSize = size;
+    const int safeSize = qBound(256, FFTUtils::nextPowerOfTwo(size), 8192);
+    m_fftConfig.fftSize = safeSize;
+    m_bufferSize = safeSize;
 
-    int index = m_fftSizeCombo->findData(size);
+    int index = m_fftSizeCombo->findData(safeSize);
     if (index >= 0) m_fftSizeCombo->setCurrentIndex(index);
 
     m_timePlot->xAxis->setRange(0, m_bufferSize);
@@ -402,9 +425,15 @@ void RealTimeFFTWindow::onUpdateTimer()
 void RealTimeFFTWindow::onFFTSizeChanged(int index)
 {
     int size = m_fftSizeCombo->itemData(index).toInt();
-    m_fftConfig.fftSize = size;
-    m_bufferSize = size;
+    const int safeSize = qBound(256, FFTUtils::nextPowerOfTwo(size), 8192);
+    m_fftConfig.fftSize = safeSize;
+    m_bufferSize = safeSize;
     m_timePlot->xAxis->setRange(0, m_bufferSize);
+
+    const int overflow = m_timeData.size() - m_bufferSize;
+    if (overflow > 0) {
+        m_timeData.remove(0, overflow);
+    }
 
     // 清空峰值保持和平均缓冲
     m_maxHoldData.clear();
@@ -418,9 +447,10 @@ void RealTimeFFTWindow::onWindowTypeChanged(int index)
 
 void RealTimeFFTWindow::onSampleRateChanged(double value)
 {
-    m_fftConfig.sampleRate = value;
-    m_freqPlot->xAxis->setRange(0, value / 2);
-    m_waterfall->setFrequencyRange(0, value / 2);
+    const double safeValue = (std::isfinite(value) && value > 0.0) ? value : 1000.0;
+    m_fftConfig.sampleRate = safeValue;
+    m_freqPlot->xAxis->setRange(0, safeValue / 2);
+    m_waterfall->setFrequencyRange(0, safeValue / 2);
 }
 
 void RealTimeFFTWindow::onPauseToggled(bool checked)
@@ -444,7 +474,7 @@ void RealTimeFFTWindow::onMaxHoldToggled(bool checked)
         m_freqPlot->graph(1)->data()->clear();
     }
 
-    m_freqPlot->replot();
+    m_freqPlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void RealTimeFFTWindow::onAveragingToggled(bool checked)
@@ -535,7 +565,7 @@ void RealTimeFFTWindow::onTimeDomainMouseMove(QMouseEvent* event)
         m_timeCursorText->setVisible(false);
     }
 
-    m_timePlot->replot();
+    m_timePlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void RealTimeFFTWindow::onFreqDomainMouseMove(QMouseEvent* event)
@@ -568,7 +598,7 @@ void RealTimeFFTWindow::onFreqDomainMouseMove(QMouseEvent* event)
         m_freqCursorText->setVisible(true);
     }
 
-    m_freqPlot->replot();
+    m_freqPlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void RealTimeFFTWindow::updateTimeDomainPlot()
@@ -582,7 +612,8 @@ void RealTimeFFTWindow::updateTimeDomainPlot()
 
     m_timePlot->graph(0)->setData(xData, m_timeData);
     m_timePlot->rescaleAxes();
-    m_timePlot->replot();
+    // 周期刷新路径使用队列重绘，让 Qt 合并同一事件循环内的多次 repaint。
+    m_timePlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void RealTimeFFTWindow::performFFT()
@@ -591,12 +622,17 @@ void RealTimeFFTWindow::performFFT()
 
     // 执行FFT
     m_lastResult = FFTUtils::analyzeWithConfig(m_timeData, m_fftConfig);
+    if (m_lastResult.frequencies.isEmpty() || m_lastResult.magnitudes.isEmpty()) {
+        return;
+    }
 
     // 频谱平均
     if (m_averagingEnabled) {
         m_avgBuffer.append(m_lastResult);
-        if (m_avgBuffer.size() > m_avgCount) {
-            m_avgBuffer.removeFirst();
+        const int overflow = m_avgBuffer.size() - m_avgCount;
+        if (overflow > 0) {
+            // 平均窗口只保留最近 N 帧，一次性裁剪旧帧避免高频路径重复搬移。
+            m_avgBuffer.remove(0, overflow);
         }
 
         if (m_avgBuffer.size() > 1) {
@@ -688,7 +724,8 @@ void RealTimeFFTWindow::updateFrequencyDomainPlot()
         }
     }
 
-    m_freqPlot->replot();
+    // 周期刷新路径使用队列重绘，保持频谱点和标注质量不变，仅合并 repaint。
+    m_freqPlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void RealTimeFFTWindow::updateWaterfall()
@@ -770,7 +807,7 @@ void RealTimeFFTWindow::retranslateUi()
         if (m_timePlot->graphCount() > 0) {
             m_timePlot->graph(0)->setName(tr("时域信号"));
         }
-        m_timePlot->replot();
+        m_timePlot->replot(QCustomPlot::rpQueuedReplot);
     }
 
     if (m_freqPlot) {
@@ -782,7 +819,7 @@ void RealTimeFFTWindow::retranslateUi()
         if (m_freqPlot->graphCount() > 1) {
             m_freqPlot->graph(1)->setName(tr("峰值保持"));
         }
-        m_freqPlot->replot();
+        m_freqPlot->replot(QCustomPlot::rpQueuedReplot);
     }
 
     // 更新信息标签

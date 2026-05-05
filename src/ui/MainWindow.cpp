@@ -68,6 +68,9 @@
 #include <QDesktopServices>
 #include <QPainter>
 #include <QtMath>
+#include <QScrollBar>
+#include <QSizePolicy>
+#include <functional>
 
 namespace ComAssistant {
 
@@ -82,6 +85,12 @@ MainWindow::MainWindow(QWidget* parent)
 
     // 加载语言设置（必须在 UI 创建后）
     loadLanguage(m_currentLanguage);
+
+    // 如果 main.cpp 已经从自动保存文件恢复了会话，这里把 SessionManager
+    // 中的恢复数据真正应用到主窗口；否则恢复只停留在内存里，用户界面仍是默认状态。
+    if (SessionManager::instance()->isModified()) {
+        applySessionDataToUi(SessionManager::instance()->currentSession());
+    }
 
     m_appUpdateChecker = new AppUpdateChecker(this);
     m_appUpdateChecker->setRepository(APP_REPOSITORY_OWNER, APP_REPOSITORY_NAME);
@@ -101,7 +110,11 @@ MainWindow::MainWindow(QWidget* parent)
 
     setWindowTitle(QString("%1 v%2").arg(APP_NAME).arg(APP_VERSION));
     if (!m_hasRestoredWindowGeometry) {
-        resize(1200, 800);
+        /*
+         * 默认窗口给足主工具栏、串口接收选项和发送区横向空间。
+         * 用户缩小窗口时各模式内部再用滚动/弹性布局兜底。
+         */
+        resize(1460, 900);
     }
 
     QTimer::singleShot(3000, this, [this]() {
@@ -184,10 +197,24 @@ void MainWindow::setupUi()
     centerLayout->setContentsMargins(0, 0, 0, 0);
     centerLayout->setSpacing(0);
 
-    // 模式专属工具栏容器（预留位置）
+    // 模式专属工具栏容器：使用横向滚动区承载，英文和长按钮不会被右侧裁剪。
+    m_modeToolBarScrollArea = new QScrollArea;
+    m_modeToolBarScrollArea->setObjectName("modeToolBarScrollArea");
+    m_modeToolBarScrollArea->setWidgetResizable(false);
+    m_modeToolBarScrollArea->setFrameShape(QFrame::NoFrame);
+    m_modeToolBarScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_modeToolBarScrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_modeToolBarScrollArea->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_modeToolBarScrollArea->hide();  // 初始无模式工具栏时隐藏
+
     m_modeToolBarContainer = new QWidget;
-    m_modeToolBarContainer->setFixedHeight(0);  // 初始隐藏
-    centerLayout->addWidget(m_modeToolBarContainer);
+    m_modeToolBarContainer->setObjectName("modeToolBarContainer");
+    m_modeToolBarContainer->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    QVBoxLayout* modeToolBarLayout = new QVBoxLayout(m_modeToolBarContainer);
+    modeToolBarLayout->setContentsMargins(0, 0, 0, 0);
+    modeToolBarLayout->setSpacing(0);
+    m_modeToolBarScrollArea->setWidget(m_modeToolBarContainer);
+    centerLayout->addWidget(m_modeToolBarScrollArea);
 
     // 模式切换堆栈
     m_modeStack = new QStackedWidget;
@@ -232,142 +259,30 @@ void MainWindow::setupToolBar()
     m_mainToolBar = addToolBar(tr("主工具栏"));
     m_mainToolBar->setObjectName("mainToolBar");
     m_mainToolBar->setMovable(false);
-    m_mainToolBar->setIconSize(QSize(24, 24));
+    m_mainToolBar->setIconSize(QSize(20, 20));
 
     // 汉堡菜单按钮（放在最左侧，使用 QToolButton 获得正确的菜单弹出位置）
-    QToolButton* menuBtn = new QToolButton;
-    menuBtn->setObjectName("hamburgerMenuBtn");
-    menuBtn->setText(QString::fromUtf8("\xE2\x98\xB0"));  // ☰ 汉堡菜单图标
-    menuBtn->setFixedSize(36, 36);
-    menuBtn->setToolTip(tr("菜单"));
-    menuBtn->setPopupMode(QToolButton::InstantPopup);
-    m_mainToolBar->addWidget(menuBtn);
+    m_hamburgerMenuBtn = new QToolButton;
+    m_hamburgerMenuBtn->setObjectName("hamburgerMenuBtn");
+    m_hamburgerMenuBtn->setText(QString::fromUtf8("\xE2\x98\xB0"));  // ☰ 汉堡菜单图标
+    m_hamburgerMenuBtn->setFixedSize(36, 36);
+    m_hamburgerMenuBtn->setToolTip(tr("菜单"));
+    m_hamburgerMenuBtn->setPopupMode(QToolButton::InstantPopup);
+    m_mainToolBar->addWidget(m_hamburgerMenuBtn);
 
     // 创建汉堡菜单
-    QMenu* hamburgerMenu = new QMenu(this);
-
-    // 文件菜单
-    QMenu* fileMenu = hamburgerMenu->addMenu(tr("文件"));
-    fileMenu->addAction(tr("新建会话"), this, &MainWindow::onNewSession, QKeySequence::New);
-    fileMenu->addAction(tr("保存会话"), this, &MainWindow::onSaveSession, QKeySequence::Save);
-    fileMenu->addAction(tr("加载会话"), this, &MainWindow::onLoadSession, QKeySequence::Open);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("导出数据..."), this, &MainWindow::onExportData);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("退出"), this, &QMainWindow::close, QKeySequence::Quit);
-
-    // 编辑菜单
-    QMenu* editMenu = hamburgerMenu->addMenu(tr("编辑"));
-    editMenu->addAction(tr("清空全部"), this, &MainWindow::onClearAll, QKeySequence(Qt::CTRL | Qt::Key_L));
-    editMenu->addAction(tr("数据搜索..."), this, &MainWindow::onDataSearch, QKeySequence::Find);
-
-    // 视图菜单
-    QMenu* viewMenu = hamburgerMenu->addMenu(tr("视图"));
-    viewMenu->addAction(tr("置顶显示"))->setCheckable(true);
-
-    // 语言子菜单
-    QMenu* languageMenu = viewMenu->addMenu(tr("语言"));
-    QActionGroup* langGroup = new QActionGroup(this);
-
-    QAction* zhAction = languageMenu->addAction(tr("简体中文"));
-    zhAction->setCheckable(true);
-    zhAction->setData("zh_CN");
-    langGroup->addAction(zhAction);
-
-    QAction* enAction = languageMenu->addAction(tr("English"));
-    enAction->setCheckable(true);
-    enAction->setData("en_US");
-    langGroup->addAction(enAction);
-
-    // 从配置读取当前语言设置
-    QString currentLang = ConfigManager::instance()->language();
-    if (currentLang.isEmpty() || currentLang == "zh_CN") {
-        zhAction->setChecked(true);
-    } else {
-        enAction->setChecked(true);
-    }
-
-    connect(langGroup, &QActionGroup::triggered, [this](QAction* action) {
-        onLanguageChanged(action->data().toString());
-    });
-
-    // 工具菜单
-    QMenu* toolsMenu = hamburgerMenu->addMenu(tr("工具"));
-    toolsMenu->addAction(tr("工具箱..."), this, &MainWindow::onToolbox);
-    toolsMenu->addAction(tr("脚本编辑器..."), this, &MainWindow::onScriptEditor);
-    toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("文件传输..."), this, &MainWindow::onFileTransfer);
-    toolsMenu->addAction(tr("IAP升级..."), this, &MainWindow::onIAPUpgrade);
-    toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("宏录制/回放..."), this, &MainWindow::onMacroManager);
-    toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
-    toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
-    toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
-    toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
-    toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
-    toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("设置..."), this, &MainWindow::onSettings);
-
-    // 绘图菜单
-    QMenu* plotMenu = hamburgerMenu->addMenu(tr("绘图"));
-    plotMenu->addAction(tr("新建绘图窗口"), this, &MainWindow::onNewPlotWindow);
-    plotMenu->addAction(tr("关闭所有绘图窗口"), this, &MainWindow::onCloseAllPlotWindows);
-    plotMenu->addSeparator();
-
-    // 协议选择子菜单
-    QMenu* protocolMenu = plotMenu->addMenu(tr("绘图协议"));
-    QActionGroup* protocolGroup = new QActionGroup(this);
-    struct { const char* name; ProtocolType type; } protocols[] = {
-        {QT_TR_NOOP("无"), ProtocolType::Raw},
-        {QT_TR_NOOP("TEXT绘图"), ProtocolType::TextPlot},
-        {QT_TR_NOOP("STAMP绘图"), ProtocolType::StampPlot},
-        {QT_TR_NOOP("CSV绘图"), ProtocolType::CsvPlot},
-        {QT_TR_NOOP("JustFloat"), ProtocolType::JustFloat},
-    };
-    for (auto& p : protocols) {
-        QAction* act = protocolMenu->addAction(tr(p.name));
-        act->setCheckable(true);
-        act->setData(static_cast<int>(p.type));
-        protocolGroup->addAction(act);
-        if (p.type == ProtocolType::Raw) act->setChecked(true);
-    }
-    connect(protocolGroup, &QActionGroup::triggered, this, [this](QAction* action) {
-        int typeVal = action->data().toInt();
-        onProtocolTypeChanged(static_cast<ProtocolType>(typeVal));
-    });
-    m_protocolActionGroup = protocolGroup;
-
-    plotMenu->addSeparator();
-
-    // 窗口同步选项
-    QAction* syncAction = plotMenu->addAction(tr("窗口同步"));
-    syncAction->setCheckable(true);
-    syncAction->setChecked(PlotterManager::instance()->isSyncEnabled());
-    syncAction->setToolTip(tr("启用后，所有绘图窗口的暂停状态将同步"));
-    connect(syncAction, &QAction::toggled, [](bool checked) {
-        PlotterManager::instance()->setSyncEnabled(checked);
-    });
-
-    // 帮助菜单
-    QMenu* helpMenu = hamburgerMenu->addMenu(tr("帮助"));
-    helpMenu->addAction(tr("帮助文档"), this, &MainWindow::onHelp, QKeySequence::HelpContents);
-    helpMenu->addAction(tr("检查更新..."), this, &MainWindow::onCheckForUpdates);
-    QAction* autoCheckUpdateAction = helpMenu->addAction(tr("启动时自动检查更新"));
-    autoCheckUpdateAction->setCheckable(true);
-    autoCheckUpdateAction->setChecked(QSettings().value("Updates/AutoCheckEnabled", true).toBool());
-    connect(autoCheckUpdateAction, &QAction::toggled, this, [](bool checked) {
-        QSettings settings;
-        settings.setValue("Updates/AutoCheckEnabled", checked);
-    });
-    helpMenu->addSeparator();
-    helpMenu->addAction(tr("关于"), this, &MainWindow::onAbout);
-    helpMenu->addAction(tr("关于 Qt"), qApp, &QApplication::aboutQt);
+    m_hamburgerMenu = new QMenu(this);
+    populateHamburgerMenu();
 
     // 汉堡菜单按钮（手动弹出，避免 setMenu 在 Qt5/Windows 上的定位 bug）
-    connect(menuBtn, &QToolButton::clicked, this, [this, menuBtn, hamburgerMenu]() {
+    connect(m_hamburgerMenuBtn, &QToolButton::clicked, this, [this]() {
+        if (!m_hamburgerMenu || !m_hamburgerMenuBtn) {
+            return;
+        }
+
         // 计算按钮左下角的全局坐标
-        QPoint pos = menuBtn->mapToGlobal(menuBtn->rect().bottomLeft());
-        hamburgerMenu->exec(pos);
+        QPoint pos = m_hamburgerMenuBtn->mapToGlobal(m_hamburgerMenuBtn->rect().bottomLeft());
+        m_hamburgerMenu->exec(pos);
     });
 
     // 主题切换按钮（紧跟汉堡菜单，始终可见）
@@ -378,12 +293,13 @@ void MainWindow::setupToolBar()
     m_mainToolBar->addSeparator();
 
     // 通信类型选择下拉框
-    QLabel* commTypeLabel = new QLabel(tr("类型:"));
-    m_mainToolBar->addWidget(commTypeLabel);
+    m_commTypeLabel = new QLabel(tr("类型:"));
+    m_mainToolBar->addWidget(m_commTypeLabel);
 
     m_commTypeCombo = new QComboBox;
     m_commTypeCombo->setObjectName("commTypeCombo");
-    m_commTypeCombo->setMinimumWidth(100);
+    m_commTypeCombo->setMinimumWidth(92);
+    m_commTypeCombo->setMaximumWidth(132);
     m_commTypeCombo->setToolTip(tr("选择通信类型"));
     m_commTypeCombo->addItem(tr("串口"), static_cast<int>(CommType::Serial));
     m_commTypeCombo->addItem(tr("TCP客户端"), static_cast<int>(CommType::TcpClient));
@@ -398,7 +314,12 @@ void MainWindow::setupToolBar()
     // 串口选择下拉框
     m_portCombo = new QComboBox;
     m_portCombo->setObjectName("portCombo");
-    m_portCombo->setMinimumWidth(180);
+    /*
+     * 顶部工具栏必须优先保持一行可读。串口名可能较长，给它一个合理
+     * 最大宽度，超出的内容仍可通过下拉框查看，避免把右侧操作区顶歪。
+     */
+    m_portCombo->setMinimumWidth(190);
+    m_portCombo->setMaximumWidth(260);
     m_portCombo->setToolTip(tr("选择串口"));
     m_portComboAction = m_mainToolBar->addWidget(m_portCombo);
 
@@ -413,7 +334,8 @@ void MainWindow::setupToolBar()
     // 波特率下拉框
     m_baudCombo = new QComboBox;
     m_baudCombo->setObjectName("baudCombo");
-    m_baudCombo->setMinimumWidth(100);
+    m_baudCombo->setMinimumWidth(86);
+    m_baudCombo->setMaximumWidth(110);
     m_baudCombo->setEditable(true);
     m_baudCombo->setToolTip(tr("波特率"));
     QList<int> baudRates = {1200, 2400, 4800, 9600, 14400, 19200, 38400,
@@ -430,8 +352,8 @@ void MainWindow::setupToolBar()
     networkLayout->setContentsMargins(0, 0, 0, 0);
     networkLayout->setSpacing(5);
 
-    QLabel* ipLabel = new QLabel(tr("IP:"));
-    networkLayout->addWidget(ipLabel);
+    m_ipLabel = new QLabel(tr("IP:"));
+    networkLayout->addWidget(m_ipLabel);
 
     m_ipEdit = new QLineEdit;
     m_ipEdit->setPlaceholderText("127.0.0.1");
@@ -440,8 +362,8 @@ void MainWindow::setupToolBar()
     m_ipEdit->setToolTip(tr("远程IP地址（TCP客户端）或本地绑定地址"));
     networkLayout->addWidget(m_ipEdit);
 
-    QLabel* portLabel = new QLabel(tr("端口:"));
-    networkLayout->addWidget(portLabel);
+    m_networkPortLabel = new QLabel(tr("端口:"));
+    networkLayout->addWidget(m_networkPortLabel);
 
     m_portSpin = new QSpinBox;
     m_portSpin->setRange(1, 65535);
@@ -459,33 +381,44 @@ void MainWindow::setupToolBar()
     m_openPortBtn = new QPushButton(tr("打开串口"));
     m_openPortBtn->setObjectName("openPortBtn");
     m_openPortBtn->setCheckable(true);
-    m_openPortBtn->setMinimumWidth(100);
+    m_openPortBtn->setMinimumWidth(96);
+    m_openPortBtn->setMaximumWidth(116);
     connect(m_openPortBtn, &QPushButton::clicked, this, &MainWindow::onOpenPortClicked);
     m_mainToolBar->addWidget(m_openPortBtn);
 
     m_mainToolBar->addSeparator();
 
+    /*
+     * 主工具栏左侧是连接参数，右侧是全局操作和显示模式。中间使用弹性
+     * spacer 吃掉窗口剩余宽度，避免所有控件挤在左侧、右边留出一整块空白。
+     */
+    m_mainToolBarSpacer = new QWidget;
+    m_mainToolBarSpacer->setObjectName("mainToolBarSpacer");
+    m_mainToolBarSpacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    m_mainToolBar->addWidget(m_mainToolBarSpacer);
+
     // 清除按钮（带图标）
-    QAction* clearAction = m_mainToolBar->addAction(
+    m_clearAction = m_mainToolBar->addAction(
         style()->standardIcon(QStyle::SP_DialogResetButton), tr("清空"));
-    clearAction->setToolTip(tr("清空接收区和发送区"));
-    connect(clearAction, &QAction::triggered, this, &MainWindow::onClearAll);
+    m_clearAction->setToolTip(tr("清空接收区和发送区"));
+    connect(m_clearAction, &QAction::triggered, this, &MainWindow::onClearAll);
 
     // 导出按钮（带图标）
-    QAction* exportAction = m_mainToolBar->addAction(
+    m_exportAction = m_mainToolBar->addAction(
         style()->standardIcon(QStyle::SP_DialogSaveButton), tr("导出"));
-    exportAction->setToolTip(tr("导出数据到文件"));
-    connect(exportAction, &QAction::triggered, this, &MainWindow::onExportData);
+    m_exportAction->setToolTip(tr("导出数据到文件"));
+    connect(m_exportAction, &QAction::triggered, this, &MainWindow::onExportData);
 
     m_mainToolBar->addSeparator();
 
     // 显示模式下拉框
-    QLabel* displayModeLabel = new QLabel(tr("模式:"));
-    m_mainToolBar->addWidget(displayModeLabel);
+    m_displayModeLabel = new QLabel(tr("模式:"));
+    m_mainToolBar->addWidget(m_displayModeLabel);
 
     m_displayModeCombo = new QComboBox;
     m_displayModeCombo->setObjectName("displayModeCombo");
-    m_displayModeCombo->setMinimumWidth(80);
+    m_displayModeCombo->setMinimumWidth(82);
+    m_displayModeCombo->setMaximumWidth(112);
     m_displayModeCombo->setToolTip(tr("选择显示模式"));
     m_displayModeCombo->addItem(tr("串口"), static_cast<int>(DisplayMode::Serial));
     m_displayModeCombo->addItem(tr("终端"), static_cast<int>(DisplayMode::Terminal));
@@ -508,6 +441,8 @@ void MainWindow::setupToolBar()
 
     // 初始刷新串口列表
     refreshPorts();
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
 }
 
 void MainWindow::setupStatusBar()
@@ -784,10 +719,14 @@ void MainWindow::onConnectClicked()
     if (!m_communication->open()) {
         QMessageBox::critical(this, tr("错误"),
             tr("无法打开连接: %1").arg(m_communication->lastError()));
+        updateCommunicationWidgetsForType();
+        updateConnectionButtonText();
         return;
     }
 
     m_connected = true;
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
     LOG_INFO(QString("Connected: %1").arg(m_communication->statusString()));
 }
 
@@ -797,6 +736,8 @@ void MainWindow::onDisconnectClicked()
         m_communication->close();
     }
     m_connected = false;
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
     LOG_INFO("Disconnected");
 }
 
@@ -936,23 +877,10 @@ void MainWindow::onConnectionStatusChanged(bool connected)
         m_plotDetector->reset();
     }
 
-    // 更新工具栏按钮状态
-    if (m_openPortBtn) {
-        if (connected) {
-            m_openPortBtn->setText(tr("关闭串口"));
-            m_openPortBtn->setChecked(true);
-        } else {
-            m_openPortBtn->setText(tr("打开串口"));
-            m_openPortBtn->setChecked(false);
-        }
-    }
-
-    if (m_portCombo) {
-        m_portCombo->setEnabled(!connected);
-    }
-    if (m_baudCombo) {
-        m_baudCombo->setEnabled(!connected);
-    }
+    // 通信实现会在串口、TCP、UDP 的 open/close 路径 emit 状态变化；
+    // 主窗口只在这里集中刷新按钮文字和控件可用性，避免网络模式被写回“打开串口”。
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
 
     if (connected) {
         m_statusLabel->setText(tr("已连接: %1").arg(
@@ -981,51 +909,8 @@ void MainWindow::onCommTypeChanged(int index)
     if (!combo) return;
 
     m_currentCommType = static_cast<CommType>(combo->currentData().toInt());
-
-    // 更新工具栏控件显示和按钮文本
-    switch (m_currentCommType) {
-        case CommType::Serial:
-            // 串口模式：显示串口相关控件
-            m_portComboAction->setVisible(true);
-            m_refreshBtnAction->setVisible(true);
-            m_baudComboAction->setVisible(true);
-            m_networkWidgetAction->setVisible(false);
-            m_openPortBtn->setText(tr("打开串口"));
-            break;
-        case CommType::TcpClient:
-            // TCP客户端：显示网络设置
-            m_portComboAction->setVisible(false);
-            m_refreshBtnAction->setVisible(false);
-            m_baudComboAction->setVisible(false);
-            m_networkWidgetAction->setVisible(true);
-            m_ipEdit->setToolTip(tr("服务器IP地址"));
-            m_portSpin->setToolTip(tr("服务器端口"));
-            m_openPortBtn->setText(tr("连接"));
-            break;
-        case CommType::TcpServer:
-            // TCP服务器：显示网络设置
-            m_portComboAction->setVisible(false);
-            m_refreshBtnAction->setVisible(false);
-            m_baudComboAction->setVisible(false);
-            m_networkWidgetAction->setVisible(true);
-            m_ipEdit->setToolTip(tr("本地绑定地址（0.0.0.0表示所有）"));
-            m_ipEdit->setText("0.0.0.0");
-            m_portSpin->setToolTip(tr("监听端口"));
-            m_openPortBtn->setText(tr("启动服务"));
-            break;
-        case CommType::Udp:
-            // UDP模式：显示网络设置
-            m_portComboAction->setVisible(false);
-            m_refreshBtnAction->setVisible(false);
-            m_baudComboAction->setVisible(false);
-            m_networkWidgetAction->setVisible(true);
-            m_ipEdit->setToolTip(tr("目标IP地址"));
-            m_portSpin->setToolTip(tr("本地/目标端口"));
-            m_openPortBtn->setText(tr("绑定端口"));
-            break;
-        default:
-            break;
-    }
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
 
     LOG_INFO(QString("Communication type changed to: %1").arg(static_cast<int>(m_currentCommType)));
 }
@@ -1103,48 +988,123 @@ void MainWindow::onLoadSession()
         return;
     }
 
-    // 应用加载的会话数据
-    const SessionData& session = sm->currentSession();
+    applySessionDataToUi(sm->currentSession());
 
-    // 通信配置
+    statusBar()->showMessage(tr("会话已加载: %1").arg(filePath), 3000);
+}
+
+/**
+ * @brief 将会话数据应用到主窗口和子控件。
+ *
+ * 主要流程：恢复通信配置、工具栏输入框、绘图协议、显示模式、快捷发送项和窗口状态。
+ * 该函数同时被“加载会话”和“崩溃恢复”复用，避免恢复流程只更新 SessionManager
+ * 内存数据却没有同步到界面。
+ *
+ * @param session 已由 SessionManager/SessionSerializer 校验并解析出的会话数据。
+ */
+void MainWindow::applySessionDataToUi(const SessionData& session)
+{
+    // 通信配置先写回成员变量，再同步到设置面板和工具栏。
     m_currentCommType = session.commType;
     m_serialConfig = session.serialConfig;
     m_networkConfig = session.networkConfig;
 
-    // 更新串口设置界面
     if (m_serialSettings) {
         m_serialSettings->setConfig(m_serialConfig);
     }
-
-    // 更新网络设置界面
     if (m_networkSettings) {
         m_networkSettings->setConfig(m_networkConfig);
     }
 
-    // 更新工具栏串口控件
-    if (m_portCombo) {
-        int portIdx = m_portCombo->findText(m_serialConfig.portName);
+    if (m_commTypeCombo) {
+        const int commIndex = m_commTypeCombo->findData(static_cast<int>(m_currentCommType));
+        if (commIndex >= 0) {
+            m_commTypeCombo->blockSignals(true);
+            m_commTypeCombo->setCurrentIndex(commIndex);
+            m_commTypeCombo->blockSignals(false);
+        }
+    }
+
+    if (m_portCombo && !m_serialConfig.portName.isEmpty()) {
+        int portIdx = m_portCombo->findData(m_serialConfig.portName);
+        if (portIdx < 0) {
+            portIdx = m_portCombo->findText(m_serialConfig.portName);
+        }
         if (portIdx >= 0) {
             m_portCombo->setCurrentIndex(portIdx);
         }
     }
+
     if (m_baudCombo) {
-        int baudIdx = m_baudCombo->findText(QString::number(m_serialConfig.baudRate));
+        const int baudIdx = m_baudCombo->findData(m_serialConfig.baudRate);
         if (baudIdx >= 0) {
             m_baudCombo->setCurrentIndex(baudIdx);
+        } else {
+            m_baudCombo->setCurrentText(QString::number(m_serialConfig.baudRate));
         }
     }
 
-    // 协议类型
-    m_currentProtocolType = static_cast<ProtocolType>(session.protocolType);
-    m_currentProtocol = ProtocolFactory::create(m_currentProtocolType);
-
-    // 显示模式
-    if (m_displayModeCombo && session.displayMode >= 0 && session.displayMode < 4) {
-        m_displayModeCombo->setCurrentIndex(session.displayMode);
+    if (m_ipEdit) {
+        switch (m_currentCommType) {
+            case CommType::TcpClient:
+                m_ipEdit->setText(m_networkConfig.serverIp);
+                break;
+            case CommType::TcpServer:
+                m_ipEdit->setText(QStringLiteral("0.0.0.0"));
+                break;
+            case CommType::Udp:
+                m_ipEdit->setText(m_networkConfig.remoteIp.isEmpty()
+                                      ? QStringLiteral("127.0.0.1")
+                                      : m_networkConfig.remoteIp);
+                break;
+            case CommType::Serial:
+            default:
+                break;
+        }
     }
 
-    // 快捷发送项
+    if (m_portSpin) {
+        switch (m_currentCommType) {
+            case CommType::TcpClient:
+                m_portSpin->setValue(m_networkConfig.serverPort);
+                break;
+            case CommType::TcpServer:
+                m_portSpin->setValue(m_networkConfig.listenPort);
+                break;
+            case CommType::Udp:
+                m_portSpin->setValue(m_networkConfig.remotePort > 0
+                                         ? m_networkConfig.remotePort
+                                         : m_networkConfig.listenPort);
+                break;
+            case CommType::Serial:
+            default:
+                break;
+        }
+    }
+
+    // 协议枚举来自会话文件，落在 supportedTypes 外时保守退回 Raw，避免非法值进入工厂。
+    ProtocolType restoredProtocol = static_cast<ProtocolType>(session.protocolType);
+    if (!ProtocolFactory::supportedTypes().contains(restoredProtocol)) {
+        restoredProtocol = ProtocolType::Raw;
+    }
+    onProtocolTypeChanged(restoredProtocol);
+    if (m_protocolActionGroup) {
+        for (QAction* action : m_protocolActionGroup->actions()) {
+            if (action->data().toInt() == static_cast<int>(m_currentProtocolType)) {
+                action->setChecked(true);
+                break;
+            }
+        }
+    }
+
+    // 显示模式只接受已知 0..3 范围，损坏会话文件中的非法值不会触发越界切换。
+    if (m_displayModeCombo) {
+        const int displayIndex = m_displayModeCombo->findData(session.displayMode);
+        if (displayIndex >= 0) {
+            m_displayModeCombo->setCurrentIndex(displayIndex);
+        }
+    }
+
     if (m_quickSendWidget) {
         m_quickSendWidget->clearAll();
         for (const auto& item : session.quickSendItems) {
@@ -1152,15 +1112,16 @@ void MainWindow::onLoadSession()
         }
     }
 
-    // 窗口状态
     if (!session.windowGeometry.isEmpty()) {
         restoreGeometry(session.windowGeometry);
+        m_hasRestoredWindowGeometry = true;
     }
     if (m_mainSplitter && !session.splitterState.isEmpty()) {
         m_mainSplitter->restoreState(session.splitterState);
     }
 
-    statusBar()->showMessage(tr("会话已加载: %1").arg(filePath), 3000);
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
 }
 
 void MainWindow::onExportData()
@@ -1418,10 +1379,19 @@ void MainWindow::loadLanguage(const QString& language)
 {
     auto notifyLanguageChange = []() {
         QEvent event(QEvent::LanguageChange);
+        // 递归发送 LanguageChange 事件到所有控件（包括子窗口）
         const auto topLevels = QApplication::topLevelWidgets();
+        std::function<void(QWidget*)> sendRecursive = [&](QWidget* w) {
+            QCoreApplication::sendEvent(w, &event);
+            for (QObject* child : w->children()) {
+                if (QWidget* childWidget = qobject_cast<QWidget*>(child)) {
+                    sendRecursive(childWidget);
+                }
+            }
+        };
         for (QWidget* widget : topLevels) {
             if (widget) {
-                QCoreApplication::sendEvent(widget, &event);
+                sendRecursive(widget);
             }
         }
     };
@@ -1477,75 +1447,376 @@ void MainWindow::changeEvent(QEvent* event)
     QMainWindow::changeEvent(event);
 }
 
+void MainWindow::resizeEvent(QResizeEvent* event)
+{
+    QMainWindow::resizeEvent(event);
+
+    /*
+     * 窗口宽度变化后，模式工具栏滚动区的 viewport 宽度也会变化。
+     * 重新计算一次容器宽度，保证窄窗口时工具栏自己横向滚动，而不是裁掉尾部控件。
+     */
+    if (m_uiInitialized && m_displayModeCombo && m_modeToolBarScrollArea) {
+        onDisplayModeChanged(m_displayModeCombo->currentIndex());
+    }
+}
+
 void MainWindow::retranslateUi()
 {
-    // 初始化完成前不执行重建（构造函数中 loadLanguage 会触发此函数）
+    // 初始化完成前不执行更新（构造函数中 loadLanguage 会触发此函数）
     if (!m_uiInitialized) {
         return;
     }
 
+    LOG_INFO("retranslateUi called");
+
     // 更新窗口标题
     setWindowTitle(QString("%1 v%2").arg(APP_NAME).arg(APP_VERSION));
 
-    // 保存工具栏状态
-    QString currentPort = m_portCombo ? m_portCombo->currentData().toString() : QString();
-    QString currentBaud = m_baudCombo ? m_baudCombo->currentText() : "115200";
-    int displayModeIndex = m_displayModeCombo ? m_displayModeCombo->currentIndex() : 0;
-    bool themeChecked = m_themeBtn ? m_themeBtn->isChecked() : false;
-
-    // 删除旧工具栏并重建
+    // 直接更新工具栏控件文本（不销毁重建，避免 QComboBox item 翻译失效）
     if (m_mainToolBar) {
-        removeToolBar(m_mainToolBar);
-        m_mainToolBar->deleteLater();
-        m_mainToolBar = nullptr;
-        m_portCombo = nullptr;
-        m_baudCombo = nullptr;
-        m_openPortBtn = nullptr;
-        m_displayModeCombo = nullptr;
-        m_themeBtn = nullptr;
+        m_mainToolBar->setWindowTitle(tr("主工具栏"));
     }
-    setupToolBar();
+    if (m_hamburgerMenuBtn) {
+        m_hamburgerMenuBtn->setToolTip(tr("菜单"));
+    }
+    if (m_commTypeLabel) {
+        m_commTypeLabel->setText(tr("类型:"));
+    }
 
-    // 恢复工具栏状态
-    if (m_portCombo && !currentPort.isEmpty()) {
-        int idx = m_portCombo->findData(currentPort);
-        if (idx >= 0) {
-            m_portCombo->setCurrentIndex(idx);
-        }
+    // 更新通信类型下拉框（clear + addItem 确保翻译生效）
+    if (m_commTypeCombo) {
+        const QVariant currentTypeData = m_commTypeCombo->currentData();
+        m_commTypeCombo->blockSignals(true);
+        m_commTypeCombo->clear();
+        m_commTypeCombo->addItem(tr("串口"), static_cast<int>(CommType::Serial));
+        m_commTypeCombo->addItem(tr("TCP客户端"), static_cast<int>(CommType::TcpClient));
+        m_commTypeCombo->addItem(tr("TCP服务器"), static_cast<int>(CommType::TcpServer));
+        m_commTypeCombo->addItem(tr("UDP"), static_cast<int>(CommType::Udp));
+        const int currentTypeIndex = m_commTypeCombo->findData(currentTypeData);
+        m_commTypeCombo->setCurrentIndex(currentTypeIndex >= 0 ? currentTypeIndex : 0);
+        m_commTypeCombo->blockSignals(false);
+        m_commTypeCombo->setToolTip(tr("选择通信类型"));
+    }
+
+    // 更新串口相关控件
+    if (m_portCombo) {
+        m_portCombo->setToolTip(tr("选择串口"));
+    }
+    if (m_refreshBtn) {
+        m_refreshBtn->setToolTip(tr("刷新串口列表"));
     }
     if (m_baudCombo) {
-        m_baudCombo->setCurrentText(currentBaud);
+        m_baudCombo->setToolTip(tr("波特率"));
     }
+
+    // 更新显示模式下拉框（clear + addItem 确保翻译生效）
     if (m_displayModeCombo) {
-        m_displayModeCombo->setCurrentIndex(displayModeIndex);
+        const QVariant currentModeData = m_displayModeCombo->currentData();
+        m_displayModeCombo->blockSignals(true);
+        m_displayModeCombo->clear();
+        m_displayModeCombo->addItem(tr("串口"), static_cast<int>(DisplayMode::Serial));
+        m_displayModeCombo->addItem(tr("终端"), static_cast<int>(DisplayMode::Terminal));
+        m_displayModeCombo->addItem(tr("帧模式"), static_cast<int>(DisplayMode::Frame));
+        m_displayModeCombo->addItem(tr("调试"), static_cast<int>(DisplayMode::Debug));
+        const int currentModeIndex = m_displayModeCombo->findData(currentModeData);
+        m_displayModeCombo->setCurrentIndex(currentModeIndex >= 0 ? currentModeIndex : 0);
+        m_displayModeCombo->blockSignals(false);
+        m_displayModeCombo->setToolTip(tr("选择显示模式"));
     }
+
+    if (m_ipLabel) {
+        m_ipLabel->setText(tr("IP:"));
+    }
+    if (m_networkPortLabel) {
+        m_networkPortLabel->setText(tr("端口:"));
+    }
+    if (m_clearAction) {
+        m_clearAction->setText(tr("清空"));
+        m_clearAction->setToolTip(tr("清空接收区和发送区"));
+    }
+    if (m_exportAction) {
+        m_exportAction->setText(tr("导出"));
+        m_exportAction->setToolTip(tr("导出数据到文件"));
+    }
+    if (m_displayModeLabel) {
+        m_displayModeLabel->setText(tr("模式:"));
+    }
+
+    updateCommunicationWidgetsForType();
+    updateConnectionButtonText();
+
     if (m_themeBtn) {
-        m_themeBtn->setChecked(themeChecked);
+        m_themeBtn->setToolTip(tr("切换主题"));
     }
-    if (m_openPortBtn) {
-        m_openPortBtn->setText(m_connected ? tr("关闭串口") : tr("打开串口"));
-        m_openPortBtn->setChecked(m_connected);
-    }
-
-    // 恢复主题按钮图标（applyTheme 会同时设置图标和 checked 状态）
-    applyTheme(m_currentTheme);
-
-    // 延迟恢复显示模式下拉框（解决 Qt5 QSS 下重建后首次渲染空白问题）
-    QTimer::singleShot(100, this, [this]() {
-        if (m_displayModeCombo) {
-            int idx = m_displayModeCombo->currentIndex();
-            if (idx < 0) idx = 0;
-            m_displayModeCombo->setCurrentIndex(idx);
-            m_displayModeCombo->update();
-        }
-    });
 
     // 更新状态栏
     if (m_statusLabel) {
         m_statusLabel->setText(m_connected ? tr("已连接") : tr("未连接"));
     }
 
+    // 更新汉堡菜单中的所有菜单项（通过重建菜单）
+    // 注意：汉堡菜单是 QMenu，需要重建才能更新翻译
+    if (m_hamburgerMenu) {
+        rebuildHamburgerMenu();
+    }
+
+    // 语言切换后模式工具栏的 sizeHint 会变化，重新挂载一次以刷新滚动宽度。
+    if (m_displayModeCombo) {
+        onDisplayModeChanged(m_displayModeCombo->currentIndex());
+    }
+
     LOG_INFO("UI retranslated");
+}
+
+/**
+ * @brief 填充主窗口汉堡菜单。
+ *
+ * 主要流程：清空旧菜单项，重新创建文件/编辑/视图/工具/绘图/帮助菜单，
+ * 并把语言选择、绘图协议、窗口同步等可勾选状态同步回当前配置。
+ * 此函数同时服务初始化和语言切换，避免两份菜单构建逻辑翻译不一致。
+ */
+void MainWindow::populateHamburgerMenu()
+{
+    if (!m_hamburgerMenu) {
+        return;
+    }
+
+    // 保存当前语言选择状态
+    QString currentLang = m_currentLanguage;
+
+    // 清除旧菜单
+    m_hamburgerMenu->clear();
+
+    // 重新创建所有菜单项
+    QMenu* fileMenu = m_hamburgerMenu->addMenu(tr("文件"));
+    fileMenu->addAction(tr("新建会话"), this, &MainWindow::onNewSession, QKeySequence::New);
+    fileMenu->addAction(tr("保存会话"), this, &MainWindow::onSaveSession, QKeySequence::Save);
+    fileMenu->addAction(tr("加载会话"), this, &MainWindow::onLoadSession, QKeySequence::Open);
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("导出数据..."), this, &MainWindow::onExportData);
+    fileMenu->addSeparator();
+    fileMenu->addAction(tr("退出"), this, &QMainWindow::close, QKeySequence::Quit);
+
+    QMenu* editMenu = m_hamburgerMenu->addMenu(tr("编辑"));
+    editMenu->addAction(tr("清空全部"), this, &MainWindow::onClearAll, QKeySequence(Qt::CTRL | Qt::Key_L));
+    editMenu->addAction(tr("数据搜索..."), this, &MainWindow::onDataSearch, QKeySequence::Find);
+
+    QMenu* viewMenu = m_hamburgerMenu->addMenu(tr("视图"));
+    viewMenu->addAction(tr("置顶显示"))->setCheckable(true);
+
+    // 语言子菜单
+    QMenu* languageMenu = viewMenu->addMenu(tr("语言"));
+    QActionGroup* langGroup = new QActionGroup(this);
+    QAction* zhAction = languageMenu->addAction(tr("简体中文"));
+    zhAction->setCheckable(true);
+    zhAction->setData("zh_CN");
+    langGroup->addAction(zhAction);
+
+    QAction* enAction = languageMenu->addAction(tr("English"));
+    enAction->setCheckable(true);
+    enAction->setData("en_US");
+    langGroup->addAction(enAction);
+
+    if (currentLang.isEmpty() || currentLang == "zh_CN") {
+        zhAction->setChecked(true);
+    } else {
+        enAction->setChecked(true);
+    }
+
+    connect(langGroup, &QActionGroup::triggered, [this](QAction* action) {
+        onLanguageChanged(action->data().toString());
+    });
+
+    QMenu* toolsMenu = m_hamburgerMenu->addMenu(tr("工具"));
+    toolsMenu->addAction(tr("工具箱..."), this, &MainWindow::onToolbox);
+    toolsMenu->addAction(tr("脚本编辑器..."), this, &MainWindow::onScriptEditor);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("文件传输..."), this, &MainWindow::onFileTransfer);
+    toolsMenu->addAction(tr("IAP升级..."), this, &MainWindow::onIAPUpgrade);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("宏录制/回放..."), this, &MainWindow::onMacroManager);
+    toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
+    toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
+    toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
+    toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
+    toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
+    toolsMenu->addSeparator();
+    toolsMenu->addAction(tr("设置..."), this, &MainWindow::onSettings);
+
+    QMenu* plotMenu = m_hamburgerMenu->addMenu(tr("绘图"));
+    plotMenu->addAction(tr("新建绘图窗口"), this, &MainWindow::onNewPlotWindow);
+    plotMenu->addAction(tr("关闭所有绘图窗口"), this, &MainWindow::onCloseAllPlotWindows);
+    plotMenu->addSeparator();
+
+    QMenu* protocolMenu = plotMenu->addMenu(tr("绘图协议"));
+    QActionGroup* protocolGroup = new QActionGroup(this);
+    struct { const char* name; ProtocolType type; } protocols[] = {
+        {QT_TR_NOOP("无"), ProtocolType::Raw},
+        {QT_TR_NOOP("TEXT绘图"), ProtocolType::TextPlot},
+        {QT_TR_NOOP("STAMP绘图"), ProtocolType::StampPlot},
+        {QT_TR_NOOP("CSV绘图"), ProtocolType::CsvPlot},
+        {QT_TR_NOOP("JustFloat"), ProtocolType::JustFloat},
+    };
+    for (auto& p : protocols) {
+        QAction* act = protocolMenu->addAction(tr(p.name));
+        act->setCheckable(true);
+        act->setData(static_cast<int>(p.type));
+        protocolGroup->addAction(act);
+        if (p.type == m_currentProtocolType) {
+            act->setChecked(true);
+        }
+    }
+    connect(protocolGroup, &QActionGroup::triggered, this, [this](QAction* action) {
+        int typeVal = action->data().toInt();
+        onProtocolTypeChanged(static_cast<ProtocolType>(typeVal));
+    });
+    m_protocolActionGroup = protocolGroup;
+
+    plotMenu->addSeparator();
+
+    QAction* syncAction = plotMenu->addAction(tr("窗口同步"));
+    syncAction->setCheckable(true);
+    syncAction->setChecked(PlotterManager::instance()->isSyncEnabled());
+    syncAction->setToolTip(tr("启用后，所有绘图窗口的暂停状态将同步"));
+    connect(syncAction, &QAction::toggled, [](bool checked) {
+        PlotterManager::instance()->setSyncEnabled(checked);
+    });
+
+    QMenu* helpMenu = m_hamburgerMenu->addMenu(tr("帮助"));
+    helpMenu->addAction(tr("帮助文档"), this, &MainWindow::onHelp, QKeySequence::HelpContents);
+    helpMenu->addAction(tr("检查更新..."), this, &MainWindow::onCheckForUpdates);
+    QAction* autoCheckUpdateAction = helpMenu->addAction(tr("启动时自动检查更新"));
+    autoCheckUpdateAction->setCheckable(true);
+    autoCheckUpdateAction->setChecked(QSettings().value("Updates/AutoCheckEnabled", true).toBool());
+    connect(autoCheckUpdateAction, &QAction::toggled, this, [](bool checked) {
+        QSettings settings;
+        settings.setValue("Updates/AutoCheckEnabled", checked);
+    });
+    helpMenu->addSeparator();
+    helpMenu->addAction(tr("关于"), this, &MainWindow::onAbout);
+    helpMenu->addAction(tr("关于 Qt"), qApp, &QApplication::aboutQt);
+}
+
+/**
+ * @brief 重建汉堡菜单。
+ *
+ * 语言切换时 QMenu 已创建的 QAction 不会自动更新文本，所以通过统一的
+ * populateHamburgerMenu 重新填充；菜单对象本身保持不变，按钮持有的指针仍然有效。
+ */
+void MainWindow::rebuildHamburgerMenu()
+{
+    populateHamburgerMenu();
+}
+
+/**
+ * @brief 根据当前通信类型刷新工具栏控件。
+ *
+ * 主要流程：串口模式显示串口和波特率控件，网络模式显示 IP/端口控件；
+ * 同时按连接状态禁用正在使用的配置控件，避免连接后继续改参数造成状态不一致。
+ */
+void MainWindow::updateCommunicationWidgetsForType()
+{
+    const bool serialMode = (m_currentCommType == CommType::Serial);
+    if (m_portComboAction) {
+        m_portComboAction->setVisible(serialMode);
+    }
+    if (m_refreshBtnAction) {
+        m_refreshBtnAction->setVisible(serialMode);
+    }
+    if (m_baudComboAction) {
+        m_baudComboAction->setVisible(serialMode);
+    }
+    if (m_networkWidgetAction) {
+        m_networkWidgetAction->setVisible(!serialMode);
+    }
+
+    if (m_portCombo) {
+        m_portCombo->setEnabled(serialMode && !m_connected);
+    }
+    if (m_refreshBtn) {
+        m_refreshBtn->setEnabled(serialMode && !m_connected);
+    }
+    if (m_baudCombo) {
+        m_baudCombo->setEnabled(serialMode && !m_connected);
+    }
+    if (m_networkToolbarWidget) {
+        m_networkToolbarWidget->setEnabled(!serialMode && !m_connected);
+    }
+    if (m_commTypeCombo) {
+        m_commTypeCombo->setEnabled(!m_connected);
+    }
+
+    if (!serialMode && m_ipEdit) {
+        switch (m_currentCommType) {
+            case CommType::TcpClient:
+                m_ipEdit->setPlaceholderText(QStringLiteral("127.0.0.1"));
+                m_ipEdit->setToolTip(tr("服务器IP地址"));
+                break;
+            case CommType::TcpServer:
+                m_ipEdit->setPlaceholderText(QStringLiteral("0.0.0.0"));
+                m_ipEdit->setToolTip(tr("本地绑定地址（0.0.0.0表示所有）"));
+                break;
+            case CommType::Udp:
+                m_ipEdit->setPlaceholderText(QStringLiteral("127.0.0.1"));
+                m_ipEdit->setToolTip(tr("目标IP地址"));
+                break;
+            default:
+                break;
+        }
+    }
+
+    if (m_portSpin) {
+        switch (m_currentCommType) {
+            case CommType::TcpClient:
+                m_portSpin->setToolTip(tr("服务器端口"));
+                break;
+            case CommType::TcpServer:
+                m_portSpin->setToolTip(tr("监听端口"));
+                break;
+            case CommType::Udp:
+                m_portSpin->setToolTip(tr("本地/目标端口"));
+                break;
+            case CommType::Serial:
+            default:
+                m_portSpin->setToolTip(tr("端口号"));
+                break;
+        }
+    }
+}
+
+/**
+ * @brief 根据通信类型和连接状态刷新连接按钮文字。
+ *
+ * 串口、TCP 客户端、TCP 服务端、UDP 的“打开/关闭”动作语义不同，
+ * 统一在这里计算文本，避免语言切换或状态变化时网络模式被误写成串口文案。
+ */
+void MainWindow::updateConnectionButtonText()
+{
+    if (!m_openPortBtn) {
+        return;
+    }
+
+    QString buttonText;
+    switch (m_currentCommType) {
+        case CommType::Serial:
+            buttonText = m_connected ? tr("关闭串口") : tr("打开串口");
+            break;
+        case CommType::TcpClient:
+            buttonText = m_connected ? tr("断开") : tr("连接");
+            break;
+        case CommType::TcpServer:
+            buttonText = m_connected ? tr("停止服务") : tr("启动服务");
+            break;
+        case CommType::Udp:
+            buttonText = m_connected ? tr("解绑") : tr("绑定端口");
+            break;
+        default:
+            buttonText = m_connected ? tr("断开") : tr("连接");
+            break;
+    }
+
+    m_openPortBtn->setText(buttonText);
+    m_openPortBtn->setChecked(m_connected);
 }
 
 void MainWindow::refreshPorts()
@@ -1602,33 +1873,8 @@ void MainWindow::onToolbarBaudChanged(int index)
 void MainWindow::onOpenPortClicked()
 {
     if (m_connected) {
-        // 关闭连接
+        // 关闭连接后由统一刷新函数恢复控件可编辑状态和对应文案。
         onDisconnectClicked();
-
-        // 恢复按钮文本和控件状态
-        switch (m_currentCommType) {
-            case CommType::Serial:
-                m_openPortBtn->setText(tr("打开串口"));
-                m_portCombo->setEnabled(true);
-                m_baudCombo->setEnabled(true);
-                break;
-            case CommType::TcpClient:
-                m_openPortBtn->setText(tr("连接"));
-                m_networkToolbarWidget->setEnabled(true);
-                break;
-            case CommType::TcpServer:
-                m_openPortBtn->setText(tr("启动服务"));
-                m_networkToolbarWidget->setEnabled(true);
-                break;
-            case CommType::Udp:
-                m_openPortBtn->setText(tr("绑定端口"));
-                m_networkToolbarWidget->setEnabled(true);
-                break;
-            default:
-                break;
-        }
-        m_openPortBtn->setChecked(false);
-        m_commTypeCombo->setEnabled(true);
     } else {
         // 根据通信类型更新配置
         switch (m_currentCommType) {
@@ -1679,35 +1925,8 @@ void MainWindow::onOpenPortClicked()
 
         // 建立连接
         onConnectClicked();
-
-        if (m_connected) {
-            // 更新按钮文本和控件状态
-            switch (m_currentCommType) {
-                case CommType::Serial:
-                    m_openPortBtn->setText(tr("关闭串口"));
-                    m_portCombo->setEnabled(false);
-                    m_baudCombo->setEnabled(false);
-                    break;
-                case CommType::TcpClient:
-                    m_openPortBtn->setText(tr("断开"));
-                    m_networkToolbarWidget->setEnabled(false);
-                    break;
-                case CommType::TcpServer:
-                    m_openPortBtn->setText(tr("停止服务"));
-                    m_networkToolbarWidget->setEnabled(false);
-                    break;
-                case CommType::Udp:
-                    m_openPortBtn->setText(tr("解绑"));
-                    m_networkToolbarWidget->setEnabled(false);
-                    break;
-                default:
-                    break;
-            }
-            m_openPortBtn->setChecked(true);
-            m_commTypeCombo->setEnabled(false);
-        } else {
-            m_openPortBtn->setChecked(false);
-        }
+        updateCommunicationWidgetsForType();
+        updateConnectionButtonText();
     }
 }
 
@@ -1790,18 +2009,15 @@ void MainWindow::onDisplayModeChanged(int index)
     // 获取新模式
     DisplayMode newMode = static_cast<DisplayMode>(
         m_displayModeCombo->itemData(index).toInt());
-
-    if (newMode == m_displayMode && m_currentModeWidget) {
-        return;  // 模式未变化
-    }
+    const bool modeChanged = (newMode != m_displayMode) || !m_currentModeWidget;
 
     // 通知旧模式停用
-    if (m_currentModeWidget) {
+    if (modeChanged && m_currentModeWidget) {
         m_currentModeWidget->onDeactivated();
     }
 
-    // 隐藏旧模式的工具栏
-    if (m_modeToolBarContainer->layout()) {
+    // 隐藏旧模式的工具栏：只解除父子关系，工具栏仍归各自模式组件复用。
+    if (m_modeToolBarContainer && m_modeToolBarContainer->layout()) {
         QLayoutItem* item;
         while ((item = m_modeToolBarContainer->layout()->takeAt(0)) != nullptr) {
             if (item->widget()) {
@@ -1832,7 +2048,9 @@ void MainWindow::onDisplayModeChanged(int index)
 
     if (newModeWidget) {
         m_currentModeWidget = newModeWidget;
-        m_modeStack->setCurrentWidget(newModeWidget);
+        if (modeChanged) {
+            m_modeStack->setCurrentWidget(newModeWidget);
+        }
 
         // 同步连接状态
         newModeWidget->setConnected(m_connected);
@@ -1840,19 +2058,50 @@ void MainWindow::onDisplayModeChanged(int index)
         // 显示模式专属工具栏
         QWidget* modeToolBar = newModeWidget->modeToolBar();
         if (modeToolBar) {
-            if (!m_modeToolBarContainer->layout()) {
-                m_modeToolBarContainer->setLayout(new QVBoxLayout);
-                m_modeToolBarContainer->layout()->setContentsMargins(0, 0, 0, 0);
+            // QToolBar 默认可以压缩动作，英文翻译较长时末尾控件会被裁掉。
+            // 这里统一固定为文本工具栏并放入横向滚动区，让模式控件保持可访问。
+            if (QToolBar* toolBar = qobject_cast<QToolBar*>(modeToolBar)) {
+                toolBar->setMovable(false);
+                toolBar->setFloatable(false);
+                toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
+                toolBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
             }
+
             m_modeToolBarContainer->layout()->addWidget(modeToolBar);
             modeToolBar->show();
-            m_modeToolBarContainer->setFixedHeight(modeToolBar->sizeHint().height());
+            modeToolBar->adjustSize();
+
+            const QSize toolBarSize = modeToolBar->sizeHint();
+            const int viewportWidth = m_modeToolBarScrollArea
+                ? m_modeToolBarScrollArea->viewport()->width()
+                : 0;
+            const int contentWidth = qMax(toolBarSize.width(), viewportWidth);
+            const int contentHeight = toolBarSize.height();
+
+            /*
+             * 横向滚动条只在宽度不够时出现，因此滚动区高度预留滚动条高度。
+             * 这样 Frame/Debug/Terminal 在中英文之间切换时，不会因为滚动条
+             * 临时出现导致下方内容跳动或工具栏尾部控件不可点击。
+             */
+            const int scrollBarHeight = m_modeToolBarScrollArea
+                ? m_modeToolBarScrollArea->horizontalScrollBar()->sizeHint().height()
+                : 0;
+            m_modeToolBarContainer->setMinimumSize(contentWidth, contentHeight);
+            m_modeToolBarContainer->resize(contentWidth, contentHeight);
+            if (m_modeToolBarScrollArea) {
+                m_modeToolBarScrollArea->setFixedHeight(contentHeight + scrollBarHeight);
+                m_modeToolBarScrollArea->show();
+            }
         } else {
-            m_modeToolBarContainer->setFixedHeight(0);
+            if (m_modeToolBarScrollArea) {
+                m_modeToolBarScrollArea->hide();
+            }
         }
 
-        // 通知新模式激活
-        newModeWidget->onActivated();
+        // 只有真正切换模式时才触发激活逻辑；语言切换只刷新工具栏尺寸。
+        if (modeChanged) {
+            newModeWidget->onActivated();
+        }
     }
 
     QString modeName;
@@ -1862,7 +2111,9 @@ void MainWindow::onDisplayModeChanged(int index)
         case DisplayMode::Frame: modeName = "Frame"; break;
         case DisplayMode::Debug: modeName = "Debug"; break;
     }
-    LOG_INFO(QString("Display mode changed to: %1").arg(modeName));
+    if (modeChanged) {
+        LOG_INFO(QString("Display mode changed to: %1").arg(modeName));
+    }
 }
 
 void MainWindow::onFileTransfer()

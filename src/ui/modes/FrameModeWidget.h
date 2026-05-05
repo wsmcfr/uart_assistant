@@ -85,6 +85,7 @@ private slots:
     void onFrameTimeout();
     void onFilterChanged(const QString& text);
     void onSendFrame();
+    void flushPendingFrames();  ///< 批量刷新待显示帧，避免高频 insertRow 卡住 UI
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -95,6 +96,9 @@ private:
     void retranslateUi();
     void processBuffer();
     void addFrame(const FrameData& frame);
+    void fillFrameRow(int row, const FrameData& frame); ///< 填充一行帧数据，批量扩表后复用
+    void trimFrameRecords();                         ///< 限制帧记录数量，防止 UI 内存无限增长
+    void scheduleFrameFlush();                       ///< 安排批量刷新帧表格
     void updateFrameDetail(const FrameData& frame);
     void updateStatistics();
     bool validateFrame(const QByteArray& data, QString& error);
@@ -122,11 +126,20 @@ private:
     QLabel* m_checksumLabel = nullptr;
     QComboBox* m_checksumCombo = nullptr;
 
+    // 工具栏动作（需要翻译更新）
+    QAction* m_clearAction = nullptr;
+    QAction* m_exportAction = nullptr;
+
     // 数据
     QList<FrameData> m_frames;
+    QList<FrameData> m_pendingFrames;        ///< 待批量刷新到表格的帧
     QByteArray m_buffer;
     ModeFrameConfig m_config;
     QTimer* m_timeoutTimer;
+    QTimer* m_frameFlushTimer = nullptr;     ///< 帧表格批量刷新定时器
+    int m_maxFrameRecords = 10000;           ///< UI 中保留的最大帧记录数
+    int m_frameFlushIntervalMs = 33;         ///< 帧表格刷新间隔，约 30fps
+    int m_frameFlushBatchSize = 300;         ///< 单次最多落表帧数，避免一次刷新阻塞过久
 
     // 统计
     int m_totalFrames = 0;

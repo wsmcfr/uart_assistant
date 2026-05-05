@@ -40,6 +40,8 @@
 #include <QApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
 #include <QStyle>
 #include <QPalette>
 #include <QLinearGradient>
@@ -727,9 +729,9 @@ void PlotterWindow::setupPlot()
     m_plot->setNoAntialiasingOnDrag(false);
     m_plot->setPlottingHints(QCP::phCacheLabels);
 
-    // 默认启用 OpenGL 加速
+    // 默认启用 OpenGL 加速。实际启用前会做上下文能力探测，失败时自动回退软件绘制。
     if (m_openGLEnabled) {
-        m_plot->setOpenGl(true);
+        trySetOpenGLEnabled(true);
     }
 
     const QColor baseColor = palette().color(QPalette::Base);
@@ -1627,8 +1629,8 @@ void PlotterWindow::updatePlot()
     // 性能优化：使用 rpQueuedReplot 避免阻塞
     m_plot->replot(QCustomPlot::rpQueuedReplot);
 
-    // 更新数值面板（每3帧更新一次，减少QLabel文本刷新开销）
-    if (++m_valuePanelUpdateCounter >= 3) {
+    // 更新数值面板按渲染质量档位节流，避免 QLabel 文本刷新抢占绘图时间。
+    if (++m_valuePanelUpdateCounter >= m_valuePanelUpdateEvery) {
         m_valuePanelUpdateCounter = 0;
         updateValuePanel();
     }
@@ -1694,19 +1696,73 @@ void PlotterWindow::onShowSettingsDialog()
 
 void PlotterWindow::setOpenGLEnabled(bool enabled)
 {
-    if (m_openGLEnabled == enabled) return;
+    if (m_openGLEnabled == enabled && (!enabled || m_openGLAvailable)) {
+        return;
+    }
 
-    m_openGLEnabled = enabled;
-    m_plot->setOpenGl(enabled);
+    const bool actualEnabled = trySetOpenGLEnabled(enabled);
 
     if (m_openGLAction) {
-        m_openGLAction->setChecked(enabled);
+        QSignalBlocker blocker(m_openGLAction);
+        m_openGLAction->setChecked(actualEnabled);
+        m_openGLAction->setEnabled(m_openGLAvailable || !enabled);
     }
 
     applyRenderQualityMode();
     LOG_INFO(QString("OpenGL %1 for window '%2'")
-        .arg(enabled ? "enabled" : "disabled")
+        .arg(actualEnabled ? "enabled" : "disabled")
         .arg(m_windowId));
+}
+
+bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
+{
+    /*
+     * QCustomPlot 的 OpenGL 后端依赖当前机器能创建有效 OpenGL 上下文。
+     * 某些 Windows 远程桌面、虚拟机或驱动异常环境下 setOpenGl(true) 可能失败；
+     * 这里先做能力探测，失败时回退到软件绘制，保证绘图质量和功能不受影响。
+     */
+    if (!m_plot) {
+        m_openGLEnabled = false;
+        return false;
+    }
+
+    if (!enabled) {
+        m_plot->setOpenGl(false);
+        m_openGLEnabled = false;
+        m_openGLAvailable = true;
+        return false;
+    }
+
+#ifdef QCUSTOMPLOT_USE_OPENGL
+    QOpenGLContext probeContext;
+    if (!probeContext.create()) {
+        m_plot->setOpenGl(false);
+        m_openGLEnabled = false;
+        m_openGLAvailable = false;
+        LOG_WARN(QString("OpenGL context creation failed for plot window '%1', fallback to software rendering")
+                 .arg(m_windowId));
+        return false;
+    }
+
+    m_plot->setOpenGl(true);
+    if (!m_plot->openGl()) {
+        m_plot->setOpenGl(false);
+        m_openGLEnabled = false;
+        m_openGLAvailable = false;
+        LOG_WARN(QString("QCustomPlot OpenGL backend unavailable for window '%1', fallback to software rendering")
+                 .arg(m_windowId));
+        return false;
+    }
+
+    m_openGLEnabled = true;
+    m_openGLAvailable = true;
+    return true;
+#else
+    m_plot->setOpenGl(false);
+    m_openGLEnabled = false;
+    m_openGLAvailable = false;
+    return false;
+#endif
 }
 
 void PlotterWindow::setRenderQualityMode(RenderQualityMode mode)
@@ -1745,6 +1801,7 @@ void PlotterWindow::applyRenderQualityMode()
     const bool highQuality = profile.antialiasPlottables;
 
     m_throttleAutoRangeUpdates = profile.throttleAutoRangeUpdates;
+    m_valuePanelUpdateEvery = qMax(1, profile.valuePanelUpdateEvery);
 
     QCP::AntialiasedElements notAntialiased = QCP::aeGrid | QCP::aeAxes | QCP::aeLegend | QCP::aeLegendItems;
     QCP::AntialiasedElements antialiased = QCP::aeItems;
@@ -1767,7 +1824,11 @@ void PlotterWindow::applyRenderQualityMode()
         m_updateTimer->setInterval(profile.updateIntervalMs);
     }
 
-    m_plot->setOpenGl(m_openGLEnabled);
+    if (m_openGLEnabled) {
+        trySetOpenGLEnabled(true);
+    } else {
+        m_plot->setOpenGl(false);
+    }
 
     for (int i = 0; i < m_plot->graphCount(); ++i) {
         if (QCPGraph* graph = m_plot->graph(i)) {

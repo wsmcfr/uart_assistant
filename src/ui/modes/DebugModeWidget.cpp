@@ -20,6 +20,8 @@
 #include <QAction>
 #include <QPalette>
 #include <QScrollBar>
+#include <QSignalBlocker>
+#include <QSizePolicy>
 
 namespace ComAssistant {
 
@@ -28,6 +30,10 @@ DebugModeWidget::DebugModeWidget(QWidget* parent)
 {
     setupUi();
     setupToolBar();
+
+    m_recordFlushTimer = new QTimer(this);
+    m_recordFlushTimer->setSingleShot(true);
+    connect(m_recordFlushTimer, &QTimer::timeout, this, &DebugModeWidget::flushPendingRecords);
 }
 
 void DebugModeWidget::setupUi()
@@ -72,13 +78,15 @@ void DebugModeWidget::setupUi()
     m_recordTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Fixed);
     m_recordTable->horizontalHeader()->setSectionResizeMode(4, QHeaderView::Stretch);
     m_recordTable->setColumnWidth(0, 50);
-    m_recordTable->setColumnWidth(1, 100);
-    m_recordTable->setColumnWidth(2, 70);
-    m_recordTable->setColumnWidth(3, 40);
+    m_recordTable->setColumnWidth(1, 150);
+    m_recordTable->setColumnWidth(2, 90);
+    m_recordTable->setColumnWidth(3, 80);
     m_recordTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_recordTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_recordTable->setAlternatingRowColors(true);
     m_recordTable->setFont(QFont("Consolas", 9));
+    m_recordTable->setWordWrap(false);
+    m_recordTable->horizontalHeader()->setMinimumSectionSize(42);
     connect(m_recordTable, &QTableWidget::cellClicked, this, &DebugModeWidget::onRecordSelected);
     topLayout->addWidget(m_recordTable);
 
@@ -133,9 +141,13 @@ void DebugModeWidget::setupUi()
 
     m_watchTree = new QTreeWidget;
     m_watchTree->setHeaderLabels({tr("名称"), tr("值"), tr("类型")});
-    m_watchTree->setColumnWidth(0, 100);
-    m_watchTree->setColumnWidth(1, 100);
+    m_watchTree->header()->setSectionResizeMode(0, QHeaderView::Interactive);
+    m_watchTree->header()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_watchTree->header()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_watchTree->setColumnWidth(0, 120);
+    m_watchTree->setColumnWidth(1, 110);
     m_watchTree->setAlternatingRowColors(true);
+    m_watchTree->setSelectionBehavior(QAbstractItemView::SelectRows);
     watchLayout->addWidget(m_watchTree);
 
     // 添加一些示例监视变量
@@ -168,6 +180,7 @@ void DebugModeWidget::setupUi()
     m_sendEdit = new QLineEdit;
     m_sendEdit->setPlaceholderText(tr("输入数据，回车发送..."));
     m_sendEdit->setFont(QFont("Consolas", 10));
+    m_sendEdit->setMinimumWidth(240);
     connect(m_sendEdit, &QLineEdit::returnPressed, this, &DebugModeWidget::onSendClicked);
     sendLayout->addWidget(m_sendEdit);
 
@@ -175,6 +188,7 @@ void DebugModeWidget::setupUi()
     sendLayout->addWidget(m_sendHexCheck);
 
     m_sendBtn = new QPushButton(tr("发送"));
+    m_sendBtn->setMinimumWidth(72);
     connect(m_sendBtn, &QPushButton::clicked, this, &DebugModeWidget::onSendClicked);
     sendLayout->addWidget(m_sendBtn);
 
@@ -184,52 +198,57 @@ void DebugModeWidget::setupUi()
 void DebugModeWidget::setupToolBar()
 {
     m_toolBar = new QToolBar;
+    m_toolBar->setMovable(false);
+    m_toolBar->setFloatable(false);
+    m_toolBar->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     // 暂停/继续
-    QAction* pauseAction = m_toolBar->addAction(tr("暂停"));
-    pauseAction->setCheckable(true);
-    connect(pauseAction, &QAction::triggered, this, &DebugModeWidget::onTogglePause);
+    m_pauseAction = m_toolBar->addAction(tr("暂停"));
+    m_pauseAction->setCheckable(true);
+    connect(m_pauseAction, &QAction::triggered, this, &DebugModeWidget::onTogglePause);
 
     // 单步
-    QAction* stepAction = m_toolBar->addAction(tr("步进"));
-    stepAction->setEnabled(false);
-    connect(stepAction, &QAction::triggered, this, &DebugModeWidget::onStepNext);
+    m_stepAction = m_toolBar->addAction(tr("步进"));
+    m_stepAction->setEnabled(false);
+    connect(m_stepAction, &QAction::triggered, this, &DebugModeWidget::onStepNext);
 
     m_toolBar->addSeparator();
 
     // 断点
-    QAction* breakpointAction = m_toolBar->addAction(tr("添加断点"));
-    connect(breakpointAction, &QAction::triggered, this, &DebugModeWidget::onAddBreakpoint);
+    m_breakpointAction = m_toolBar->addAction(tr("添加断点"));
+    connect(m_breakpointAction, &QAction::triggered, this, &DebugModeWidget::onAddBreakpoint);
 
     m_toolBar->addSeparator();
 
     // HEX显示
-    QAction* hexAction = m_toolBar->addAction(tr("HEX"));
-    hexAction->setCheckable(true);
-    hexAction->setChecked(true);
-    connect(hexAction, &QAction::triggered, this, &DebugModeWidget::onToggleHexDisplay);
+    m_hexAction = m_toolBar->addAction(tr("HEX"));
+    m_hexAction->setCheckable(true);
+    m_hexAction->setChecked(true);
+    connect(m_hexAction, &QAction::triggered, this, &DebugModeWidget::onToggleHexDisplay);
 
     // 时间差
-    QAction* timeDiffAction = m_toolBar->addAction(tr("时间差"));
-    timeDiffAction->setCheckable(true);
-    timeDiffAction->setChecked(true);
-    connect(timeDiffAction, &QAction::triggered, this, &DebugModeWidget::onToggleTimeDiff);
+    m_timeDiffAction = m_toolBar->addAction(tr("时间差"));
+    m_timeDiffAction->setCheckable(true);
+    m_timeDiffAction->setChecked(true);
+    connect(m_timeDiffAction, &QAction::triggered, this, &DebugModeWidget::onToggleTimeDiff);
 
     m_toolBar->addSeparator();
 
     // 清空
-    QAction* clearAction = m_toolBar->addAction(tr("清空"));
-    connect(clearAction, &QAction::triggered, this, &DebugModeWidget::onClearRecords);
+    m_clearAction = m_toolBar->addAction(tr("清空"));
+    connect(m_clearAction, &QAction::triggered, this, &DebugModeWidget::onClearRecords);
 
     // 导出
-    QAction* exportAction = m_toolBar->addAction(tr("导出"));
-    connect(exportAction, &QAction::triggered, this, &DebugModeWidget::onExportRecords);
+    m_exportAction = m_toolBar->addAction(tr("导出"));
+    connect(m_exportAction, &QAction::triggered, this, &DebugModeWidget::onExportRecords);
 
     m_toolBar->addSeparator();
 
     // 统计
     m_statsLabel = new QLabel(tr("TX: 0 | RX: 0"));
     m_statsLabel->setObjectName("debugStatsLabel");
+    m_statsLabel->setMinimumWidth(110);
+    m_statsLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     m_toolBar->addWidget(m_statsLabel);
 }
 
@@ -295,11 +314,18 @@ void DebugModeWidget::appendSentData(const QByteArray& data)
 
 void DebugModeWidget::addRecord(const DebugDataRecord& record)
 {
+    /*
+     * 高频调试数据不直接 insertRow，而是进入待刷新队列。
+     * 这样断点、导出和详情仍基于完整记录，UI 表格按批落屏。
+     */
     m_records.append(record);
+    m_recordsToFlush.append(record);
+    trimRecordRows();
+    scheduleRecordFlush();
+}
 
-    int row = m_recordTable->rowCount();
-    m_recordTable->insertRow(row);
-
+void DebugModeWidget::fillRecordRow(int row, const DebugDataRecord& record)
+{
     // 序号
     QTableWidgetItem* indexItem = new QTableWidgetItem(QString::number(record.index));
     if (record.isBreakpoint) {
@@ -329,16 +355,83 @@ void DebugModeWidget::addRecord(const DebugDataRecord& record)
     QString dataStr = formatData(record.data, m_hexDisplay);
     m_recordTable->setItem(row, 4, new QTableWidgetItem(dataStr));
 
-    // 智能滚屏：仅在未暂停时滚动到底部
-    if (!m_paused && !m_smartScrollPaused) {
-        m_recordTable->scrollToBottom();
-    }
-
     // 如果命中断点，自动暂停
     if (record.isBreakpoint) {
         setPaused(true);
         emit statusMessage(tr("命中断点 #%1").arg(record.index));
     }
+}
+
+void DebugModeWidget::trimRecordRows()
+{
+    /*
+     * 限制常驻记录数量，避免长时间高频调试后 QTableWidget 和 m_records
+     * 无限增长。删除旧行时保持 m_records 与表格行号一致。
+     */
+    const int overflow = m_records.size() - m_maxRecords;
+    if (overflow <= 0) {
+        return;
+    }
+
+    m_records.erase(m_records.begin(), m_records.begin() + overflow);
+
+    /*
+     * 已经显示的旧行优先裁掉；只有表格为空时，溢出记录才可能还在待刷新队列。
+     * 这个顺序保持 m_records 与表格 row 的对应关系，避免选择详情错位。
+     */
+    const int tableTrim = m_recordTable ? qMin(overflow, m_recordTable->rowCount()) : 0;
+    if (m_recordTable && tableTrim > 0) {
+        /*
+         * QTableWidget 没有直接暴露 removeRows 便捷函数，走底层模型批量删行。
+         * 这比逐行 removeRow 更少触发布局和选择状态更新。
+         */
+        m_recordTable->model()->removeRows(0, qMin(tableTrim, m_recordTable->rowCount()));
+    }
+
+    const int pendingTrim = qMin(overflow - tableTrim, m_recordsToFlush.size());
+    if (pendingTrim > 0) {
+        m_recordsToFlush.erase(m_recordsToFlush.begin(), m_recordsToFlush.begin() + pendingTrim);
+    }
+}
+
+void DebugModeWidget::scheduleRecordFlush()
+{
+    if (m_recordsToFlush.size() >= m_recordFlushBatchSize) {
+        flushPendingRecords();
+        return;
+    }
+
+    if (m_recordFlushTimer && !m_recordFlushTimer->isActive()) {
+        m_recordFlushTimer->start(m_recordFlushIntervalMs);
+    }
+}
+
+void DebugModeWidget::flushPendingRecords()
+{
+    if (m_recordFlushTimer) {
+        m_recordFlushTimer->stop();
+    }
+    if (!m_recordTable || m_recordsToFlush.isEmpty()) {
+        return;
+    }
+
+    m_recordTable->setUpdatesEnabled(false);
+    const int count = qMin(m_recordsToFlush.size(), m_recordFlushBatchSize);
+    const int firstRow = m_recordTable->rowCount();
+    m_recordTable->setRowCount(firstRow + count);
+    for (int i = 0; i < count; ++i) {
+        fillRecordRow(firstRow + i, m_recordsToFlush.at(i));
+    }
+    if (count > 0) {
+        m_recordsToFlush.erase(m_recordsToFlush.begin(), m_recordsToFlush.begin() + count);
+    }
+    if (!m_recordsToFlush.isEmpty()) {
+        scheduleRecordFlush();
+    }
+    if (!m_paused && !m_smartScrollPaused) {
+        m_recordTable->scrollToBottom();
+    }
+    m_recordTable->setUpdatesEnabled(true);
 }
 
 void DebugModeWidget::onRecordSelected(int row, int column)
@@ -437,23 +530,30 @@ void DebugModeWidget::setPaused(bool paused)
 {
     m_paused = paused;
 
-    // 更新工具栏按钮状态
-    QList<QAction*> actions = m_toolBar->actions();
-    for (QAction* action : actions) {
-        if (action->text() == tr("暂停")) {
-            action->setChecked(paused);
-            action->setText(paused ? tr("继续") : tr("暂停"));
-        } else if (action->text() == tr("步进")) {
-            action->setEnabled(paused);
-        }
+    /*
+     * 工具栏动作文本会随语言和暂停状态变化，不能再通过 action->text()
+     * 反向查找动作；否则从“继续”切回“暂停”时可能找不到原动作。
+     */
+    if (m_pauseAction) {
+        QSignalBlocker blocker(m_pauseAction);
+        m_pauseAction->setChecked(paused);
+        m_pauseAction->setText(paused ? tr("继续") : tr("暂停"));
+    }
+    if (m_stepAction) {
+        m_stepAction->setEnabled(paused);
     }
 
     // 如果取消暂停，显示所有待处理记录
     if (!paused) {
-        for (const DebugDataRecord& record : m_pendingRecords) {
-            addRecord(record);
-        }
+        /*
+         * 暂停期间可能累积大量记录。恢复时一次性并入记录列表和待刷新队列，
+         * 只做一次裁剪/调度，避免逐条 addRecord 反复 trim 和启动定时器。
+         */
+        m_records.append(m_pendingRecords);
+        m_recordsToFlush.append(m_pendingRecords);
         m_pendingRecords.clear();
+        trimRecordRows();
+        scheduleRecordFlush();
     }
 }
 
@@ -540,7 +640,11 @@ void DebugModeWidget::onFilterChanged(const QString& text)
 
 void DebugModeWidget::clear()
 {
+    if (m_recordFlushTimer) {
+        m_recordFlushTimer->stop();
+    }
     m_records.clear();
+    m_recordsToFlush.clear();
     m_pendingRecords.clear();
     m_recordTable->setRowCount(0);
     m_detailView->clear();
@@ -562,6 +666,8 @@ void DebugModeWidget::clear()
 
 bool DebugModeWidget::exportToFile(const QString& fileName)
 {
+    flushPendingRecords();
+
     QFile file(fileName);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return false;
@@ -693,17 +799,14 @@ void DebugModeWidget::retranslateUi()
     if (m_sendHexCheck) m_sendHexCheck->setText(tr("HEX"));
     if (m_sendBtn) m_sendBtn->setText(tr("发送"));
 
-    // 工具栏动作 - 通过遍历更新
-    QList<QAction*> actions = m_toolBar->actions();
-    for (QAction* action : actions) {
-        QString objName = action->objectName();
-        if (objName.isEmpty()) {
-            // 没有对象名的action根据当前文本判断
-            if (action->text() == "HEX") {
-                // 保持不变
-            }
-        }
-    }
+    // 工具栏按钮翻译
+    if (m_pauseAction) m_pauseAction->setText(m_paused ? tr("继续") : tr("暂停"));
+    if (m_stepAction) m_stepAction->setText(tr("步进"));
+    if (m_breakpointAction) m_breakpointAction->setText(tr("添加断点"));
+    if (m_hexAction) m_hexAction->setText(tr("HEX"));
+    if (m_timeDiffAction) m_timeDiffAction->setText(tr("时间差"));
+    if (m_clearAction) m_clearAction->setText(tr("清空"));
+    if (m_exportAction) m_exportAction->setText(tr("导出"));
 
     // 统计标签
     if (m_statsLabel) {

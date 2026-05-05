@@ -127,7 +127,7 @@ public:
     int historyLineCount() const { return m_history.size(); }
     const QVector<TerminalCell>& historyLine(int index) const;
     int maxHistoryLines() const { return m_maxHistoryLines; }
-    void setMaxHistoryLines(int max) { m_maxHistoryLines = max; }
+    void setMaxHistoryLines(int max);
 
     // 获取整个屏幕内容（用于渲染）
     const QVector<QVector<TerminalCell>>& screen() const { return m_screen; }
@@ -140,6 +140,7 @@ signals:
 private:
     void ensureCursorInBounds();
     void addLineToHistory(const QVector<TerminalCell>& line);
+    void trimHistory();              ///< 批量裁剪回滚历史，避免 removeFirst 循环搬移
     void putCharInternal(QChar ch);  // 内部写入，不触发信号
 
     int m_cols;

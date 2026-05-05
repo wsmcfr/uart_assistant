@@ -17,12 +17,14 @@ RenderQualityProfile makeRenderQualityProfile(RenderQualityMode mode)
         profile.useFastPolylines = true;
         profile.antialiasPlottables = false;
         profile.throttleAutoRangeUpdates = true;
+        profile.valuePanelUpdateEvery = 4;
     } else {
         profile.updateIntervalMs = 33;
         profile.noAntialiasingOnDrag = false;
         profile.useFastPolylines = false;
         profile.antialiasPlottables = true;
         profile.throttleAutoRangeUpdates = false;
+        profile.valuePanelUpdateEvery = 2;
     }
 
     return profile;

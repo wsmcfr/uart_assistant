@@ -131,6 +131,9 @@ private:
 
     void appendToMainView(const QByteArray& data);
     void appendToHexView(const QByteArray& data);
+    void queueMainText(const QString& text);          ///< 将文本追加到待刷新队列，避免高频接收时每包都重绘
+    void scheduleReceiveFlush();                      ///< 安排一次批量刷新
+    void flushPendingReceiveViews();                  ///< 批量刷新文本区和HEX表格
     void updateFilterView();
     void refreshMainView();
     void applyHighlight();
@@ -173,9 +176,12 @@ private:
     // 数据缓存
     QByteArray m_rawData;
     QByteArray m_utf8Buffer;
+    QByteArray m_pendingHexData;              ///< 待批量写入 HEX 表格的数据
+    QString m_pendingMainText;                ///< 待批量追加到文本区的内容
     QStringList m_lineHistory;
     QTimer* m_highlightTimer = nullptr;         ///< 高亮延迟应用定时器
     QTimer* m_terminalRefreshTimer = nullptr;   ///< 终端显示节流刷新定时器
+    QTimer* m_receiveFlushTimer = nullptr;      ///< 接收区批量刷新定时器
 
     // 状态
     bool m_timestampEnabled = false;
@@ -185,6 +191,9 @@ private:
     int m_maxLines = 10000;
     int m_terminalMaxLines = 1000;
     int m_maxRawDataBytes = 8 * 1024 * 1024;    ///< 原始数据缓存上限（8MB）
+    int m_receiveFlushIntervalMs = 16;          ///< 接收区刷新间隔，约 60fps，兼顾流畅度和吞吐
+    int m_pendingTextFlushThreshold = 512 * 1024; ///< 待显示文本超过该值时立即刷新，避免突发数据占用过多内存
+    int m_pendingHexFlushThreshold = 256 * 1024;  ///< 待显示 HEX 数据超过该值时立即刷新，避免表格延迟过高
 
     // 智能滚屏
     bool m_smartScrollPaused = false;       ///< 智能滚屏暂停标志

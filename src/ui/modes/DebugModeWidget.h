@@ -80,6 +80,7 @@ private slots:
     void onAddBreakpoint();
     void onSendClicked();
     void onTableScrollValueChanged(int value);
+    void flushPendingRecords();  ///< 批量刷新待显示调试记录，避免高频 insertRow 卡顿
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -89,6 +90,9 @@ private:
     void setupToolBar();
     void retranslateUi();
     void addRecord(const DebugDataRecord& record);
+    void fillRecordRow(int row, const DebugDataRecord& record); ///< 填充一行调试记录，批量扩表后复用
+    void trimRecordRows();                               ///< 限制调试记录常驻数量
+    void scheduleRecordFlush();                          ///< 安排批量刷新表格
     void updateRecordDetail(const DebugDataRecord& record);
     bool checkBreakpoint(const QByteArray& data);
     QString formatData(const QByteArray& data, bool hex);
@@ -120,8 +124,18 @@ private:
     QLabel* m_statsLabel = nullptr;
     QLabel* m_smartScrollIndicator = nullptr;  ///< 智能滚屏提示标签
 
+    // 工具栏动作（需要翻译更新）
+    QAction* m_pauseAction = nullptr;
+    QAction* m_stepAction = nullptr;
+    QAction* m_breakpointAction = nullptr;
+    QAction* m_hexAction = nullptr;
+    QAction* m_timeDiffAction = nullptr;
+    QAction* m_clearAction = nullptr;
+    QAction* m_exportAction = nullptr;
+
     // 数据
     QList<DebugDataRecord> m_records;
+    QList<DebugDataRecord> m_recordsToFlush;     ///< 未暂停状态下待批量刷新到表格的记录
     QList<QByteArray> m_breakpoints;
     QByteArray m_rxBuffer;
     QByteArray m_txBuffer;
@@ -135,6 +149,10 @@ private:
     int m_totalTx = 0;
     int m_totalRx = 0;
     int m_recordIndex = 0;
+    int m_maxRecords = 10000;                    ///< UI 中保留的最大调试记录数
+    int m_recordFlushIntervalMs = 33;            ///< 调试表格刷新间隔，约 30fps
+    int m_recordFlushBatchSize = 300;            ///< 单次最多落表记录数
+    QTimer* m_recordFlushTimer = nullptr;        ///< 调试表格批量刷新定时器
 
     // 暂停时的缓冲
     QList<DebugDataRecord> m_pendingRecords;

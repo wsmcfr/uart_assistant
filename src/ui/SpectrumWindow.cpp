@@ -121,13 +121,13 @@ void SpectrumWindow::setupToolBar()
     toolBar->addAction(tr("自动缩放"), this, [this]() {
         if (m_tabWidget->currentIndex() == 0) {
             m_magnitudePlot->rescaleAxes();
-            m_magnitudePlot->replot();
+            m_magnitudePlot->replot(QCustomPlot::rpQueuedReplot);
         } else if (m_tabWidget->currentIndex() == 1) {
             m_phasePlot->rescaleAxes();
-            m_phasePlot->replot();
+            m_phasePlot->replot(QCustomPlot::rpQueuedReplot);
         } else if (m_tabWidget->currentIndex() == 2) {
             m_powerPlot->rescaleAxes();
-            m_powerPlot->replot();
+            m_powerPlot->replot(QCustomPlot::rpQueuedReplot);
         }
     });
 }
@@ -186,7 +186,7 @@ void SpectrumWindow::updateMagnitudePlot()
     }
 
     m_magnitudePlot->rescaleAxes();
-    m_magnitudePlot->replot();
+    m_magnitudePlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void SpectrumWindow::updatePhasePlot()
@@ -202,14 +202,14 @@ void SpectrumWindow::updatePhasePlot()
 
     m_phasePlot->rescaleAxes();
     m_phasePlot->yAxis->setRange(-180, 180);
-    m_phasePlot->replot();
+    m_phasePlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void SpectrumWindow::updatePowerPlot()
 {
     m_powerPlot->clearGraphs();
 
-    if (m_fftResult.frequencies.isEmpty()) return;
+    if (m_fftResult.frequencies.isEmpty() || m_fftResult.powerSpectrum.isEmpty()) return;
 
     // 转换为dB刻度
     QVector<double> powerDB;
@@ -228,16 +228,17 @@ void SpectrumWindow::updatePowerPlot()
 
     m_powerPlot->rescaleAxes();
     m_powerPlot->yAxis->setRange(-80, 5);
-    m_powerPlot->replot();
+    m_powerPlot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void SpectrumWindow::updateHarmonicsTable()
 {
     m_harmonicsTable->setRowCount(0);
+    m_harmonicsTable->setUpdatesEnabled(false);
+    m_harmonicsTable->setRowCount(m_fftResult.harmonics.size());
 
-    for (const auto& h : m_fftResult.harmonics) {
-        int row = m_harmonicsTable->rowCount();
-        m_harmonicsTable->insertRow(row);
+    for (int row = 0; row < m_fftResult.harmonics.size(); ++row) {
+        const auto& h = m_fftResult.harmonics[row];
 
         QString orderStr = (h.order == 1) ? tr("基波 (1次)") : tr("%1次").arg(h.order);
 
@@ -254,6 +255,7 @@ void SpectrumWindow::updateHarmonicsTable()
             }
         }
     }
+    m_harmonicsTable->setUpdatesEnabled(true);
 }
 
 void SpectrumWindow::updateInfoPanel()
@@ -465,17 +467,17 @@ void SpectrumWindow::retranslateUi()
     if (m_magnitudePlot) {
         m_magnitudePlot->xAxis->setLabel(tr("频率 (Hz)"));
         m_magnitudePlot->yAxis->setLabel(tr("幅度"));
-        m_magnitudePlot->replot();
+        m_magnitudePlot->replot(QCustomPlot::rpQueuedReplot);
     }
     if (m_phasePlot) {
         m_phasePlot->xAxis->setLabel(tr("频率 (Hz)"));
         m_phasePlot->yAxis->setLabel(tr("相位 (°)"));
-        m_phasePlot->replot();
+        m_phasePlot->replot(QCustomPlot::rpQueuedReplot);
     }
     if (m_powerPlot) {
         m_powerPlot->xAxis->setLabel(tr("频率 (Hz)"));
         m_powerPlot->yAxis->setLabel(tr("功率 (dB)"));
-        m_powerPlot->replot();
+        m_powerPlot->replot(QCustomPlot::rpQueuedReplot);
     }
 
     // 谐波表头

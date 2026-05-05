@@ -83,11 +83,42 @@ public:
     void setLineEnding(const QString& ending) { m_lineEnding = ending; }
     QString lineEnding() const { return m_lineEnding; }
 
+    /**
+     * @brief 获取当前正在面板内输入的命令行文本。
+     * @return 尚未按 Enter 发送的输入缓冲内容。
+     */
+    QString inputBuffer() const { return m_inputBuffer; }
+
+    /**
+     * @brief 用补全文本替换当前正在输入的命令行。
+     * @param text 新的命令行内容，通常来自编辑命令列表。
+     */
+    void replaceInputBuffer(const QString& text);
+
+    /**
+     * @brief 在当前输入行下方列出 Tab 补全候选项，并恢复输入前缀。
+     * @param candidates 按命令列表顺序匹配到的候选命令。
+     *
+     * 多候选补全采用 Linux 终端式交互：不擅自替换用户当前输入，而是在
+     * 下一行打印候选列表，再回到新的输入行显示原前缀，方便用户继续输入。
+     */
+    void showCompletionCandidates(const QStringList& candidates);
+
+    /**
+     * @brief 结束面板内当前正在编辑的本地输入行。
+     *
+     * 按 Enter 发送时调用。用户已经在终端面板里看到的输入内容需要保留，
+     * 但发送成功回调不能再额外回显一遍；这里仅清空内部输入缓冲，并把
+     * 光标移动到下一行开头，等待设备真实返回内容。
+     */
+    void finishInputLineAfterSubmit();
+
 signals:
     void keyPressed(const QByteArray& data);
     void sizeChanged(int cols, int rows);
 
 protected:
+    bool event(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
@@ -142,36 +173,6 @@ private:
 };
 
 /**
- * @brief 命令输入框（带历史记录）
- */
-class CommandLineEdit : public QLineEdit {
-    Q_OBJECT
-
-public:
-    explicit CommandLineEdit(QWidget* parent = nullptr);
-
-    void addToHistory(const QString& command);
-    void clearHistory();
-    QStringList history() const { return m_history; }
-
-protected:
-    void keyPressEvent(QKeyEvent* event) override;
-    void changeEvent(QEvent* event) override;
-
-signals:
-    void commandSubmitted(const QString& command);
-    void tabPressed();  // Tab键信号
-
-private:
-    void retranslateUi();
-
-    QStringList m_history;
-    int m_historyIndex = -1;
-    QString m_currentInput;
-    static const int MAX_HISTORY = 100;
-};
-
-/**
  * @brief 终端模式组件
  */
 class TerminalModeWidget : public IModeWidget {
@@ -208,7 +209,6 @@ public:
     int fontSize() const;
 
 private slots:
-    void onCommandSubmitted(const QString& command);
     void onClearScreen();
     void onToggleLocalEcho(bool checked);
     void onToggleTimestamp(bool checked);
@@ -219,9 +219,8 @@ private slots:
     void onKeyPressed(const QByteArray& data);
     void onThemeChanged(int index);
     void onFontSizeChanged(int size);
-    void onTabPressed();
     void onEditCommands();
-    void performLocalCompletion();
+    bool performLocalCompletion();
 
 protected:
     void changeEvent(QEvent* event) override;
@@ -230,21 +229,20 @@ private:
     void setupUi();
     void setupToolBar();
     void retranslateUi();
-    void sendCommand(const QString& command);
     QString getLineEnding() const;
     void loadCommands();
     void saveCommands();
+    QStringList matchingCommands(const QString& prefix) const;
+    void resetCompletionState();
 
     // 核心组件
     TerminalBuffer* m_termBuffer;
     AnsiParser* m_ansiParser;
     VT100Display* m_display;
 
-    CommandLineEdit* m_commandLine;
     QToolBar* m_toolBar;
 
     // UI元素
-    QPushButton* m_sendBtn = nullptr;
     QLabel* m_newlineLabel = nullptr;
     QComboBox* m_newlineCombo = nullptr;
     QLabel* m_themeLabel = nullptr;
@@ -252,6 +250,13 @@ private:
     QLabel* m_fontSizeLabel = nullptr;
     QSpinBox* m_fontSizeSpinBox = nullptr;
     QAction* m_echoAction = nullptr;
+    QAction* m_clearScreenAction = nullptr;
+    QAction* m_timestampAction = nullptr;
+    QAction* m_logAction = nullptr;
+    QAction* m_editCmdsAction = nullptr;
+    QAction* m_ctrlCAction = nullptr;
+    QAction* m_ctrlDAction = nullptr;
+    QAction* m_ctrlZAction = nullptr;
 
     QString m_newlineMode = "LF";
     bool m_timestampEnabled = false;
@@ -260,8 +265,6 @@ private:
 
     // 本地命令补全
     QStringList m_commands;  // 命令列表
-    int m_completionIndex = -1;  // 当前补全索引
-    QString m_completionPrefix;  // 补全前缀
 };
 
 } // namespace ComAssistant
