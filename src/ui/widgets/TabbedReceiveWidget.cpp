@@ -408,7 +408,7 @@ void TabbedReceiveWidget::setupUi()
             this, &TabbedReceiveWidget::onHighlightSettingsClicked);
 
     m_perfLabel = new QLabel(tr("性能: 接收 0 B/s | 渲染 0 ms"));
-    m_perfLabel->setStyleSheet("color: #666;");
+    m_perfLabel->setObjectName("perfLabel");
     m_perfLabel->setMinimumWidth(220);
 
     m_clearBtn = new QPushButton(tr("清空"));
@@ -476,15 +476,7 @@ void TabbedReceiveWidget::setupMainTab()
 
     // 智能滚屏指示器
     m_smartScrollIndicator = new QLabel(tr("已暂停滚动 - 滚动到底部恢复"));
-    m_smartScrollIndicator->setStyleSheet(
-        "QLabel {"
-        "  background-color: rgba(255, 193, 7, 0.9);"
-        "  color: #333;"
-        "  padding: 6px 12px;"
-        "  border-radius: 4px;"
-        "  font-weight: bold;"
-        "}"
-    );
+    m_smartScrollIndicator->setObjectName("smartScrollIndicator");
     m_smartScrollIndicator->setAlignment(Qt::AlignCenter);
     m_smartScrollIndicator->hide();
     containerLayout->addWidget(m_smartScrollIndicator);
@@ -1154,7 +1146,9 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
     switch (m_displayMode) {
         case ReceiveDisplayMode::Serial:
             // 串口模式 - 默认外观
-            m_mainTextEdit->setStyleSheet("");
+            m_mainTextEdit->setProperty("displayMode", "serial");
+            m_mainTextEdit->style()->unpolish(m_mainTextEdit);
+            m_mainTextEdit->style()->polish(m_mainTextEdit);
             m_mainTextEdit->setFont(QFont("Consolas", 10));
             m_timestampEnabled = false;
             if (m_timestampCheck) m_timestampCheck->setChecked(false);
@@ -1163,13 +1157,9 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
 
         case ReceiveDisplayMode::Terminal:
             // 终端模式 - 黑底绿字，仿真终端风格
-            m_mainTextEdit->setStyleSheet(
-                "QPlainTextEdit {"
-                "  background-color: #1a1a1a;"
-                "  color: #00ff00;"
-                "  border: none;"
-                "}"
-            );
+            m_mainTextEdit->setProperty("displayMode", "terminal");
+            m_mainTextEdit->style()->unpolish(m_mainTextEdit);
+            m_mainTextEdit->style()->polish(m_mainTextEdit);
             m_mainTextEdit->setFont(QFont("Consolas", 11));
             m_timestampEnabled = false;
             if (m_timestampCheck) m_timestampCheck->setChecked(false);
@@ -1178,13 +1168,9 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
 
         case ReceiveDisplayMode::Frame:
             // 帧模式 - 带边框，每帧清晰分隔
-            m_mainTextEdit->setStyleSheet(
-                "QPlainTextEdit {"
-                "  background-color: #f5f5f5;"
-                "  color: #333333;"
-                "  border: 1px solid #cccccc;"
-                "}"
-            );
+            m_mainTextEdit->setProperty("displayMode", "frame");
+            m_mainTextEdit->style()->unpolish(m_mainTextEdit);
+            m_mainTextEdit->style()->polish(m_mainTextEdit);
             m_mainTextEdit->setFont(QFont("Consolas", 10));
             m_timestampEnabled = true;
             if (m_timestampCheck) m_timestampCheck->setChecked(true);
@@ -1193,13 +1179,9 @@ void TabbedReceiveWidget::setDisplayMode(int mode)
 
         case ReceiveDisplayMode::Debug:
             // 调试模式 - 带时间戳和方向
-            m_mainTextEdit->setStyleSheet(
-                "QPlainTextEdit {"
-                "  background-color: #fffef0;"
-                "  color: #333333;"
-                "  border: 1px solid #e0e0e0;"
-                "}"
-            );
+            m_mainTextEdit->setProperty("displayMode", "debug");
+            m_mainTextEdit->style()->unpolish(m_mainTextEdit);
+            m_mainTextEdit->style()->polish(m_mainTextEdit);
             m_mainTextEdit->setFont(QFont("Consolas", 10));
             m_timestampEnabled = true;
             if (m_timestampCheck) m_timestampCheck->setChecked(true);

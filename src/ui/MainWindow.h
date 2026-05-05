@@ -30,6 +30,8 @@
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
+#include "widgets/ThemeButton.h"
+#include "core/protocol/PlotProtocolDetector.h"
 
 namespace ComAssistant {
 
@@ -132,6 +134,9 @@ private slots:
     // 主题
     void onThemeToggled();
 
+    // 绘图协议自动检测
+    void onPlotProtocolAutoDetected(ProtocolType type);
+
     // 语言切换
     void onLanguageChanged(const QString& language);
 
@@ -147,14 +152,13 @@ private slots:
     // 绘图相关
     void onNewPlotWindow();
     void onCloseAllPlotWindows();
-    void onProtocolChanged(int index);
+    void onProtocolTypeChanged(ProtocolType type);
 
     // 显示模式
     void onDisplayModeChanged(int index);
 
 private:
     void setupUi();
-    void setupMenuBar();
     void setupToolBar();
     void setupStatusBar();
     void setupConnections();
@@ -223,7 +227,7 @@ private:
     QTimer* m_statusTimer = nullptr;
 
     // 主题
-    QPushButton* m_themeBtn = nullptr;
+    ThemeButton* m_themeBtn = nullptr;
     QString m_currentTheme = "light";
     QString m_currentLanguage = "zh_CN";  // 当前语言
 
@@ -264,8 +268,9 @@ private:
     // 绘图协议相关
     std::unique_ptr<IProtocol> m_currentProtocol;
     ProtocolType m_currentProtocolType = ProtocolType::Raw;
-    QComboBox* m_protocolCombo = nullptr;
     QByteArray m_plotDataBuffer;  ///< 绘图数据缓冲（按行处理）
+    PlotProtocolDetector* m_plotDetector = nullptr;  ///< 绘图协议自动检测器
+    QActionGroup* m_protocolActionGroup = nullptr;   ///< 协议菜单项组（用于同步选中状态）
 
     // 显示模式
     DisplayMode m_displayMode = DisplayMode::Serial;
@@ -283,6 +288,7 @@ private:
     // 翻译器
     QTranslator* m_translator = nullptr;
     bool m_hasRestoredWindowGeometry = false;
+    bool m_uiInitialized = false;  ///< UI 初始化完成标志，防止 retranslateUi 在构造期间执行
 
     // 应用更新
     AppUpdateChecker* m_appUpdateChecker = nullptr;

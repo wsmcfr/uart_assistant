@@ -45,6 +45,7 @@
 
 #include <QMenuBar>
 #include <QToolBar>
+#include <QToolButton>
 #include <QApplication>
 #include <QActionGroup>
 #include <QVBoxLayout>
@@ -65,6 +66,8 @@
 #include <QSettings>
 #include <QFont>
 #include <QDesktopServices>
+#include <QPainter>
+#include <QtMath>
 
 namespace ComAssistant {
 
@@ -72,7 +75,6 @@ MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
     setupUi();
-    setupMenuBar();
     setupToolBar();
     setupStatusBar();
     setupConnections();
@@ -106,6 +108,7 @@ MainWindow::MainWindow(QWidget* parent)
         scheduleAutoUpdateCheck();
     });
 
+    m_uiInitialized = true;
     LOG_INFO("MainWindow initialized");
 }
 
@@ -140,7 +143,7 @@ void MainWindow::setupUi()
     setCentralWidget(centralWidget);
 
     QHBoxLayout* mainLayout = new QHBoxLayout(centralWidget);
-    mainLayout->setContentsMargins(0, 0, 6, 6);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
     mainLayout->setSpacing(0);
 
     // 侧边导航栏（最左侧）
@@ -224,31 +227,46 @@ void MainWindow::setupUi()
     m_dataWindowManager = new DataWindowManager(this);
 }
 
-void MainWindow::setupMenuBar()
+void MainWindow::setupToolBar()
 {
-    QMenuBar* menuBar = this->menuBar();
+    m_mainToolBar = addToolBar(tr("主工具栏"));
+    m_mainToolBar->setObjectName("mainToolBar");
+    m_mainToolBar->setMovable(false);
+    m_mainToolBar->setIconSize(QSize(24, 24));
+
+    // 汉堡菜单按钮（放在最左侧，使用 QToolButton 获得正确的菜单弹出位置）
+    QToolButton* menuBtn = new QToolButton;
+    menuBtn->setObjectName("hamburgerMenuBtn");
+    menuBtn->setText(QString::fromUtf8("\xE2\x98\xB0"));  // ☰ 汉堡菜单图标
+    menuBtn->setFixedSize(36, 36);
+    menuBtn->setToolTip(tr("菜单"));
+    menuBtn->setPopupMode(QToolButton::InstantPopup);
+    m_mainToolBar->addWidget(menuBtn);
+
+    // 创建汉堡菜单
+    QMenu* hamburgerMenu = new QMenu(this);
 
     // 文件菜单
-    QMenu* fileMenu = menuBar->addMenu(tr("文件(&F)"));
-    fileMenu->addAction(tr("新建会话(&N)"), this, &MainWindow::onNewSession, QKeySequence::New);
-    fileMenu->addAction(tr("保存会话(&S)"), this, &MainWindow::onSaveSession, QKeySequence::Save);
-    fileMenu->addAction(tr("加载会话(&L)"), this, &MainWindow::onLoadSession, QKeySequence::Open);
+    QMenu* fileMenu = hamburgerMenu->addMenu(tr("文件"));
+    fileMenu->addAction(tr("新建会话"), this, &MainWindow::onNewSession, QKeySequence::New);
+    fileMenu->addAction(tr("保存会话"), this, &MainWindow::onSaveSession, QKeySequence::Save);
+    fileMenu->addAction(tr("加载会话"), this, &MainWindow::onLoadSession, QKeySequence::Open);
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("导出数据(&E)..."), this, &MainWindow::onExportData);
+    fileMenu->addAction(tr("导出数据..."), this, &MainWindow::onExportData);
     fileMenu->addSeparator();
-    fileMenu->addAction(tr("退出(&X)"), this, &QMainWindow::close, QKeySequence::Quit);
+    fileMenu->addAction(tr("退出"), this, &QMainWindow::close, QKeySequence::Quit);
 
     // 编辑菜单
-    QMenu* editMenu = menuBar->addMenu(tr("编辑(&E)"));
-    editMenu->addAction(tr("清空全部(&C)"), this, &MainWindow::onClearAll, QKeySequence(Qt::CTRL | Qt::Key_L));
-    editMenu->addAction(tr("数据搜索(&F)..."), this, &MainWindow::onDataSearch, QKeySequence::Find);
+    QMenu* editMenu = hamburgerMenu->addMenu(tr("编辑"));
+    editMenu->addAction(tr("清空全部"), this, &MainWindow::onClearAll, QKeySequence(Qt::CTRL | Qt::Key_L));
+    editMenu->addAction(tr("数据搜索..."), this, &MainWindow::onDataSearch, QKeySequence::Find);
 
     // 视图菜单
-    QMenu* viewMenu = menuBar->addMenu(tr("视图(&V)"));
-    viewMenu->addAction(tr("置顶显示(&A)"))->setCheckable(true);
+    QMenu* viewMenu = hamburgerMenu->addMenu(tr("视图"));
+    viewMenu->addAction(tr("置顶显示"))->setCheckable(true);
 
     // 语言子菜单
-    QMenu* languageMenu = viewMenu->addMenu(tr("语言(&L)"));
+    QMenu* languageMenu = viewMenu->addMenu(tr("语言"));
     QActionGroup* langGroup = new QActionGroup(this);
 
     QAction* zhAction = languageMenu->addAction(tr("简体中文"));
@@ -274,30 +292,55 @@ void MainWindow::setupMenuBar()
     });
 
     // 工具菜单
-    QMenu* toolsMenu = menuBar->addMenu(tr("工具(&T)"));
-    toolsMenu->addAction(tr("工具箱(&B)..."), this, &MainWindow::onToolbox);
-    toolsMenu->addAction(tr("脚本编辑器(&S)..."), this, &MainWindow::onScriptEditor);
+    QMenu* toolsMenu = hamburgerMenu->addMenu(tr("工具"));
+    toolsMenu->addAction(tr("工具箱..."), this, &MainWindow::onToolbox);
+    toolsMenu->addAction(tr("脚本编辑器..."), this, &MainWindow::onScriptEditor);
     toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("文件传输(&F)..."), this, &MainWindow::onFileTransfer);
-    toolsMenu->addAction(tr("IAP升级(&I)..."), this, &MainWindow::onIAPUpgrade);
+    toolsMenu->addAction(tr("文件传输..."), this, &MainWindow::onFileTransfer);
+    toolsMenu->addAction(tr("IAP升级..."), this, &MainWindow::onIAPUpgrade);
     toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("宏录制/回放(&M)..."), this, &MainWindow::onMacroManager);
-    toolsMenu->addAction(tr("多端口管理(&P)..."), this, &MainWindow::onMultiPortManager);
-    toolsMenu->addAction(tr("Modbus分析(&A)..."), this, &MainWindow::onModbusAnalyzer);
-    toolsMenu->addAction(tr("数据分窗(&W)..."), this, &MainWindow::onDataWindowConfig);
-    toolsMenu->addAction(tr("控件面板(&C)..."), this, &MainWindow::onControlPanelToggled);
-    toolsMenu->addAction(tr("数据表格(&T)..."), this, &MainWindow::onDataTableToggled);
+    toolsMenu->addAction(tr("宏录制/回放..."), this, &MainWindow::onMacroManager);
+    toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
+    toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
+    toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
+    toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
+    toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
     toolsMenu->addSeparator();
-    toolsMenu->addAction(tr("设置(&O)..."), this, &MainWindow::onSettings);
+    toolsMenu->addAction(tr("设置..."), this, &MainWindow::onSettings);
 
     // 绘图菜单
-    QMenu* plotMenu = menuBar->addMenu(tr("绘图(&P)"));
-    plotMenu->addAction(tr("新建绘图窗口(&N)"), this, &MainWindow::onNewPlotWindow);
-    plotMenu->addAction(tr("关闭所有绘图窗口(&C)"), this, &MainWindow::onCloseAllPlotWindows);
+    QMenu* plotMenu = hamburgerMenu->addMenu(tr("绘图"));
+    plotMenu->addAction(tr("新建绘图窗口"), this, &MainWindow::onNewPlotWindow);
+    plotMenu->addAction(tr("关闭所有绘图窗口"), this, &MainWindow::onCloseAllPlotWindows);
+    plotMenu->addSeparator();
+
+    // 协议选择子菜单
+    QMenu* protocolMenu = plotMenu->addMenu(tr("绘图协议"));
+    QActionGroup* protocolGroup = new QActionGroup(this);
+    struct { const char* name; ProtocolType type; } protocols[] = {
+        {QT_TR_NOOP("无"), ProtocolType::Raw},
+        {QT_TR_NOOP("TEXT绘图"), ProtocolType::TextPlot},
+        {QT_TR_NOOP("STAMP绘图"), ProtocolType::StampPlot},
+        {QT_TR_NOOP("CSV绘图"), ProtocolType::CsvPlot},
+        {QT_TR_NOOP("JustFloat"), ProtocolType::JustFloat},
+    };
+    for (auto& p : protocols) {
+        QAction* act = protocolMenu->addAction(tr(p.name));
+        act->setCheckable(true);
+        act->setData(static_cast<int>(p.type));
+        protocolGroup->addAction(act);
+        if (p.type == ProtocolType::Raw) act->setChecked(true);
+    }
+    connect(protocolGroup, &QActionGroup::triggered, this, [this](QAction* action) {
+        int typeVal = action->data().toInt();
+        onProtocolTypeChanged(static_cast<ProtocolType>(typeVal));
+    });
+    m_protocolActionGroup = protocolGroup;
+
     plotMenu->addSeparator();
 
     // 窗口同步选项
-    QAction* syncAction = plotMenu->addAction(tr("窗口同步(&S)"));
+    QAction* syncAction = plotMenu->addAction(tr("窗口同步"));
     syncAction->setCheckable(true);
     syncAction->setChecked(PlotterManager::instance()->isSyncEnabled());
     syncAction->setToolTip(tr("启用后，所有绘图窗口的暂停状态将同步"));
@@ -306,9 +349,9 @@ void MainWindow::setupMenuBar()
     });
 
     // 帮助菜单
-    QMenu* helpMenu = menuBar->addMenu(tr("帮助(&H)"));
-    helpMenu->addAction(tr("帮助文档(&D)"), this, &MainWindow::onHelp, QKeySequence::HelpContents);
-    helpMenu->addAction(tr("检查更新(&U)..."), this, &MainWindow::onCheckForUpdates);
+    QMenu* helpMenu = hamburgerMenu->addMenu(tr("帮助"));
+    helpMenu->addAction(tr("帮助文档"), this, &MainWindow::onHelp, QKeySequence::HelpContents);
+    helpMenu->addAction(tr("检查更新..."), this, &MainWindow::onCheckForUpdates);
     QAction* autoCheckUpdateAction = helpMenu->addAction(tr("启动时自动检查更新"));
     autoCheckUpdateAction->setCheckable(true);
     autoCheckUpdateAction->setChecked(QSettings().value("Updates/AutoCheckEnabled", true).toBool());
@@ -317,16 +360,22 @@ void MainWindow::setupMenuBar()
         settings.setValue("Updates/AutoCheckEnabled", checked);
     });
     helpMenu->addSeparator();
-    helpMenu->addAction(tr("关于(&A)"), this, &MainWindow::onAbout);
-    helpMenu->addAction(tr("关于 Qt(&Q)"), qApp, &QApplication::aboutQt);
-}
+    helpMenu->addAction(tr("关于"), this, &MainWindow::onAbout);
+    helpMenu->addAction(tr("关于 Qt"), qApp, &QApplication::aboutQt);
 
-void MainWindow::setupToolBar()
-{
-    m_mainToolBar = addToolBar(tr("主工具栏"));
-    m_mainToolBar->setObjectName("mainToolBar");
-    m_mainToolBar->setMovable(false);
-    m_mainToolBar->setIconSize(QSize(24, 24));
+    // 汉堡菜单按钮（手动弹出，避免 setMenu 在 Qt5/Windows 上的定位 bug）
+    connect(menuBtn, &QToolButton::clicked, this, [this, menuBtn, hamburgerMenu]() {
+        // 计算按钮左下角的全局坐标
+        QPoint pos = menuBtn->mapToGlobal(menuBtn->rect().bottomLeft());
+        hamburgerMenu->exec(pos);
+    });
+
+    // 主题切换按钮（紧跟汉堡菜单，始终可见）
+    m_themeBtn = new ThemeButton;
+    connect(m_themeBtn, &ThemeButton::clicked, this, &MainWindow::onThemeToggled);
+    m_mainToolBar->addWidget(m_themeBtn);
+
+    m_mainToolBar->addSeparator();
 
     // 通信类型选择下拉框
     QLabel* commTypeLabel = new QLabel(tr("类型:"));
@@ -430,7 +479,7 @@ void MainWindow::setupToolBar()
 
     m_mainToolBar->addSeparator();
 
-    // 显示模式下拉框（放在左侧，更容易看到）
+    // 显示模式下拉框
     QLabel* displayModeLabel = new QLabel(tr("模式:"));
     m_mainToolBar->addWidget(displayModeLabel);
 
@@ -446,38 +495,10 @@ void MainWindow::setupToolBar()
             this, &MainWindow::onDisplayModeChanged);
     m_mainToolBar->addWidget(m_displayModeCombo);
 
-    // 弹性空间
-    QWidget* spacer = new QWidget;
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    m_mainToolBar->addWidget(spacer);
-
-    // 协议选择下拉框
-    QLabel* protocolLabel = new QLabel(tr("协议:"));
-    m_mainToolBar->addWidget(protocolLabel);
-
-    m_protocolCombo = new QComboBox;
-    m_protocolCombo->setObjectName("protocolCombo");
-    m_protocolCombo->setMinimumWidth(100);
-    m_protocolCombo->setToolTip(tr("选择绘图协议"));
-    m_protocolCombo->addItem(tr("无"), static_cast<int>(ProtocolType::Raw));
-    m_protocolCombo->addItem(tr("TEXT绘图"), static_cast<int>(ProtocolType::TextPlot));
-    m_protocolCombo->addItem(tr("STAMP绘图"), static_cast<int>(ProtocolType::StampPlot));
-    m_protocolCombo->addItem(tr("CSV绘图"), static_cast<int>(ProtocolType::CsvPlot));
-    m_protocolCombo->addItem(tr("JustFloat"), static_cast<int>(ProtocolType::JustFloat));
-    connect(m_protocolCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onProtocolChanged);
-    m_mainToolBar->addWidget(m_protocolCombo);
-
-    m_mainToolBar->addSeparator();
-
-    // 主题切换按钮
-    m_themeBtn = new QPushButton;
-    m_themeBtn->setObjectName("themeBtn");
-    m_themeBtn->setFixedSize(32, 32);
-    m_themeBtn->setCheckable(true);
-    m_themeBtn->setToolTip(tr("切换主题"));
-    connect(m_themeBtn, &QPushButton::clicked, this, &MainWindow::onThemeToggled);
-    m_mainToolBar->addWidget(m_themeBtn);
+    // 完全隐藏菜单栏（使用汉堡菜单替代）
+    menuBar()->hide();
+    menuBar()->setMaximumHeight(0);
+    menuBar()->setContentsMargins(0, 0, 0, 0);
 
     // 连接信号
     connect(m_portCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -494,6 +515,7 @@ void MainWindow::setupStatusBar()
     QStatusBar* statusBar = this->statusBar();
 
     m_statusLabel = new QLabel(tr("未连接"));
+    m_statusLabel->setObjectName("statusLabel");
     m_statusLabel->setMinimumWidth(150);
     statusBar->addWidget(m_statusLabel);
 
@@ -561,6 +583,11 @@ void MainWindow::setupConnections()
             [this](const QString& msg) { statusBar()->showMessage(msg, 3000); });
     connect(m_debugModeWidget, &IModeWidget::statusMessage,
             [this](const QString& msg) { statusBar()->showMessage(msg, 3000); });
+
+    // 绘图协议自动检测器
+    m_plotDetector = new PlotProtocolDetector(this);
+    connect(m_plotDetector, &PlotProtocolDetector::protocolDetected,
+            this, &MainWindow::onPlotProtocolAutoDetected);
 }
 
 void MainWindow::loadSettings()
@@ -804,6 +831,12 @@ void MainWindow::onDataReceived(const QByteArray& data)
         m_dataTableWidget->addReceivedData(data, protocolName, parsedValues);
     }
 
+    // 自动检测绘图协议（仅在未手动选择协议时）
+    if (m_currentProtocolType == ProtocolType::Raw && m_plotDetector) {
+        m_plotDetector->feedData(data);
+        return;
+    }
+
     // 绘图协议解析和数据路由
     if (m_currentProtocol && m_currentProtocol->isPlotProtocol()) {
         // 将数据添加到缓冲区
@@ -898,6 +931,11 @@ void MainWindow::onConnectionStatusChanged(bool connected)
         m_debugModeWidget->setConnected(connected);
     }
 
+    // 断开连接时重置自动检测器
+    if (!connected && m_plotDetector) {
+        m_plotDetector->reset();
+    }
+
     // 更新工具栏按钮状态
     if (m_openPortBtn) {
         if (connected) {
@@ -919,10 +957,14 @@ void MainWindow::onConnectionStatusChanged(bool connected)
     if (connected) {
         m_statusLabel->setText(tr("已连接: %1").arg(
             m_communication ? m_communication->statusString() : QString()));
-        m_statusLabel->setStyleSheet("color: green;");
+        m_statusLabel->setProperty("connected", true);
+        m_statusLabel->style()->unpolish(m_statusLabel);
+        m_statusLabel->style()->polish(m_statusLabel);
     } else {
         m_statusLabel->setText(tr("未连接"));
-        m_statusLabel->setStyleSheet("color: gray;");
+        m_statusLabel->setProperty("connected", false);
+        m_statusLabel->style()->unpolish(m_statusLabel);
+        m_statusLabel->style()->polish(m_statusLabel);
     }
 }
 
@@ -1095,9 +1137,6 @@ void MainWindow::onLoadSession()
 
     // 协议类型
     m_currentProtocolType = static_cast<ProtocolType>(session.protocolType);
-    if (m_protocolCombo) {
-        m_protocolCombo->setCurrentIndex(session.protocolType);
-    }
     m_currentProtocol = ProtocolFactory::create(m_currentProtocolType);
 
     // 显示模式
@@ -1333,22 +1372,16 @@ void MainWindow::applyTheme(const QString& theme)
 
     if (qssFile.open(QFile::ReadOnly | QFile::Text)) {
         QString styleSheet = QString::fromUtf8(qssFile.readAll());
-        qApp->setStyleSheet(styleSheet);
         qssFile.close();
+        qApp->setStyleSheet(styleSheet);
         LOG_INFO(QString("Theme applied: %1").arg(theme));
     } else {
         LOG_ERROR(QString("Failed to load theme: %1").arg(qssPath));
     }
 
-    // 更新主题按钮图标
+    // 更新主题按钮状态（ThemeButton 自行绘制图标，不受 QSS 干扰）
     if (m_themeBtn) {
-        if (theme == "dark") {
-            m_themeBtn->setText(QString::fromUtf8("\xe2\x98\x80"));  // ☀ 太阳
-            m_themeBtn->setChecked(true);
-        } else {
-            m_themeBtn->setText(QString::fromUtf8("\xe2\x98\xbd"));  // ☽ 月亮
-            m_themeBtn->setChecked(false);
-        }
+        m_themeBtn->setDarkTheme(theme == "dark");
     }
 
     // 更新帮助对话框主题
@@ -1446,18 +1479,18 @@ void MainWindow::changeEvent(QEvent* event)
 
 void MainWindow::retranslateUi()
 {
+    // 初始化完成前不执行重建（构造函数中 loadLanguage 会触发此函数）
+    if (!m_uiInitialized) {
+        return;
+    }
+
     // 更新窗口标题
     setWindowTitle(QString("%1 v%2").arg(APP_NAME).arg(APP_VERSION));
-
-    // 重建菜单栏以更新翻译
-    menuBar()->clear();
-    setupMenuBar();
 
     // 保存工具栏状态
     QString currentPort = m_portCombo ? m_portCombo->currentData().toString() : QString();
     QString currentBaud = m_baudCombo ? m_baudCombo->currentText() : "115200";
     int displayModeIndex = m_displayModeCombo ? m_displayModeCombo->currentIndex() : 0;
-    int protocolIndex = m_protocolCombo ? m_protocolCombo->currentIndex() : 0;
     bool themeChecked = m_themeBtn ? m_themeBtn->isChecked() : false;
 
     // 删除旧工具栏并重建
@@ -1469,7 +1502,6 @@ void MainWindow::retranslateUi()
         m_baudCombo = nullptr;
         m_openPortBtn = nullptr;
         m_displayModeCombo = nullptr;
-        m_protocolCombo = nullptr;
         m_themeBtn = nullptr;
     }
     setupToolBar();
@@ -1487,9 +1519,6 @@ void MainWindow::retranslateUi()
     if (m_displayModeCombo) {
         m_displayModeCombo->setCurrentIndex(displayModeIndex);
     }
-    if (m_protocolCombo) {
-        m_protocolCombo->setCurrentIndex(protocolIndex);
-    }
     if (m_themeBtn) {
         m_themeBtn->setChecked(themeChecked);
     }
@@ -1497,6 +1526,19 @@ void MainWindow::retranslateUi()
         m_openPortBtn->setText(m_connected ? tr("关闭串口") : tr("打开串口"));
         m_openPortBtn->setChecked(m_connected);
     }
+
+    // 恢复主题按钮图标（applyTheme 会同时设置图标和 checked 状态）
+    applyTheme(m_currentTheme);
+
+    // 延迟恢复显示模式下拉框（解决 Qt5 QSS 下重建后首次渲染空白问题）
+    QTimer::singleShot(100, this, [this]() {
+        if (m_displayModeCombo) {
+            int idx = m_displayModeCombo->currentIndex();
+            if (idx < 0) idx = 0;
+            m_displayModeCombo->setCurrentIndex(idx);
+            m_displayModeCombo->update();
+        }
+    });
 
     // 更新状态栏
     if (m_statusLabel) {
@@ -1688,12 +1730,9 @@ void MainWindow::onCloseAllPlotWindows()
     LOG_INFO("Closed all plot windows");
 }
 
-void MainWindow::onProtocolChanged(int index)
+void MainWindow::onProtocolTypeChanged(ProtocolType type)
 {
-    if (!m_protocolCombo) return;
-
-    m_currentProtocolType = static_cast<ProtocolType>(
-        m_protocolCombo->itemData(index).toInt());
+    m_currentProtocolType = type;
 
     // 创建对应的协议解析器
     m_currentProtocol.reset();
@@ -1704,8 +1743,44 @@ void MainWindow::onProtocolChanged(int index)
     // 清空绘图数据缓冲
     m_plotDataBuffer.clear();
 
+    // 重置自动检测器（手动切换协议后停止自动检测）
+    if (m_plotDetector) {
+        m_plotDetector->reset();
+    }
+
     LOG_INFO(QString("Protocol changed to: %1").arg(
         ProtocolFactory::typeName(m_currentProtocolType)));
+}
+
+/**
+ * @brief 绘图协议自动检测回调
+ *
+ * 当 PlotProtocolDetector 确认检测到绘图协议时调用。
+ * 创建对应的协议实例，同步菜单选中状态，并在状态栏显示通知。
+ */
+void MainWindow::onPlotProtocolAutoDetected(ProtocolType type)
+{
+    // 更新协议状态
+    m_currentProtocolType = type;
+    m_currentProtocol = ProtocolFactory::create(type);
+    m_plotDataBuffer.clear();
+
+    // 同步菜单选中状态
+    if (m_protocolActionGroup) {
+        for (QAction* action : m_protocolActionGroup->actions()) {
+            if (action->data().toInt() == static_cast<int>(type)) {
+                action->setChecked(true);
+                break;
+            }
+        }
+    }
+
+    // 状态栏通知
+    statusBar()->showMessage(
+        tr("自动检测到绘图协议: %1").arg(ProtocolFactory::typeName(type)), 5000);
+
+    LOG_INFO(QString("Auto-detected plot protocol: %1")
+             .arg(ProtocolFactory::typeName(type)));
 }
 
 void MainWindow::onDisplayModeChanged(int index)

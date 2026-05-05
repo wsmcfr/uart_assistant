@@ -37,10 +37,10 @@ void RecoveryDialog::setupUi()
 
     QVBoxLayout* titleLayout = new QVBoxLayout;
     m_titleLabel = new QLabel;
-    m_titleLabel->setStyleSheet("font-size: 16px; font-weight: bold;");
+    m_titleLabel->setObjectName("recoveryTitleLabel");
     m_messageLabel = new QLabel;
     m_messageLabel->setWordWrap(true);
-    m_messageLabel->setStyleSheet("color: gray;");
+    m_messageLabel->setObjectName("recoveryMessageLabel");
     titleLayout->addWidget(m_titleLabel);
     titleLayout->addWidget(m_messageLabel);
     titleLayout->addStretch();
@@ -54,7 +54,7 @@ void RecoveryDialog::setupUi()
     m_detailsEdit = new QTextEdit;
     m_detailsEdit->setReadOnly(true);
     m_detailsEdit->setMaximumHeight(120);
-    m_detailsEdit->setStyleSheet("background-color: #f5f5f5; border: 1px solid #ddd;");
+    m_detailsEdit->setObjectName("recoveryDetailsEdit");
     mainLayout->addWidget(m_detailsEdit);
 
     // 不再提示选项
@@ -68,13 +68,11 @@ void RecoveryDialog::setupUi()
 
     m_recoverBtn = new QPushButton;
     m_recoverBtn->setDefault(true);
-    m_recoverBtn->setStyleSheet("QPushButton { background-color: #3498db; color: white; padding: 8px 20px; } "
-                                 "QPushButton:hover { background-color: #2980b9; }");
+    m_recoverBtn->setObjectName("recoverBtn");
     connect(m_recoverBtn, &QPushButton::clicked, this, &RecoveryDialog::onRecoverClicked);
 
     m_discardBtn = new QPushButton;
-    m_discardBtn->setStyleSheet("QPushButton { background-color: #e74c3c; color: white; padding: 8px 20px; } "
-                                 "QPushButton:hover { background-color: #c0392b; }");
+    m_discardBtn->setObjectName("discardBtn");
     connect(m_discardBtn, &QPushButton::clicked, this, &RecoveryDialog::onDiscardClicked);
 
     m_laterBtn = new QPushButton;

@@ -552,6 +552,9 @@ private:
     bool m_scrollMode = true;              ///< 滚动模式（固定宽度）
     int m_visiblePoints = 300;             ///< 可见数据点数（默认300，更宽松）
     QScrollBar* m_scrollBar = nullptr;     ///< 水平滚动条
+    QCPGraph* m_cachedRefGraph = nullptr;  ///< 缓存的滚动参考图（避免每帧遍历）
+    int m_cachedTotalPoints = 0;           ///< 缓存的参考图总点数
+    int m_totalDataPoints = 0;             ///< 所有图的总数据点数（增量维护）
 
     // 数值显示
     QWidget* m_valuePanel = nullptr;       ///< 数值显示面板

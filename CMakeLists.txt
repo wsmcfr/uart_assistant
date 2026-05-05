@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.2.0
+    VERSION 1.3.0
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
@@ -175,6 +175,7 @@ set(PROTOCOL_SOURCES
     src/core/protocol/ProtocolFactory.cpp
     src/core/protocol/EasyHexProtocol.cpp
     src/core/protocol/JustFloatProtocol.cpp
+    src/core/protocol/PlotProtocolDetector.cpp
 )
 
 set(PROTOCOL_HEADERS
@@ -190,6 +191,7 @@ set(PROTOCOL_HEADERS
     src/core/protocol/ProtocolFactory.h
     src/core/protocol/EasyHexProtocol.h
     src/core/protocol/JustFloatProtocol.h
+    src/core/protocol/PlotProtocolDetector.h
 )
 
 # UI模块源文件
@@ -226,6 +228,7 @@ set(UI_SOURCES
     src/ui/widgets/DataWindow.cpp
     src/ui/widgets/DataTableWidget.cpp
     src/ui/widgets/SideNavigationBar.cpp
+    src/ui/widgets/ThemeButton.cpp
     src/ui/widgets/PlotControlPanel.cpp
     src/ui/modes/SerialModeWidget.cpp
     src/ui/modes/TerminalModeWidget.cpp

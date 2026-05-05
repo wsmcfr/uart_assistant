@@ -206,6 +206,16 @@ public:
      */
     static double getWindowCoherentGain(WindowType type);
 
+    /**
+     * @brief 获取Kaiser窗口的相干增益（动态计算，取决于beta参数）
+     */
+    static double getWindowCoherentGainKaiser(double beta);
+
+    /**
+     * @brief 获取Gaussian窗口的相干增益（动态计算，取决于sigma参数）
+     */
+    static double getWindowCoherentGainGaussian(double sigma);
+
     // ==================== 波形分析 ====================
 
     /**
@@ -295,6 +305,13 @@ public:
      * @brief 应用带通 FIR 滤波器
      */
     static QVector<double> applyBandpassFilter(const QVector<double>& data,
+                                                double lowFreq, double highFreq,
+                                                double sampleRate, int order = 31);
+
+    /**
+     * @brief 应用带阻 FIR 滤波器
+     */
+    static QVector<double> applyBandStopFilter(const QVector<double>& data,
                                                 double lowFreq, double highFreq,
                                                 double sampleRate, int order = 31);
 

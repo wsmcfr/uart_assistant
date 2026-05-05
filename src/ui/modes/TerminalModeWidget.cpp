@@ -824,20 +824,9 @@ void VT100Display::focusOutEvent(QFocusEvent* event)
 CommandLineEdit::CommandLineEdit(QWidget* parent)
     : QLineEdit(parent)
 {
+    setObjectName("terminalInput");
     setPlaceholderText(tr("输入命令..."));
     setFont(QFont("Consolas", 11));
-    setStyleSheet(R"(
-        QLineEdit {
-            background-color: #2a2a2a;
-            color: #00ff00;
-            border: 1px solid #404040;
-            border-radius: 3px;
-            padding: 5px 10px;
-        }
-        QLineEdit:focus {
-            border-color: #00aa00;
-        }
-    )");
 
     connect(this, &QLineEdit::returnPressed, [this]() {
         QString cmd = text().trimmed();
@@ -968,60 +957,22 @@ void TerminalModeWidget::setupUi()
 
     // 底部命令输入栏 - 可见，方便用户直接输入发送
     QWidget* inputBar = new QWidget;
-    inputBar->setStyleSheet(R"(
-        QWidget {
-            background-color: #1e1e1e;
-            border-top: 1px solid #333333;
-        }
-    )");
+    inputBar->setObjectName("terminalInputBar");
     QHBoxLayout* inputLayout = new QHBoxLayout(inputBar);
     inputLayout->setContentsMargins(4, 2, 4, 2);
     inputLayout->setSpacing(4);
 
     // 命令提示符标签
     QLabel* promptLabel = new QLabel(">>>");
-    promptLabel->setStyleSheet("color: #00cc00; font-family: Consolas, monospace; font-size: 12pt; font-weight: bold;");
+    promptLabel->setObjectName("terminalPromptLabel");
 
     // 命令输入框
     m_commandLine = new CommandLineEdit;
-    m_commandLine->setStyleSheet(R"(
-        QLineEdit {
-            background-color: #2d2d2d;
-            color: #cccccc;
-            border: 1px solid #444444;
-            border-radius: 3px;
-            padding: 3px 6px;
-            font-family: Consolas, monospace;
-            font-size: 12pt;
-        }
-        QLineEdit:focus {
-            border-color: #006600;
-        }
-    )");
     m_commandLine->setPlaceholderText(tr("输入命令..."));
 
     // 发送按钮
     QPushButton* sendBtn = new QPushButton(tr("发送"));
-    sendBtn->setStyleSheet(R"(
-        QPushButton {
-            background-color: #006600;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            padding: 4px 16px;
-            font-weight: bold;
-        }
-        QPushButton:hover {
-            background-color: #008800;
-        }
-        QPushButton:pressed {
-            background-color: #004400;
-        }
-        QPushButton:disabled {
-            background-color: #444444;
-            color: #888888;
-        }
-    )");
+    sendBtn->setObjectName("terminalSendBtn");
 
     inputLayout->addWidget(promptLabel);
     inputLayout->addWidget(m_commandLine, 1);
@@ -1051,31 +1002,7 @@ void TerminalModeWidget::setupUi()
 void TerminalModeWidget::setupToolBar()
 {
     m_toolBar = new QToolBar;
-    m_toolBar->setStyleSheet(R"(
-        QToolBar {
-            background-color: #2a2a2a;
-            border: none;
-            spacing: 5px;
-            padding: 3px;
-        }
-        QToolButton {
-            background-color: transparent;
-            color: #cccccc;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 3px;
-        }
-        QToolButton:hover {
-            background-color: #404040;
-        }
-        QToolButton:pressed {
-            background-color: #505050;
-        }
-        QToolButton:checked {
-            background-color: #006600;
-            color: white;
-        }
-    )");
+    m_toolBar->setObjectName("terminalToolBar");
 
     // 清屏
     QAction* clearAction = m_toolBar->addAction(tr("清屏"));
@@ -1117,22 +1044,14 @@ void TerminalModeWidget::setupToolBar()
 
     // 换行模式
     m_newlineLabel = new QLabel(tr("换行:"));
-    m_newlineLabel->setStyleSheet("color: #cccccc; margin-left: 5px;");
+    m_newlineLabel->setObjectName("terminalToolbarLabel");
     m_toolBar->addWidget(m_newlineLabel);
 
     m_newlineCombo = new QComboBox;
     m_newlineCombo->addItem("LF (\\n)", "LF");
     m_newlineCombo->addItem("CR (\\r)", "CR");
     m_newlineCombo->addItem("CRLF (\\r\\n)", "CRLF");
-    m_newlineCombo->setStyleSheet(R"(
-        QComboBox {
-            background-color: #404040;
-            color: #cccccc;
-            border: none;
-            border-radius: 3px;
-            padding: 3px 10px;
-        }
-    )");
+    m_newlineCombo->setObjectName("terminalToolbarCombo");
     connect(m_newlineCombo, &QComboBox::currentTextChanged, [this]() {
         m_newlineMode = m_newlineCombo->currentData().toString();
         // 同步到VT100Display
@@ -1144,43 +1063,27 @@ void TerminalModeWidget::setupToolBar()
 
     // 主题选择
     m_themeLabel = new QLabel(tr("主题:"));
-    m_themeLabel->setStyleSheet("color: #cccccc; margin-left: 5px;");
+    m_themeLabel->setObjectName("terminalToolbarLabel");
     m_toolBar->addWidget(m_themeLabel);
 
     m_themeCombo = new QComboBox;
     for (const auto& theme : s_themes) {
         m_themeCombo->addItem(theme.name);
     }
-    m_themeCombo->setStyleSheet(R"(
-        QComboBox {
-            background-color: #404040;
-            color: #cccccc;
-            border: none;
-            border-radius: 3px;
-            padding: 3px 10px;
-        }
-    )");
+    m_themeCombo->setObjectName("terminalToolbarCombo");
     connect(m_themeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TerminalModeWidget::onThemeChanged);
     m_toolBar->addWidget(m_themeCombo);
 
     // 字体大小
     m_fontSizeLabel = new QLabel(tr("字号:"));
-    m_fontSizeLabel->setStyleSheet("color: #cccccc; margin-left: 5px;");
+    m_fontSizeLabel->setObjectName("terminalToolbarLabel");
     m_toolBar->addWidget(m_fontSizeLabel);
 
     m_fontSizeSpinBox = new QSpinBox;
     m_fontSizeSpinBox->setRange(6, 72);
     m_fontSizeSpinBox->setValue(12);
-    m_fontSizeSpinBox->setStyleSheet(R"(
-        QSpinBox {
-            background-color: #404040;
-            color: #cccccc;
-            border: none;
-            border-radius: 3px;
-            padding: 3px 5px;
-        }
-    )");
+    m_fontSizeSpinBox->setObjectName("terminalToolbarSpinBox");
     connect(m_fontSizeSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &TerminalModeWidget::onFontSizeChanged);
     m_toolBar->addWidget(m_fontSizeSpinBox);

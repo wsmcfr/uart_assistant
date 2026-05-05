@@ -38,23 +38,23 @@ void DataStatistics::setupUi()
     // 接收统计
     gridLayout->addWidget(new QLabel(tr("RX:")), 0, 0);
     m_rxBytesLabel = new QLabel("0 B");
-    m_rxBytesLabel->setStyleSheet("font-weight: bold; color: #4CAF50;");
+    m_rxBytesLabel->setObjectName("rxBytesLabel");
     gridLayout->addWidget(m_rxBytesLabel, 0, 1);
 
     gridLayout->addWidget(new QLabel(tr("Rate:")), 0, 2);
     m_rxRateLabel = new QLabel("0 B/s");
-    m_rxRateLabel->setStyleSheet("color: #4CAF50;");
+    m_rxRateLabel->setObjectName("rxBytesLabel");
     gridLayout->addWidget(m_rxRateLabel, 0, 3);
 
     // 发送统计
     gridLayout->addWidget(new QLabel(tr("TX:")), 1, 0);
     m_txBytesLabel = new QLabel("0 B");
-    m_txBytesLabel->setStyleSheet("font-weight: bold; color: #2196F3;");
+    m_txBytesLabel->setObjectName("txBytesLabel");
     gridLayout->addWidget(m_txBytesLabel, 1, 1);
 
     gridLayout->addWidget(new QLabel(tr("Rate:")), 1, 2);
     m_txRateLabel = new QLabel("0 B/s");
-    m_txRateLabel->setStyleSheet("color: #2196F3;");
+    m_txRateLabel->setObjectName("txBytesLabel");
     gridLayout->addWidget(m_txRateLabel, 1, 3);
 
     // 重置按钮

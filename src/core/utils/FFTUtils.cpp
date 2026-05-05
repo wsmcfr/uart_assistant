@@ -26,15 +26,17 @@ int FFTUtils::nextPowerOfTwo(int n)
 
 double FFTUtils::besselI0(double x)
 {
-    // 修正贝塞尔函数 I0 的近似计算
+    // 修正贝塞尔函数 I0 的级数展开近似
+    // I0(x) = Σ (x²/4)^k / (k!)²
     double sum = 1.0;
     double term = 1.0;
     double x2 = x * x / 4.0;
 
-    for (int k = 1; k < 25; ++k) {
+    for (int k = 1; k < 50; ++k) {
         term *= x2 / (k * k);
         sum += term;
-        if (term < 1e-10 * sum) break;
+        // 相对误差 < 1e-15 时提前退出
+        if (term < 1e-15 * sum) break;
     }
 
     return sum;
@@ -103,8 +105,9 @@ QVector<std::complex<double>> FFTUtils::ifft(const QVector<std::complex<double>>
 
     QVector<std::complex<double>> result = fft(conjugate);
 
+    // 归一化使用原始输入大小 n，而非 fft 可能补零后的 result.size()
     for (int i = 0; i < result.size(); ++i) {
-        result[i] = std::conj(result[i]) / static_cast<double>(result.size());
+        result[i] = std::conj(result[i]) / static_cast<double>(n);
     }
 
     return result;
@@ -264,11 +267,37 @@ double FFTUtils::getWindowCoherentGain(WindowType type)
     case WindowType::Hamming:        return 0.54;
     case WindowType::Blackman:       return 0.42;
     case WindowType::BlackmanHarris: return 0.35875;
-    case WindowType::Kaiser:         return 0.5;  // 近似值，取决于beta
-    case WindowType::FlatTop:        return 0.22;
-    case WindowType::Gaussian:       return 0.5;  // 近似值
+    case WindowType::Kaiser:         return 0.5;  // 默认beta=5的近似值，实际调用应使用带参数版本
+    case WindowType::FlatTop:        return 0.21557895;
+    case WindowType::Gaussian:       return 0.5;  // 默认sigma=0.4的近似值，实际调用应使用带参数版本
     default:                         return 1.0;
     }
+}
+
+double FFTUtils::getWindowCoherentGainKaiser(double beta)
+{
+    // 相干增益 = 窗口函数均值，通过数值积分近似
+    const int N = 1024;
+    double sum = 0;
+    double denom = besselI0(beta);
+    for (int i = 0; i < N; ++i) {
+        double ratio = 2.0 * i / (N - 1) - 1.0;
+        double arg = beta * std::sqrt(1.0 - ratio * ratio);
+        sum += besselI0(arg) / denom;
+    }
+    return sum / N;
+}
+
+double FFTUtils::getWindowCoherentGainGaussian(double sigma)
+{
+    // 相干增益 = 窗口函数均值，通过数值积分近似
+    const int N = 1024;
+    double sum = 0;
+    for (int i = 0; i < N; ++i) {
+        double ratio = (i - (N - 1) / 2.0) / (sigma * (N - 1) / 2.0);
+        sum += std::exp(-0.5 * ratio * ratio);
+    }
+    return sum / N;
 }
 
 // ==================== 时域参数计算 ====================
@@ -292,9 +321,12 @@ void FFTUtils::calculateTimeDomainParams(const QVector<double>& data, FFTResult&
     }
     result.rmsValue = std::sqrt(sumSquares / n);
 
-    // 峰值因子
-    if (result.rmsValue > 1e-10) {
-        result.crestFactor = std::max(std::abs(result.maxValue), std::abs(result.minValue)) / result.rmsValue;
+    // 峰值因子（基于交流分量，去除直流偏移）
+    double acPeak = std::max(std::abs(result.maxValue - result.avgValue),
+                             std::abs(result.minValue - result.avgValue));
+    double acRms = std::sqrt(std::max(0.0, result.rmsValue * result.rmsValue - result.avgValue * result.avgValue));
+    if (acRms > 1e-10) {
+        result.crestFactor = acPeak / acRms;
     }
 
     // 占空比
@@ -328,13 +360,22 @@ double FFTUtils::calculateTHD(const FFTResult& result)
 
 double FFTUtils::calculateSNR(const FFTResult& result)
 {
+    // SNR = 信号功率 / 纯噪声功率
+    // 纯噪声 = 总功率 - 直流功率 - 基波功率 - 谐波功率
     if (result.magnitudes.isEmpty()) return 0;
 
     double signalPower = result.dominantMagnitude * result.dominantMagnitude;
     if (signalPower < 1e-20) return 0;
 
+    // 计算所有谐波（含基波）的功率之和
+    double harmonicPowerSum = 0;
+    for (const auto& h : result.harmonics) {
+        harmonicPowerSum += h.magnitude * h.magnitude;
+    }
+
+    // 噪声功率 = 总功率 - 直流功率 - 谐波功率（含基波）
     double dcPower = result.dcComponent * result.dcComponent;
-    double noisePower = result.totalPower - signalPower - dcPower;
+    double noisePower = result.totalPower - dcPower - harmonicPowerSum;
     if (noisePower <= 0) noisePower = 1e-20;
 
     return 10.0 * std::log10(signalPower / noisePower);
@@ -342,13 +383,15 @@ double FFTUtils::calculateSNR(const FFTResult& result)
 
 double FFTUtils::calculateSINAD(const FFTResult& result)
 {
+    // SINAD = 信号功率 / (噪声功率 + 失真功率)
+    // 噪声+失真 = 总功率 - 直流功率 - 基波功率
     if (result.magnitudes.isEmpty()) return 0;
 
     double signalPower = result.dominantMagnitude * result.dominantMagnitude;
     if (signalPower < 1e-20) return 0;
 
-    // SINAD = Signal / (Noise + Distortion)
-    double noiseAndDistortionPower = result.totalPower - signalPower;
+    double dcPower = result.dcComponent * result.dcComponent;
+    double noiseAndDistortionPower = result.totalPower - dcPower - signalPower;
     if (noiseAndDistortionPower <= 0) noiseAndDistortionPower = 1e-20;
 
     return 10.0 * std::log10(signalPower / noiseAndDistortionPower);
@@ -376,7 +419,7 @@ QVector<HarmonicInfo> FFTUtils::extractHarmonics(const FFTResult& result, int ma
         double targetFreq = fundamentalFreq * h;
 
         int idx = -1;
-        double minDiff = freqResolution * 2;
+        double minDiff = freqResolution * 5;  // 搜索窗口 ±5 bins
 
         for (int i = 0; i < result.frequencies.size(); ++i) {
             double diff = std::abs(result.frequencies[i] - targetFreq);
@@ -395,7 +438,8 @@ QVector<HarmonicInfo> FFTUtils::extractHarmonics(const FFTResult& result, int ma
                 (info.magnitude / result.dominantMagnitude * 100.0) : 0;
             info.phase = result.phases[idx];
 
-            if (info.relativeMag > 0.1 || h == 1) {
+            // 谐波阈值：至少为主频幅度的1%，避免随机噪声被误判为谐波
+            if (info.relativeMag > 1.0 || h == 1) {
                 harmonics.append(info);
             }
         }
@@ -431,15 +475,16 @@ WaveformType FFTUtils::identifyWaveform(FFTResult& result)
     if (result.dominantMagnitude < result.dcComponent * 0.1 && result.dcComponent > 0.01) {
         type = WaveformType::DC;
     }
-    // 2. 检查是否为正弦波：THD < 5% 表示几乎没有谐波（优先检测）
+    // 2. 检查噪声：SNR 低（< 3dB）或主频幅度不突出（相对于总功率）
+    //    优先于正弦波检测，避免随机数据被误判
+    else if (result.snr < 3.0 && result.harmonics.size() < 3) {
+        type = WaveformType::Noise;
+    }
+    // 3. 检查是否为正弦波：THD < 5% 表示几乎没有谐波
     else if (result.thd < 5.0 && result.dominantMagnitude > 0.001) {
         type = WaveformType::Sine;
     }
-    // 3. 检查噪声：SNR 非常低（< -3dB，表示噪声功率大于信号功率的2倍）
-    //    且没有明显的谐波结构
-    else if (result.snr < -3.0 && result.harmonics.size() < 2) {
-        type = WaveformType::Noise;
-    }
+    // 4. 有足够的谐波分量，判断具体波形
     else if (result.harmonics.size() >= 3) {
         bool hasOnlyOddHarmonics = true;
 
@@ -450,13 +495,18 @@ WaveformType FFTUtils::identifyWaveform(FFTResult& result)
             }
         }
 
-        if (hasOnlyOddHarmonics && result.thd > 30 && result.thd < 60) {
+        // 理论THD参考：方波≈48.3%、三角波≈12.1%、锯齿波≈80.3%
+        if (hasOnlyOddHarmonics && result.thd > 35 && result.thd < 65) {
             type = WaveformType::Square;
         }
-        else if (hasOnlyOddHarmonics && result.thd > 10 && result.thd < 20) {
+        else if (hasOnlyOddHarmonics && result.thd > 5 && result.thd < 25) {
             type = WaveformType::Triangle;
         }
-        else if (!hasOnlyOddHarmonics && result.thd > 20) {
+        // 脉冲波：占空比远离50%（<20%或>80%）且谐波幅度衰减缓慢
+        else if ((result.dutyCycle < 20.0 || result.dutyCycle > 80.0) && result.thd > 40) {
+            type = WaveformType::Pulse;
+        }
+        else if (!hasOnlyOddHarmonics && result.thd > 50) {
             type = WaveformType::Sawtooth;
         }
         else {
@@ -567,10 +617,18 @@ FFTResult FFTUtils::averageSpectrum(const QVector<FFTResult>& spectrums)
     result.powerSpectrum.resize(n);
     result.powerSpectrumDB.resize(n);
 
-    for (const auto& s : spectrums) {
-        for (int i = 0; i < qMin(n, s.magnitudes.size()); ++i) {
-            result.magnitudes[i] += s.magnitudes[i];
-            result.powerSpectrum[i] += s.powerSpectrum[i];
+    // 记录主频幅度最大的频谱索引（用于取相位）
+    int bestIdx = 0;
+    double bestDomMag = 0;
+
+    for (int s = 0; s < spectrums.size(); ++s) {
+        if (spectrums[s].dominantMagnitude > bestDomMag) {
+            bestDomMag = spectrums[s].dominantMagnitude;
+            bestIdx = s;
+        }
+        for (int i = 0; i < qMin(n, spectrums[s].magnitudes.size()); ++i) {
+            result.magnitudes[i] += spectrums[s].magnitudes[i];
+            result.powerSpectrum[i] += spectrums[s].powerSpectrum[i];
         }
     }
 
@@ -597,6 +655,14 @@ FFTResult FFTUtils::averageSpectrum(const QVector<FFTResult>& spectrums)
     result.fftSize = spectrums[0].fftSize;
     result.frequencyResolution = spectrums[0].frequencyResolution;
     result.validPoints = spectrums[0].validPoints;
+
+    // 相位取主频幅度最大的那帧频谱的相位（平均相位无物理意义）
+    if (bestIdx >= 0 && bestIdx < spectrums.size() &&
+        spectrums[bestIdx].phases.size() >= n) {
+        for (int i = 0; i < n; ++i) {
+            result.phases[i] = spectrums[bestIdx].phases[i];
+        }
+    }
 
     return result;
 }
@@ -642,19 +708,20 @@ QVector<double> FFTUtils::applyFIRFilter(const QVector<double>& data, FilterType
         coeffs[i] = sinc * window;
     }
 
-    // 高通/带阻滤波器需要频谱反转
+    // 高通滤波器：频谱反转（低通系数取反，中心抽头加1）
+    // 注意：高通滤波器不能用系数和归一化（那会强制DC增益为1，但高通的DC增益应为0）
     if (filterType == FilterType::HighPass) {
         for (int i = 0; i < order; ++i) {
             coeffs[i] = -coeffs[i];
         }
         coeffs[halfOrder] += 1.0;
-    }
-
-    // 归一化滤波器系数
-    double sum = std::accumulate(coeffs.begin(), coeffs.end(), 0.0);
-    if (std::abs(sum) > 1e-10) {
-        for (double& c : coeffs) {
-            c /= sum;
+    } else {
+        // 低通滤波器：归一化系数使DC增益为1
+        double sum = std::accumulate(coeffs.begin(), coeffs.end(), 0.0);
+        if (std::abs(sum) > 1e-10) {
+            for (double& c : coeffs) {
+                c /= sum;
+            }
         }
     }
 
@@ -682,6 +749,20 @@ QVector<double> FFTUtils::applyBandpassFilter(const QVector<double>& data,
     QVector<double> lowPassed = applyFIRFilter(data, FilterType::LowPass, highFreq, sampleRate, order);
     QVector<double> highPassed = applyFIRFilter(lowPassed, FilterType::HighPass, lowFreq, sampleRate, order);
     return highPassed;
+}
+
+QVector<double> FFTUtils::applyBandStopFilter(const QVector<double>& data,
+                                               double lowFreq, double highFreq,
+                                               double sampleRate, int order)
+{
+    // 带阻 = 低通(low) + 高通(high)
+    QVector<double> lowPassed = applyFIRFilter(data, FilterType::LowPass, lowFreq, sampleRate, order);
+    QVector<double> highPassed = applyFIRFilter(data, FilterType::HighPass, highFreq, sampleRate, order);
+    QVector<double> result(data.size());
+    for (int i = 0; i < data.size(); ++i) {
+        result[i] = lowPassed[i] + highPassed[i];
+    }
+    return result;
 }
 
 QVector<double> FFTUtils::applyMovingAverage(const QVector<double>& data, int windowSize)
@@ -788,38 +869,114 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
 
     double sampleRate = config.sampleRate > 0 ? config.sampleRate : n;
 
-    // 计算时域参数
+    // 计算时域参数（基于原始数据）
     calculateTimeDomainParams(data, result);
+
+    // 去除直流分量（减去均值），避免DC泄漏污染低频谱线
+    double dcOffset = std::accumulate(data.begin(), data.end(), 0.0) / n;
+    QVector<double> dcRemovedData(n);
+    for (int i = 0; i < n; ++i) {
+        dcRemovedData[i] = data[i] - dcOffset;
+    }
 
     // 确定FFT大小
     int fftSize = config.fftSize;
     if (fftSize <= 0) {
         fftSize = config.zeroPadding ? nextPowerOfTwo(n) : n;
     }
-    result.fftSize = fftSize;
-    result.frequencyResolution = sampleRate / fftSize;
 
-    // 应用窗口函数
-    QVector<double> windowedData;
+    // 窗口相干增益补偿（Kaiser/Gaussian使用参数化动态计算）
+    double windowGain;
     if (config.windowType == WindowType::Kaiser) {
-        windowedData = applyKaiserWindow(data, config.kaiserBeta);
+        windowGain = getWindowCoherentGainKaiser(config.kaiserBeta);
     } else if (config.windowType == WindowType::Gaussian) {
-        windowedData = applyGaussianWindow(data, config.gaussianSigma);
+        windowGain = getWindowCoherentGainGaussian(config.gaussianSigma);
     } else {
-        windowedData = applyWindow(data, config.windowType);
+        windowGain = getWindowCoherentGain(config.windowType);
     }
 
-    // 转换为复数并零填充
-    QVector<std::complex<double>> complexData(fftSize, std::complex<double>(0, 0));
-    for (int i = 0; i < n; ++i) {
-        complexData[i] = std::complex<double>(windowedData[i], 0);
+    // 频谱平均：将数据分成 averageCount 段，分别做FFT后平均
+    int avgCount = qMax(1, config.averageCount);
+    int segLen = n / avgCount;  // 每段长度
+    if (segLen < 4) {
+        avgCount = 1;
+        segLen = n;
     }
 
-    // 执行 FFT
-    QVector<std::complex<double>> fftData = fft(complexData);
+    // 累加缓冲区
+    int halfSize = 0;
+    QVector<double> accMagnitudes;
+    QVector<double> accPowerSpectrum;
+    QVector<double> accPowerSpectrumDB;
+    QVector<std::complex<double>> accFFT;  // 用于相位提取（取最大幅度帧）
+    int bestFFTIdx = 0;
+    double bestDomMag = 0;
 
-    // 只取前半部分（正频率）
-    int halfSize = fftData.size() / 2;
+    for (int avg = 0; avg < avgCount; ++avg) {
+        int segStart = avg * segLen;
+        QVector<double> segment(segLen);
+        for (int i = 0; i < segLen; ++i) {
+            segment[i] = dcRemovedData[segStart + i];
+        }
+
+        // 应用窗口函数
+        QVector<double> windowedData;
+        if (config.windowType == WindowType::Kaiser) {
+            windowedData = applyKaiserWindow(segment, config.kaiserBeta);
+        } else if (config.windowType == WindowType::Gaussian) {
+            windowedData = applyGaussianWindow(segment, config.gaussianSigma);
+        } else {
+            windowedData = applyWindow(segment, config.windowType);
+        }
+
+        // 转换为复数并零填充
+        int segFftSize = config.fftSize > 0 ? config.fftSize :
+            (config.zeroPadding ? nextPowerOfTwo(segLen) : segLen);
+        QVector<std::complex<double>> complexData(segFftSize, std::complex<double>(0, 0));
+        for (int i = 0; i < segLen; ++i) {
+            complexData[i] = std::complex<double>(windowedData[i], 0);
+        }
+
+        // 执行 FFT
+        QVector<std::complex<double>> fftData = fft(complexData);
+
+        int curHalfSize = fftData.size() / 2;
+
+        // 首次初始化累加缓冲区
+        if (accMagnitudes.isEmpty()) {
+            halfSize = curHalfSize;
+            accMagnitudes = QVector<double>(halfSize, 0.0);
+            accPowerSpectrum = QVector<double>(halfSize, 0.0);
+            accPowerSpectrumDB = QVector<double>(halfSize, 0.0);
+            accFFT = fftData;
+        }
+
+        // 累加幅度和功率谱
+        double segDomMag = 0;
+        int curFFTSize = fftData.size();
+        for (int i = 0; i < qMin(halfSize, curHalfSize); ++i) {
+            double magnitude = std::abs(fftData[i]) * 2.0 / segLen / windowGain;
+            if (i == 0) magnitude /= 2.0;
+
+            accMagnitudes[i] += magnitude;
+            accPowerSpectrum[i] += magnitude * magnitude;
+
+            if (i > 0 && magnitude > segDomMag) {
+                segDomMag = magnitude;
+            }
+        }
+
+        // 记录主频幅度最大的FFT结果（用于相位提取）
+        if (segDomMag > bestDomMag) {
+            bestDomMag = segDomMag;
+            bestFFTIdx = avg;
+            accFFT = fftData;
+        }
+    }
+
+    // 计算平均值
+    result.fftSize = accFFT.size();
+    result.frequencyResolution = sampleRate / accFFT.size();
 
     result.frequencies.resize(halfSize);
     result.magnitudes.resize(halfSize);
@@ -830,33 +987,31 @@ FFTResult FFTUtils::analyzeWithConfig(const QVector<double>& data, const FFTConf
     double maxMagnitude = 0;
     int maxIndex = 0;
 
-    // 窗口相干增益补偿
-    double windowGain = getWindowCoherentGain(config.windowType);
+    // 对称窗口的群延迟补偿（使用段长度）
+    double groupDelay = (segLen - 1) / 2.0;
 
     for (int i = 0; i < halfSize; ++i) {
-        result.frequencies[i] = i * sampleRate / fftData.size();
+        result.frequencies[i] = i * sampleRate / accFFT.size();
 
-        double magnitude = std::abs(fftData[i]) * 2.0 / n / windowGain;
-        if (i == 0) {
-            magnitude /= 2.0;
-        }
-        result.magnitudes[i] = magnitude;
-
-        result.phases[i] = std::atan2(fftData[i].imag(), fftData[i].real()) * 180.0 / PI;
-
-        result.powerSpectrum[i] = magnitude * magnitude;
+        result.magnitudes[i] = accMagnitudes[i] / avgCount;
+        result.powerSpectrum[i] = accPowerSpectrum[i] / avgCount;
         result.powerSpectrumDB[i] = result.powerSpectrum[i] > 1e-20 ?
             10.0 * std::log10(result.powerSpectrum[i]) : -100;
 
-        if (i > 0 && magnitude > maxMagnitude) {
-            maxMagnitude = magnitude;
+        // 相位取主频幅度最大的那帧的相位，并补偿窗口延迟
+        double phaseCompensation = 2.0 * PI * i * groupDelay / accFFT.size();
+        double rawPhase = std::atan2(accFFT[i].imag(), accFFT[i].real());
+        result.phases[i] = (rawPhase + phaseCompensation) * 180.0 / PI;
+
+        if (i > 0 && result.magnitudes[i] > maxMagnitude) {
+            maxMagnitude = result.magnitudes[i];
             maxIndex = i;
         }
 
         result.totalPower += result.powerSpectrum[i];
     }
 
-    result.dcComponent = result.magnitudes[0];
+    result.dcComponent = dcOffset;  // 使用原始数据的均值作为直流分量
     result.dominantFrequency = result.frequencies[maxIndex];
     result.dominantMagnitude = maxMagnitude;
 

@@ -88,8 +88,8 @@ void ScriptEditorDialog::setupUi()
     m_runBtn->setFixedWidth(60);
     m_stopBtn->setFixedWidth(60);
 
-    m_runBtn->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; }");
-    m_stopBtn->setStyleSheet("QPushButton { background-color: #f44336; color: white; }");
+    m_runBtn->setObjectName("runScriptBtn");
+    m_stopBtn->setObjectName("stopScriptBtn");
     m_stopBtn->setEnabled(false);
 
     connect(m_newBtn, &QPushButton::clicked, this, &ScriptEditorDialog::onNewScript);
@@ -107,7 +107,7 @@ void ScriptEditorDialog::setupUi()
     toolbarLayout->addStretch();
 
     QLabel* helpLabel = new QLabel(tr("提示: Ctrl+Enter 运行脚本"));
-    helpLabel->setStyleSheet("color: #888;");
+    helpLabel->setObjectName("scriptHelpLabel");
     toolbarLayout->addWidget(helpLabel);
 
     mainLayout->addLayout(toolbarLayout);
@@ -121,7 +121,7 @@ void ScriptEditorDialog::setupUi()
     leftLayout->setContentsMargins(0, 0, 0, 0);
 
     QLabel* listLabel = new QLabel(tr("脚本列表"));
-    listLabel->setStyleSheet("font-weight: bold;");
+    listLabel->setObjectName("scriptSectionLabel");
     leftLayout->addWidget(listLabel);
 
     m_scriptList = new QListWidget;
@@ -140,23 +140,14 @@ void ScriptEditorDialog::setupUi()
     centerLayout->setContentsMargins(0, 0, 0, 0);
 
     QLabel* editorLabel = new QLabel(tr("代码编辑"));
-    editorLabel->setStyleSheet("font-weight: bold;");
+    editorLabel->setObjectName("scriptSectionLabel");
     centerLayout->addWidget(editorLabel);
 
     m_codeEditor = new QPlainTextEdit;
+    m_codeEditor->setObjectName("codeEditor");
     m_codeEditor->setFont(QFont("Consolas", 11));
     m_codeEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
     m_codeEditor->setTabStopDistance(QFontMetricsF(m_codeEditor->font()).horizontalAdvance(' ') * 4);
-
-    // 编辑器样式 - 暗色主题
-    m_codeEditor->setStyleSheet(
-        "QPlainTextEdit {"
-        "  background-color: #1e1e1e;"
-        "  color: #d4d4d4;"
-        "  border: 1px solid #333;"
-        "  selection-background-color: #264f78;"
-        "}"
-    );
 
     // 语法高亮
     m_highlighter = new LuaSyntaxHighlighter(m_codeEditor->document());
@@ -171,7 +162,7 @@ void ScriptEditorDialog::setupUi()
 
     QHBoxLayout* outputHeader = new QHBoxLayout;
     QLabel* outputLabel = new QLabel(tr("输出"));
-    outputLabel->setStyleSheet("font-weight: bold;");
+    outputLabel->setObjectName("scriptSectionLabel");
     outputHeader->addWidget(outputLabel);
 
     QPushButton* clearOutputBtn = new QPushButton(tr("清空"));
@@ -183,15 +174,9 @@ void ScriptEditorDialog::setupUi()
     rightLayout->addLayout(outputHeader);
 
     m_outputArea = new QTextEdit;
+    m_outputArea->setObjectName("scriptOutputArea");
     m_outputArea->setReadOnly(true);
     m_outputArea->setFont(QFont("Consolas", 10));
-    m_outputArea->setStyleSheet(
-        "QTextEdit {"
-        "  background-color: #1a1a1a;"
-        "  color: #00ff00;"
-        "  border: 1px solid #333;"
-        "}"
-    );
     rightLayout->addWidget(m_outputArea);
 
     m_mainSplitter->addWidget(rightPanel);

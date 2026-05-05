@@ -107,30 +107,12 @@ bool resolveKeyRangeByPointWindow(const QCPGraph* graph,
     const int boundedStart = qBound(0, startIndex, qMax(0, dataSize - 1));
     const int boundedEnd = qBound(boundedStart, boundedStart + pointCount - 1, dataSize - 1);
 
-    auto it = graph->data()->constBegin();
-    int idx = 0;
-    while (idx < boundedStart && it != graph->data()->constEnd()) {
-        ++it;
-        ++idx;
-    }
-    if (it == graph->data()->constEnd()) {
-        return false;
-    }
+    // O(1) 随机访问：QCPDataContainer 底层为 QVector，支持迭代器算术
+    auto startIt = graph->data()->constBegin() + boundedStart;
+    keyMin = startIt->key;
 
-    keyMin = it->key;
-
-    while (idx < boundedEnd && it != graph->data()->constEnd()) {
-        ++it;
-        ++idx;
-    }
-
-    if (it == graph->data()->constEnd()) {
-        auto lastIt = graph->data()->constEnd();
-        --lastIt;
-        keyMax = lastIt->key;
-    } else {
-        keyMax = it->key;
-    }
+    auto endIt = graph->data()->constBegin() + boundedEnd;
+    keyMax = endIt->key;
 
     if (keyMax < keyMin) {
         qSwap(keyMin, keyMax);
@@ -1063,18 +1045,26 @@ void PlotterWindow::appendMultiData(const QVector<double>& values)
         return;  // 跳过这个数据点
     }
 
+    // 预先确保所有曲线存在（避免内循环中逐个检查）
     for (int i = 0; i < values.size(); ++i) {
         ensureCurveExists(i);
+    }
+
+    for (int i = 0; i < values.size(); ++i) {
         m_plot->graph(i)->addData(m_dataIndex, values[i]);
 
-        // 触发条件检测
+        // 触发条件检测（内部已有 enabled 快速退出）
         checkTriggerCondition(i, values[i]);
 
-        // 报警条件检测
+        // 报警条件检测（内部已有 enabled 快速退出）
         checkAlarmCondition(i, values[i]);
+    }
 
-        // 实时FFT更新
-        updateRealTimeFFT(i, values[i]);
+    // 实时FFT更新（仅在有FFT窗口时才处理）
+    if (!m_realTimeFFTWindows.isEmpty()) {
+        for (int i = 0; i < values.size(); ++i) {
+            updateRealTimeFFT(i, values[i]);
+        }
     }
 
     // 实时更新所有差值曲线
@@ -1106,6 +1096,13 @@ void PlotterWindow::appendMultiData(const QVector<double>& values)
     m_dataIndex++;
     m_needReplot = true;
 
+    // 更新缓存的参考图和总点数（避免 updatePlot 每帧遍历所有图）
+    if (m_plot->graphCount() > 0) {
+        m_cachedRefGraph = m_plot->graph(0);
+        m_cachedTotalPoints = m_cachedRefGraph->data()->size();
+    }
+    m_totalDataPoints += values.size();
+
     // 优化：每100个点才检查一次数据裁剪
     if (m_dataIndex % 100 == 0) {
         trimData();
@@ -1122,18 +1119,26 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
         return;  // 跳过这个数据点
     }
 
+    // 预先确保所有曲线存在
     for (int i = 0; i < values.size(); ++i) {
         ensureCurveExists(i);
+    }
+
+    for (int i = 0; i < values.size(); ++i) {
         m_plot->graph(i)->addData(x, values[i]);
 
-        // 触发条件检测
+        // 触发条件检测（内部已有 enabled 快速退出）
         checkTriggerCondition(i, values[i]);
 
-        // 报警条件检测
+        // 报警条件检测（内部已有 enabled 快速退出）
         checkAlarmCondition(i, values[i]);
+    }
 
-        // 实时FFT更新
-        updateRealTimeFFT(i, values[i]);
+    // 实时FFT更新（仅在有FFT窗口时才处理）
+    if (!m_realTimeFFTWindows.isEmpty()) {
+        for (int i = 0; i < values.size(); ++i) {
+            updateRealTimeFFT(i, values[i]);
+        }
     }
 
     // 实时更新所有差值曲线
@@ -1165,6 +1170,13 @@ void PlotterWindow::appendMultiData(double x, const QVector<double>& values)
     ++m_dataIndex;
     m_needReplot = true;
 
+    // 更新缓存的参考图和总点数
+    if (m_plot->graphCount() > 0) {
+        m_cachedRefGraph = m_plot->graph(0);
+        m_cachedTotalPoints = m_cachedRefGraph->data()->size();
+    }
+    m_totalDataPoints += values.size();
+
     // 优化：每100个点才检查一次数据裁剪
     if (m_dataIndex % 100 == 0) {
         trimData();
@@ -1185,7 +1197,7 @@ void PlotterWindow::trimData()
     for (int i = 0; i < m_plot->graphCount(); ++i) {
         QCPGraph* graph = m_plot->graph(i);
 
-        // 仅跳过“真正静态曲线”，实时滤波曲线也要参与裁剪
+        // 仅跳过”真正静态曲线”，实时滤波曲线也要参与裁剪
         if (m_staticCurves.contains(graph) && !realtimeFilterGraphs.contains(graph)) {
             continue;
         }
@@ -1198,6 +1210,7 @@ void PlotterWindow::trimData()
             int removeCount = dataSize - targetSize;
 
             if (removeCount >= dataSize) {
+                m_totalDataPoints -= dataSize;
                 graph->data()->clear();
                 continue;
             }
@@ -1210,7 +1223,9 @@ void PlotterWindow::trimData()
 
             if (boundaryIt != graph->data()->constEnd()) {
                 graph->data()->removeBefore(boundaryIt->key);
+                m_totalDataPoints -= removeCount;
             } else {
+                m_totalDataPoints -= dataSize;
                 graph->data()->clear();
             }
         }
@@ -1232,6 +1247,9 @@ void PlotterWindow::clearAll()
     }
     m_dataIndex = 0;
     m_needReplot = true;
+    m_totalDataPoints = 0;
+    m_cachedRefGraph = nullptr;
+    m_cachedTotalPoints = 0;
 
     // 重置所有实时滤波状态
     for (auto& filterInfo : m_realTimeFilters) {
@@ -1381,9 +1399,15 @@ void PlotterWindow::closeEvent(QCloseEvent* event)
 
 void PlotterWindow::onPauseToggled()
 {
-    m_paused = m_pauseAction->isChecked();
-    m_pauseAction->setIcon(style()->standardIcon(m_paused ? QStyle::SP_MediaPlay : QStyle::SP_MediaPause));
-    m_pauseAction->setText(m_paused ? tr("继续") : tr("暂停"));
+    // 切换暂停状态（而非读取 action 的 checked 状态，因为右键菜单也会调用此函数）
+    m_paused = !m_paused;
+
+    // 同步工具栏按钮状态和图标
+    if (m_pauseAction) {
+        m_pauseAction->setChecked(m_paused);
+        m_pauseAction->setIcon(style()->standardIcon(m_paused ? QStyle::SP_MediaPlay : QStyle::SP_MediaPause));
+        m_pauseAction->setText(m_paused ? tr("继续") : tr("暂停"));
+    }
     LOG_INFO(QString("Window '%1' %2").arg(m_windowId, m_paused ? "paused" : "resumed"));
 
     // 多窗口同步暂停状态
@@ -1472,10 +1496,7 @@ void PlotterWindow::updatePlot()
             return;
         }
 
-        int totalPoints = 0;
-        for (int i = 0; i < m_plot->graphCount(); ++i) {
-            totalPoints += m_plot->graph(i)->data()->size();
-        }
+        const int totalPoints = m_totalDataPoints;
 
         const double fps = elapsedMs > 0
             ? (static_cast<double>(m_perfFrameCount) * 1000.0 / static_cast<double>(elapsedMs))
@@ -1520,19 +1541,15 @@ void PlotterWindow::updatePlot()
 
     // 时间序列模式（默认）
     if (m_plot->graphCount() > 0) {
-        bool hasData = false;
-
-        for (int i = 0; i < m_plot->graphCount(); ++i) {
-            int count = m_plot->graph(i)->data()->size();
-            if (count > 0) {
-                hasData = true;
-            }
-        }
+        // 快速判断：使用缓存的参考图或第一个图检查是否有数据
+        bool hasData = (m_cachedRefGraph && !m_cachedRefGraph->data()->isEmpty())
+                       || (m_plot->graph(0) && !m_plot->graph(0)->data()->isEmpty());
 
         if (hasData) {
             if (m_scrollMode) {
-                // 滚动模式：基于实际数据点窗口，兼容自定义/时间戳 X 轴
-                const QCPGraph* referenceGraph = findReferenceGraphForScroll(m_plot);
+                // 滚动模式：使用缓存的参考图（避免每帧遍历所有图）
+                const QCPGraph* referenceGraph = m_cachedRefGraph
+                    ? m_cachedRefGraph : findReferenceGraphForScroll(m_plot);
                 if (referenceGraph) {
                     const int totalPoints = referenceGraph->data()->size();
                     const int scrollMax = qMax(0, totalPoints - m_visiblePoints);
@@ -1617,14 +1634,11 @@ void PlotterWindow::updatePlot()
     }
 
     // 发送数据量变化信号（优化：每10次更新才计算一次）
+    // 发送数据量变化信号（使用增量维护的总数，避免遍历）
     static int signalCounter = 0;
     if (++signalCounter >= 10) {
         signalCounter = 0;
-        int totalPoints = 0;
-        for (int i = 0; i < m_plot->graphCount(); ++i) {
-            totalPoints += m_plot->graph(i)->data()->size();
-        }
-        emit dataSizeChanged(totalPoints);
+        emit dataSizeChanged(m_totalDataPoints);
     }
 
     // 如果光标在图表区域内，根据像素位置实时刷新光标的X坐标和数值
@@ -1868,7 +1882,7 @@ void PlotterWindow::onFFTAnalysisClicked()
 
     // 显示当前设置摘要
     QLabel* settingsSummary = new QLabel;
-    settingsSummary->setStyleSheet("color: #3498db; padding: 5px;");
+    settingsSummary->setObjectName("plotSettingsSummary");
     auto updateSummary = [settingsSummary, settingsDialog]() {
         FFTConfig cfg = settingsDialog->getConfig();
         QString windowName = FFTUtils::getWindowName(cfg.windowType);
@@ -2073,7 +2087,7 @@ void PlotterWindow::updateValuePanel()
 
     if (allValues.isEmpty()) {
         QLabel* emptyLabel = new QLabel(tr("当前值: 无数据"), m_valuePanel);
-        emptyLabel->setStyleSheet("font-weight: bold;");
+        emptyLabel->setObjectName("plotValueEmpty");
         mainLayout->addWidget(emptyLabel);
         return;
     }
@@ -2094,7 +2108,7 @@ void PlotterWindow::updateValuePanel()
 
     // 添加标题
     QLabel* titleLabel = new QLabel(tr("当前值:"), currentRow);
-    titleLabel->setStyleSheet("font-weight: bold;");
+    titleLabel->setObjectName("plotValueTitle");
     currentRowLayout->addWidget(titleLabel);
 
     int currentRowWidth = 60;
@@ -2507,7 +2521,7 @@ void PlotterWindow::onPIDAnalysisClicked()
     QFormLayout* resultLayout = new QFormLayout(resultGroup);
 
     QLabel* statsLabel = new QLabel;
-    statsLabel->setStyleSheet("font-family: Consolas; font-size: 11px;");
+    statsLabel->setObjectName("plotStatsLabel");
     resultLayout->addRow(statsLabel);
 
     mainLayout->addWidget(resultGroup);
@@ -3086,7 +3100,7 @@ void PlotterWindow::onMeasureCursorClicked()
     modeLayout->addWidget(enableCheck);
 
     QLabel* tipLabel = new QLabel(tr("提示: 启用后可在图表上拖动游标位置"));
-    tipLabel->setStyleSheet("color: #888; font-size: 11px;");
+    tipLabel->setObjectName("plotTipLabel");
     modeLayout->addWidget(tipLabel);
 
     mainLayout->addWidget(modeGroup);
@@ -3107,7 +3121,7 @@ void PlotterWindow::onMeasureCursorClicked()
 
     // 显示当前Y值
     QLabel* cursor1YLabel = new QLabel;
-    cursor1YLabel->setStyleSheet("color: #3498db; font-weight: bold;");
+    cursor1YLabel->setObjectName("plotCursor1Label");
     cursor1Layout->addRow(tr("当前值:"), cursor1YLabel);
 
     mainLayout->addWidget(cursor1Group);
@@ -3128,7 +3142,7 @@ void PlotterWindow::onMeasureCursorClicked()
 
     // 显示当前Y值
     QLabel* cursor2YLabel = new QLabel;
-    cursor2YLabel->setStyleSheet("color: #e74c3c; font-weight: bold;");
+    cursor2YLabel->setObjectName("plotCursor2Label");
     cursor2Layout->addRow(tr("当前值:"), cursor2YLabel);
 
     mainLayout->addWidget(cursor2Group);
@@ -3138,11 +3152,11 @@ void PlotterWindow::onMeasureCursorClicked()
     QFormLayout* deltaLayout = new QFormLayout(deltaGroup);
 
     QLabel* deltaXLabel = new QLabel;
-    deltaXLabel->setStyleSheet("font-weight: bold;");
+    deltaXLabel->setObjectName("plotDeltaLabel");
     deltaLayout->addRow(tr("ΔX:"), deltaXLabel);
 
     QLabel* deltaYLabel = new QLabel;
-    deltaYLabel->setStyleSheet("font-weight: bold;");
+    deltaYLabel->setObjectName("plotDeltaLabel");
     deltaLayout->addRow(tr("ΔY:"), deltaYLabel);
 
     mainLayout->addWidget(deltaGroup);
