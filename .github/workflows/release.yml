@@ -27,8 +27,8 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: "5.15.2"
-          arch: "win64_msvc2019_64"
+          version: "5.12.9"
+          arch: "win64_msvc2017_64"
           modules: "qtserialport"
 
       - name: Configure
