@@ -28,6 +28,7 @@ set(TEST_SOURCES
     unit/TestTerminalModeWidget.cpp
     unit/TestTranslationCompleteness.cpp
     unit/TestHidCommunication.cpp
+    unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
 )
 
@@ -44,6 +45,11 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.h
 )
 
 # 包含目录
@@ -105,6 +111,11 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp

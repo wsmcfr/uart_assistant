@@ -23,6 +23,7 @@
 #include "unit/TestTerminalModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
 #include "unit/TestHidCommunication.h"
+#include "unit/TestCommunicationWorkspaces.h"
 #include "unit/TestReleaseMetadata.h"
 
 int main(int argc, char *argv[])
@@ -118,6 +119,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] HidCommunication";
         TestHidCommunication test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] CommunicationWorkspaces";
+        TestCommunicationWorkspaces test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

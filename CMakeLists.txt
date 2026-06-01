@@ -260,6 +260,11 @@ set(UI_SOURCES
     src/ui/syntax/LuaSyntaxHighlighter.cpp
     src/ui/widgets/SerialSettingsWidget.cpp
     src/ui/widgets/NetworkSettingsWidget.cpp
+    src/ui/widgets/CommunicationWorkspaceWidget.cpp
+    src/ui/widgets/TcpClientWorkspaceWidget.cpp
+    src/ui/widgets/TcpServerWorkspaceWidget.cpp
+    src/ui/widgets/UdpWorkspaceWidget.cpp
+    src/ui/widgets/HidReportWorkspaceWidget.cpp
     src/ui/widgets/SendWidget.cpp
     src/ui/widgets/TabbedReceiveWidget.cpp
     src/ui/widgets/DataStatistics.cpp
@@ -306,6 +311,11 @@ set(UI_HEADERS
     src/ui/syntax/LuaSyntaxHighlighter.h
     src/ui/widgets/SerialSettingsWidget.h
     src/ui/widgets/NetworkSettingsWidget.h
+    src/ui/widgets/CommunicationWorkspaceWidget.h
+    src/ui/widgets/TcpClientWorkspaceWidget.h
+    src/ui/widgets/TcpServerWorkspaceWidget.h
+    src/ui/widgets/UdpWorkspaceWidget.h
+    src/ui/widgets/HidReportWorkspaceWidget.h
     src/ui/widgets/SendWidget.h
     src/ui/widgets/TabbedReceiveWidget.h
     src/ui/widgets/DataStatistics.h
