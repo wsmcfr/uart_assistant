@@ -1,6 +1,6 @@
 # ComAssistant 串口调试助手
 
-`ComAssistant` 是一个面向调试与开发场景的串口/网络通信工具，支持数据收发、协议解析、绘图分析、脚本扩展等功能。
+`ComAssistant` 是一个面向调试与开发场景的串口、网络与 USB HID 通信工具，支持数据收发、协议解析、绘图分析、脚本扩展等功能。
 
 ## 技术栈
 
@@ -10,6 +10,14 @@
 - **QCustomPlot** 绘图引擎（支持 OpenGL 加速）
 - **Lua 5.4** 脚本引擎
 - **spdlog** 日志库
+- **hidapi** USB HID 后端（未启用时会保留可编译的明确降级提示）
+
+## 通信能力
+
+- 串口通信：支持常见 COM 端口与高波特率调试场景
+- TCP 客户端/服务器：支持网络设备联调与本机服务监听
+- UDP 通信：支持本地/远程端口绑定与数据收发
+- USB HID 通信：支持枚举 HID 设备、选择 VID/PID/接口对应设备并进行报告收发
 
 ## 快速下载
 
@@ -17,7 +25,7 @@
 - 所有历史版本：<https://github.com/wsmcfr/uart_assistant/releases>
 
 <!-- LATEST_RELEASE:START -->
-- 当前最新稳定版 / Latest Stable: v1.3.3（发布于 2026-05-05 / released on 2026-05-05）
+- 当前最新稳定版 / Latest Stable: v1.3.3（发布于 2026-05-06 / released on 2026-05-06）
 - 直链下载 / Direct Download: <https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/ComAssistant_v1.3.3_Windows_x64_Portable.zip>
 - 校验文件 / Checksum: <https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/SHA256SUMS.txt>
 <!-- LATEST_RELEASE:END -->

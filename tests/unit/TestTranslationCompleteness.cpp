@@ -196,7 +196,10 @@ void TestTranslationCompleteness::testMainWindowToolbarTranslations()
             {QStringLiteral("串口"), QStringLiteral("Serial")},
             {QStringLiteral("TCP客户端"), QStringLiteral("TCP Client")},
             {QStringLiteral("TCP服务器"), QStringLiteral("TCP Server")},
+            {QStringLiteral("HID"), QStringLiteral("HID")},
             {QStringLiteral("选择通信类型"), QStringLiteral("Select communication type")},
+            {QStringLiteral("选择 HID 设备"), QStringLiteral("Select HID Device")},
+            {QStringLiteral("刷新 HID 设备列表"), QStringLiteral("Refresh HID Device List")},
             {QStringLiteral("端口:"), QStringLiteral("Port:")},
             {QStringLiteral("模式:"), QStringLiteral("Mode:")},
             {QStringLiteral("选择显示模式"), QStringLiteral("Select display mode")},
@@ -205,7 +208,9 @@ void TestTranslationCompleteness::testMainWindowToolbarTranslations()
             {QStringLiteral("调试"), QStringLiteral("Debug")},
             {QStringLiteral("断开"), QStringLiteral("Disconnect")},
             {QStringLiteral("停止服务"), QStringLiteral("Stop Service")},
-            {QStringLiteral("解绑"), QStringLiteral("Unbind")}
+            {QStringLiteral("解绑"), QStringLiteral("Unbind")},
+            {QStringLiteral("打开 HID"), QStringLiteral("Open HID")},
+            {QStringLiteral("关闭 HID"), QStringLiteral("Close HID")}
         });
 }
 
@@ -220,6 +225,22 @@ void TestTranslationCompleteness::testQuickSendTranslations()
             {QStringLiteral("添加快捷指令"), QStringLiteral("Add Quick Command")},
             {QStringLiteral("查询版本"), QStringLiteral("Query Version")}
         });
+}
+
+void TestTranslationCompleteness::testNoUnfinishedTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+
+    for (auto contextIt = translations.cbegin(); contextIt != translations.cend(); ++contextIt) {
+        const QString& contextName = contextIt.key();
+        const QHash<QString, TranslationInfo>& messages = contextIt.value();
+        for (auto messageIt = messages.cbegin(); messageIt != messages.cend(); ++messageIt) {
+            const TranslationInfo& info = messageIt.value();
+            QVERIFY2(!info.unfinished,
+                     qPrintable(QStringLiteral("Translation is unfinished in %1: %2")
+                                    .arg(contextName, messageIt.key())));
+        }
+    }
 }
 
 TestTranslationCompleteness::ContextTranslations TestTranslationCompleteness::loadTranslations() const

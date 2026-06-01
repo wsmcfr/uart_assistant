@@ -36,6 +36,7 @@
 #include "config/ConfigManager.h"
 #include "config/DisplaySettingsPolicy.h"
 #include "communication/TcpClient.h"
+#include "communication/HidDevice.h"
 #include "protocol/ProtocolFactory.h"
 #include "macro/MacroRecorder.h"
 #include "communication/MultiPortManager.h"
@@ -306,6 +307,7 @@ void MainWindow::setupToolBar()
     m_commTypeCombo->addItem(tr("TCP客户端"), static_cast<int>(CommType::TcpClient));
     m_commTypeCombo->addItem(tr("TCP服务器"), static_cast<int>(CommType::TcpServer));
     m_commTypeCombo->addItem(tr("UDP"), static_cast<int>(CommType::Udp));
+    m_commTypeCombo->addItem(tr("HID"), static_cast<int>(CommType::Hid));
     connect(m_commTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onCommTypeChanged);
     m_mainToolBar->addWidget(m_commTypeCombo);
@@ -531,6 +533,7 @@ void MainWindow::loadSettings()
     auto* configMgr = ConfigManager::instance();
     m_serialConfig = configMgr->serialConfig();
     m_networkConfig = configMgr->networkConfig();
+    m_hidConfig = configMgr->hidConfig();
 
     if (m_serialSettings) {
         m_serialSettings->setConfig(m_serialConfig);
@@ -587,6 +590,7 @@ void MainWindow::saveSettings()
     auto* configMgr = ConfigManager::instance();
     configMgr->setSerialConfig(m_serialConfig);
     configMgr->setNetworkConfig(m_networkConfig);
+    configMgr->setHidConfig(m_hidConfig);
     configMgr->setTheme(m_currentTheme);
     configMgr->setLanguage(m_currentLanguage);
 
@@ -604,6 +608,7 @@ void MainWindow::applyDialogSettings()
 
     m_serialConfig = configMgr->serialConfig();
     m_networkConfig = configMgr->networkConfig();
+    m_hidConfig = configMgr->hidConfig();
 
     if (m_serialSettings) {
         m_serialSettings->setConfig(m_serialConfig);
@@ -684,7 +689,9 @@ void MainWindow::createCommunication()
     destroyCommunication();
 
     m_communication = CommunicationFactory::create(m_currentCommType,
-                                                    m_serialConfig, m_networkConfig);
+                                                    m_serialConfig,
+                                                    m_networkConfig,
+                                                    m_hidConfig);
 
     if (m_communication) {
         if (auto* tcpClient = dynamic_cast<TcpClient*>(m_communication.get())) {
@@ -915,6 +922,11 @@ void MainWindow::onCommTypeChanged(int index)
     if (!combo) return;
 
     m_currentCommType = static_cast<CommType>(combo->currentData().toInt());
+    if (m_currentCommType == CommType::Hid) {
+        refreshHidDevices();
+    } else if (m_currentCommType == CommType::Serial) {
+        refreshPorts();
+    }
     updateCommunicationWidgetsForType();
     updateConnectionButtonText();
 
@@ -941,6 +953,7 @@ void MainWindow::onSaveSession()
     session.commType = m_currentCommType;
     session.serialConfig = m_serialConfig;
     session.networkConfig = m_networkConfig;
+    session.hidConfig = m_hidConfig;
 
     // 协议和显示模式
     session.protocolType = static_cast<int>(m_currentProtocolType);
@@ -1014,6 +1027,7 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     m_currentCommType = session.commType;
     m_serialConfig = session.serialConfig;
     m_networkConfig = session.networkConfig;
+    m_hidConfig = session.hidConfig;
 
     if (m_serialSettings) {
         m_serialSettings->setConfig(m_serialConfig);
@@ -1031,13 +1045,29 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
         }
     }
 
-    if (m_portCombo && !m_serialConfig.portName.isEmpty()) {
+    if (m_currentCommType == CommType::Hid) {
+        refreshHidDevices();
+    } else {
+        refreshPorts();
+    }
+
+    if (m_portCombo && m_currentCommType == CommType::Serial && !m_serialConfig.portName.isEmpty()) {
         int portIdx = m_portCombo->findData(m_serialConfig.portName);
         if (portIdx < 0) {
             portIdx = m_portCombo->findText(m_serialConfig.portName);
         }
         if (portIdx >= 0) {
             m_portCombo->setCurrentIndex(portIdx);
+        }
+    }
+
+    if (m_portCombo && m_currentCommType == CommType::Hid && !m_hidConfig.path.isEmpty()) {
+        int hidIdx = m_portCombo->findData(m_hidConfig.path);
+        if (hidIdx < 0) {
+            hidIdx = m_portCombo->findText(m_hidConfig.name);
+        }
+        if (hidIdx >= 0) {
+            m_portCombo->setCurrentIndex(hidIdx);
         }
     }
 
@@ -1064,6 +1094,7 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
                                       : m_networkConfig.remoteIp);
                 break;
             case CommType::Serial:
+            case CommType::Hid:
             default:
                 break;
         }
@@ -1083,6 +1114,7 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
                                          : m_networkConfig.listenPort);
                 break;
             case CommType::Serial:
+            case CommType::Hid:
             default:
                 break;
         }
@@ -1498,6 +1530,7 @@ void MainWindow::retranslateUi()
         m_commTypeCombo->addItem(tr("TCP客户端"), static_cast<int>(CommType::TcpClient));
         m_commTypeCombo->addItem(tr("TCP服务器"), static_cast<int>(CommType::TcpServer));
         m_commTypeCombo->addItem(tr("UDP"), static_cast<int>(CommType::Udp));
+        m_commTypeCombo->addItem(tr("HID"), static_cast<int>(CommType::Hid));
         const int currentTypeIndex = m_commTypeCombo->findData(currentTypeData);
         m_commTypeCombo->setCurrentIndex(currentTypeIndex >= 0 ? currentTypeIndex : 0);
         m_commTypeCombo->blockSignals(false);
@@ -1506,10 +1539,14 @@ void MainWindow::retranslateUi()
 
     // 更新串口相关控件
     if (m_portCombo) {
-        m_portCombo->setToolTip(tr("选择串口"));
+        m_portCombo->setToolTip(m_currentCommType == CommType::Hid
+            ? tr("选择 HID 设备")
+            : tr("选择串口"));
     }
     if (m_refreshBtn) {
-        m_refreshBtn->setToolTip(tr("刷新串口列表"));
+        m_refreshBtn->setToolTip(m_currentCommType == CommType::Hid
+            ? tr("刷新 HID 设备列表")
+            : tr("刷新串口列表"));
     }
     if (m_baudCombo) {
         m_baudCombo->setToolTip(tr("波特率"));
@@ -1723,36 +1760,40 @@ void MainWindow::rebuildHamburgerMenu()
 void MainWindow::updateCommunicationWidgetsForType()
 {
     const bool serialMode = (m_currentCommType == CommType::Serial);
+    const bool hidMode = (m_currentCommType == CommType::Hid);
+    const bool networkMode = !serialMode && !hidMode;
     if (m_portComboAction) {
-        m_portComboAction->setVisible(serialMode);
+        m_portComboAction->setVisible(serialMode || hidMode);
     }
     if (m_refreshBtnAction) {
-        m_refreshBtnAction->setVisible(serialMode);
+        m_refreshBtnAction->setVisible(serialMode || hidMode);
     }
     if (m_baudComboAction) {
         m_baudComboAction->setVisible(serialMode);
     }
     if (m_networkWidgetAction) {
-        m_networkWidgetAction->setVisible(!serialMode);
+        m_networkWidgetAction->setVisible(networkMode);
     }
 
     if (m_portCombo) {
-        m_portCombo->setEnabled(serialMode && !m_connected);
+        m_portCombo->setEnabled((serialMode || hidMode) && !m_connected);
+        m_portCombo->setToolTip(hidMode ? tr("选择 HID 设备") : tr("选择串口"));
     }
     if (m_refreshBtn) {
-        m_refreshBtn->setEnabled(serialMode && !m_connected);
+        m_refreshBtn->setEnabled((serialMode || hidMode) && !m_connected);
+        m_refreshBtn->setToolTip(hidMode ? tr("刷新 HID 设备列表") : tr("刷新串口列表"));
     }
     if (m_baudCombo) {
         m_baudCombo->setEnabled(serialMode && !m_connected);
     }
     if (m_networkToolbarWidget) {
-        m_networkToolbarWidget->setEnabled(!serialMode && !m_connected);
+        m_networkToolbarWidget->setEnabled(networkMode && !m_connected);
     }
     if (m_commTypeCombo) {
         m_commTypeCombo->setEnabled(!m_connected);
     }
 
-    if (!serialMode && m_ipEdit) {
+    if (networkMode && m_ipEdit) {
         switch (m_currentCommType) {
             case CommType::TcpClient:
                 m_ipEdit->setPlaceholderText(QStringLiteral("127.0.0.1"));
@@ -1765,6 +1806,8 @@ void MainWindow::updateCommunicationWidgetsForType()
             case CommType::Udp:
                 m_ipEdit->setPlaceholderText(QStringLiteral("127.0.0.1"));
                 m_ipEdit->setToolTip(tr("目标IP地址"));
+                break;
+            case CommType::Hid:
                 break;
             default:
                 break;
@@ -1783,6 +1826,7 @@ void MainWindow::updateCommunicationWidgetsForType()
                 m_portSpin->setToolTip(tr("本地/目标端口"));
                 break;
             case CommType::Serial:
+            case CommType::Hid:
             default:
                 m_portSpin->setToolTip(tr("端口号"));
                 break;
@@ -1816,6 +1860,9 @@ void MainWindow::updateConnectionButtonText()
         case CommType::Udp:
             buttonText = m_connected ? tr("解绑") : tr("绑定端口");
             break;
+        case CommType::Hid:
+            buttonText = m_connected ? tr("关闭 HID") : tr("打开 HID");
+            break;
         default:
             buttonText = m_connected ? tr("断开") : tr("连接");
             break;
@@ -1828,6 +1875,10 @@ void MainWindow::updateConnectionButtonText()
 void MainWindow::refreshPorts()
 {
     if (!m_portCombo) return;
+    if (m_currentCommType == CommType::Hid) {
+        refreshHidDevices();
+        return;
+    }
 
     QString currentPort = m_portCombo->currentData().toString();
 
@@ -1857,10 +1908,75 @@ void MainWindow::refreshPorts()
     }
 }
 
+void MainWindow::refreshHidDevices()
+{
+    if (!m_portCombo) {
+        return;
+    }
+
+    const QString currentPath = m_hidConfig.path.isEmpty()
+        ? m_portCombo->currentData().toString()
+        : m_hidConfig.path;
+
+    m_portCombo->blockSignals(true);
+    m_portCombo->clear();
+
+    const QList<HidDeviceInfo> devices = HidDevice::availableDevices();
+    for (const HidDeviceInfo& device : devices) {
+        QString displayText = QStringLiteral("%1 (VID:%2 PID:%3 IF:%4)")
+            .arg(device.name)
+            .arg(device.vendorId, 4, 16, QLatin1Char('0'))
+            .arg(device.productId, 4, 16, QLatin1Char('0'))
+            .arg(device.interfaceNumber)
+            .toUpper();
+        m_portCombo->addItem(displayText, device.path);
+
+        const int itemIndex = m_portCombo->count() - 1;
+        m_portCombo->setItemData(itemIndex, device.name, Qt::UserRole + 1);
+        m_portCombo->setItemData(itemIndex, device.vendorId, Qt::UserRole + 2);
+        m_portCombo->setItemData(itemIndex, device.productId, Qt::UserRole + 3);
+        m_portCombo->setItemData(itemIndex, device.interfaceNumber, Qt::UserRole + 4);
+        m_portCombo->setItemData(itemIndex, device.usagePage, Qt::UserRole + 5);
+        m_portCombo->setItemData(itemIndex, device.usage, Qt::UserRole + 6);
+    }
+
+    if (m_portCombo->count() == 0 && !HidDevice::backendAvailable()) {
+        m_portCombo->addItem(tr("HID 后端未启用"), QString());
+    }
+
+    if (!currentPath.isEmpty()) {
+        const int index = m_portCombo->findData(currentPath);
+        if (index >= 0) {
+            m_portCombo->setCurrentIndex(index);
+        }
+    }
+
+    m_portCombo->blockSignals(false);
+
+    if (m_portCombo->count() > 0 && m_portCombo->currentIndex() >= 0) {
+        onToolbarPortChanged(m_portCombo->currentIndex());
+    }
+}
+
 void MainWindow::onToolbarPortChanged(int index)
 {
     if (index >= 0 && m_portCombo) {
-        m_serialConfig.portName = m_portCombo->itemData(index).toString();
+        if (m_currentCommType == CommType::Hid) {
+            m_hidConfig.path = m_portCombo->itemData(index).toString();
+            m_hidConfig.name = m_portCombo->itemData(index, Qt::UserRole + 1).toString();
+            m_hidConfig.vendorId = static_cast<quint16>(
+                m_portCombo->itemData(index, Qt::UserRole + 2).toUInt());
+            m_hidConfig.productId = static_cast<quint16>(
+                m_portCombo->itemData(index, Qt::UserRole + 3).toUInt());
+            m_hidConfig.interfaceNumber = static_cast<quint8>(
+                m_portCombo->itemData(index, Qt::UserRole + 4).toUInt());
+            m_hidConfig.usagePage = static_cast<quint16>(
+                m_portCombo->itemData(index, Qt::UserRole + 5).toUInt());
+            m_hidConfig.usage = static_cast<quint16>(
+                m_portCombo->itemData(index, Qt::UserRole + 6).toUInt());
+        } else {
+            m_serialConfig.portName = m_portCombo->itemData(index).toString();
+        }
     }
 }
 
@@ -1924,6 +2040,12 @@ void MainWindow::onOpenPortClicked()
                     m_networkConfig.listenPort = m_portSpin->value();
                 }
                 m_networkConfig.mode = NetworkMode::Udp;
+                break;
+            case CommType::Hid:
+                // 更新 HID 配置，设备详细信息在 onToolbarPortChanged 中同步。
+                if (m_portCombo && m_portCombo->currentIndex() >= 0) {
+                    onToolbarPortChanged(m_portCombo->currentIndex());
+                }
                 break;
             default:
                 break;

@@ -95,6 +95,34 @@ if(NOT LUA_FOUND)
     set(LUA_LIBRARIES lua_static)
 endif()
 
+# hidapi（USB HID 通信后端）
+# 发布链路通过 vcpkg 安装 hidapi；本地未安装时仍允许工程编译，
+# 但 HID 通信类会在运行时给出“当前构建未启用 HID 后端”的明确错误。
+find_package(hidapi CONFIG QUIET)
+set(COMASSISTANT_HIDAPI_TARGET "")
+if(TARGET hidapi::hidapi)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::hidapi)
+elseif(TARGET hidapi::hidapi-winapi)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::hidapi-winapi)
+elseif(TARGET hidapi::hidapi_winapi)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::hidapi_winapi)
+elseif(TARGET hidapi::winapi)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::winapi)
+elseif(TARGET hidapi::hidapi-libusb)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::hidapi-libusb)
+elseif(TARGET hidapi::hidapi_libusb)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::hidapi_libusb)
+elseif(TARGET hidapi::libusb)
+    set(COMASSISTANT_HIDAPI_TARGET hidapi::libusb)
+elseif(TARGET unofficial::hidapi::hidapi)
+    set(COMASSISTANT_HIDAPI_TARGET unofficial::hidapi::hidapi)
+endif()
+if(COMASSISTANT_HIDAPI_TARGET)
+    message(STATUS "hidapi found: ${COMASSISTANT_HIDAPI_TARGET}")
+else()
+    message(STATUS "hidapi not found; HID backend will be disabled in this build.")
+endif()
+
 # 第三方库源文件 (QCustomPlot)
 set(THIRD_PARTY_SOURCES
     src/third_party/qcustomplot/qcustomplot.cpp
@@ -160,6 +188,7 @@ set(COMMUNICATION_SOURCES
     src/core/communication/TcpClient.cpp
     src/core/communication/TcpServer.cpp
     src/core/communication/UdpSocket.cpp
+    src/core/communication/HidDevice.cpp
     src/core/communication/CommunicationFactory.cpp
     src/core/communication/SerialPortMonitor.cpp
     src/core/communication/MultiPortManager.cpp
@@ -171,6 +200,7 @@ set(COMMUNICATION_HEADERS
     src/core/communication/TcpClient.h
     src/core/communication/TcpServer.h
     src/core/communication/UdpSocket.h
+    src/core/communication/HidDevice.h
     src/core/communication/CommunicationFactory.h
     src/core/communication/SerialPortMonitor.h
     src/core/communication/MultiPortManager.h
@@ -356,6 +386,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     nlohmann_json::nlohmann_json
     ${LUA_LIBRARIES}
 )
+
+if(COMASSISTANT_HIDAPI_TARGET)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE COMASSISTANT_ENABLE_HIDAPI)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${COMASSISTANT_HIDAPI_TARGET})
+endif()
 
 # Windows 特定链接
 if(WIN32)

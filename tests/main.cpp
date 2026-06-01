@@ -22,6 +22,8 @@
 #include "unit/TestTabbedReceiveWidget.h"
 #include "unit/TestTerminalModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
+#include "unit/TestHidCommunication.h"
+#include "unit/TestReleaseMetadata.h"
 
 int main(int argc, char *argv[])
 {
@@ -111,6 +113,16 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] TranslationCompleteness";
         TestTranslationCompleteness test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] HidCommunication";
+        TestHidCommunication test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ReleaseMetadata";
+        TestReleaseMetadata test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

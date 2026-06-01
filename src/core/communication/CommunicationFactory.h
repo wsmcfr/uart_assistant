@@ -13,6 +13,7 @@
 #include "TcpClient.h"
 #include "TcpServer.h"
 #include "UdpSocket.h"
+#include "HidDevice.h"
 #include "config/AppConfig.h"
 #include <memory>
 
@@ -58,16 +59,25 @@ public:
     static std::unique_ptr<ICommunication> createUdp(const NetworkConfig& config);
 
     /**
+     * @brief 创建 HID 实例
+     * @param config HID 配置
+     * @return unique_ptr<ICommunication>
+     */
+    static std::unique_ptr<ICommunication> createHid(const HidConfig& config);
+
+    /**
      * @brief 根据类型创建通信实例
      * @param type 通信类型
      * @param serialConfig 串口配置（type为Serial时使用）
      * @param networkConfig 网络配置（type为网络类型时使用）
+     * @param hidConfig HID 配置（type为Hid时使用）
      * @return unique_ptr<ICommunication>
      */
     static std::unique_ptr<ICommunication> create(
         CommType type,
         const SerialConfig& serialConfig = SerialConfig(),
-        const NetworkConfig& networkConfig = NetworkConfig()
+        const NetworkConfig& networkConfig = NetworkConfig(),
+        const HidConfig& hidConfig = HidConfig()
     );
 
     //=========================================================================
@@ -96,6 +106,11 @@ public:
      * @brief 创建UDP实例（Qt父子对象管理）
      */
     static ICommunication* createUdp(const NetworkConfig& config, QObject* parent);
+
+    /**
+     * @brief 创建 HID 实例（Qt父子对象管理）
+     */
+    static ICommunication* createHid(const HidConfig& config, QObject* parent);
 
     //=========================================================================
     // 工具方法

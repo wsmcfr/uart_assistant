@@ -143,9 +143,18 @@ bool ConfigManager::loadConfig(const QString& filePath)
 
     // 读取HID配置
     m_settings->beginGroup("HID");
+    m_hidConfig.name = m_settings->value("Name", "").toString();
+    m_hidConfig.path = m_settings->value("Path", "").toString();
     m_hidConfig.vendorId = m_settings->value("VendorId", 0).toUInt();
     m_hidConfig.productId = m_settings->value("ProductId", 0).toUInt();
     m_hidConfig.interfaceNumber = m_settings->value("InterfaceNumber", 0).toUInt();
+    m_hidConfig.usagePage = m_settings->value("UsagePage", 0).toUInt();
+    m_hidConfig.usage = m_settings->value("Usage", 0).toUInt();
+    m_hidConfig.inputReportLength = m_settings->value("InputReportLength", 64).toInt();
+    m_hidConfig.outputReportLength = m_settings->value("OutputReportLength", 64).toInt();
+    m_hidConfig.firstDataIsLength = m_settings->value("FirstDataIsLength", false).toBool();
+    m_hidConfig.outReportId = m_settings->value("OutReportId", 0).toUInt();
+    m_hidConfig.removeInReportId = m_settings->value("RemoveInReportId", false).toBool();
     m_settings->endGroup();
 
     LOG_INFO(QString("Configuration loaded from: %1").arg(filePath));
@@ -198,9 +207,18 @@ bool ConfigManager::saveConfig(const QString& filePath)
 
     // 写入HID配置
     m_settings->beginGroup("HID");
+    m_settings->setValue("Name", m_hidConfig.name);
+    m_settings->setValue("Path", m_hidConfig.path);
     m_settings->setValue("VendorId", m_hidConfig.vendorId);
     m_settings->setValue("ProductId", m_hidConfig.productId);
     m_settings->setValue("InterfaceNumber", m_hidConfig.interfaceNumber);
+    m_settings->setValue("UsagePage", m_hidConfig.usagePage);
+    m_settings->setValue("Usage", m_hidConfig.usage);
+    m_settings->setValue("InputReportLength", m_hidConfig.inputReportLength);
+    m_settings->setValue("OutputReportLength", m_hidConfig.outputReportLength);
+    m_settings->setValue("FirstDataIsLength", m_hidConfig.firstDataIsLength);
+    m_settings->setValue("OutReportId", m_hidConfig.outReportId);
+    m_settings->setValue("RemoveInReportId", m_hidConfig.removeInReportId);
     m_settings->endGroup();
 
     m_settings->sync();

@@ -201,9 +201,11 @@
 <body>
     <h1>快速入门 Quick Start</h1>
 
-    <h2>1. 串口连接 / Serial Connection</h2>
+    <h2>1. 建立连接 / Connection</h2>
+    <h3>串口连接 / Serial Connection</h3>
     <p><strong>中文：</strong></p>
     <ol>
+        <li>在工具栏"类型"中选择"串口"</li>
         <li>在工具栏选择串口端口（如 COM3）</li>
         <li>选择波特率（默认 115200）</li>
         <li>点击"打开串口"按钮</li>
@@ -211,14 +213,32 @@
 
     <p><strong>English:</strong></p>
     <ol>
+        <li>Select "Serial" in the toolbar "Type" dropdown</li>
         <li>Select serial port in toolbar (e.g., COM3)</li>
         <li>Select baud rate (default 115200)</li>
         <li>Click "Open Port" button</li>
     </ol>
 
+    <h3>HID 连接 / HID Connection</h3>
+    <p><strong>中文：</strong></p>
+    <ol>
+        <li>在工具栏"类型"中选择"HID"</li>
+        <li>点击刷新按钮扫描当前系统可见的 HID 设备</li>
+        <li>在设备下拉框中选择目标设备（显示名称包含 VID、PID 与接口号）</li>
+        <li>点击"打开 HID"按钮</li>
+    </ol>
+
+    <p><strong>English:</strong></p>
+    <ol>
+        <li>Select "HID" in the toolbar "Type" dropdown</li>
+        <li>Click refresh to scan visible HID devices</li>
+        <li>Select the target device from the device dropdown (VID, PID and interface number are shown)</li>
+        <li>Click "Open HID" button</li>
+    </ol>
+
     <div class="tip">
-        <strong>💡 提示 / Tip:</strong> 连接前请确保端口未被其他程序占用。<br>
-        Make sure the port is not occupied by other programs before connecting.
+        <strong>💡 提示 / Tip:</strong> 连接前请确保端口或 HID 设备未被其他程序占用。HID 需要发布构建或已安装 hidapi 的本地构建支持。<br>
+        Make sure the port or HID device is not occupied by other programs before connecting. HID requires a release build or a local build with hidapi enabled.
     </div>
 
     <h2>2. 发送数据 / Send Data</h2>
@@ -332,14 +352,14 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.3.3（发布于 2026-05-05 / released on 2026-05-05）</p>
+    <p><strong>当前版本 / Current Version:</strong> v1.3.3（发布于 2026-05-06 / released on 2026-05-06）</p>
     <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/ComAssistant_v1.3.3_Windows_x64_Portable.zip">ComAssistant_v1.3.3_Windows_x64_Portable.zip</a><br>
     <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.3.3/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">
-        <strong>⚠️ 注意 / Warning:</strong> 关闭程序前请先断开串口连接。<br>
-        Please disconnect serial port before closing the program.
+        <strong>⚠️ 注意 / Warning:</strong> 关闭程序前请先断开当前串口、网络或 HID 连接。<br>
+        Please disconnect the current serial, network or HID connection before closing the program.
     </div>
 
 </body>

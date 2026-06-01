@@ -2671,6 +2671,14 @@ Time spent: % 4</translation>
         <translation>Refresh Port List</translation>
     </message>
     <message>
+        <source>选择 HID 设备</source>
+        <translation>Select HID Device</translation>
+    </message>
+    <message>
+        <source>刷新 HID 设备列表</source>
+        <translation>Refresh HID Device List</translation>
+    </message>
+    <message>
         <location filename="../../src/ui/MainWindow.cpp" line="369" />
         <source>波特率</source>
         <translation>Baud Rate</translation>
@@ -2690,6 +2698,14 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/MainWindow.cpp" line="1645" />
         <source>关闭串口</source>
         <translation>Close Port</translation>
+    </message>
+    <message>
+        <source>打开 HID</source>
+        <translation>Open HID</translation>
+    </message>
+    <message>
+        <source>关闭 HID</source>
+        <translation>Close HID</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="421" />
@@ -2892,6 +2908,10 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/MainWindow.cpp" line="342" />
         <source>UDP</source>
         <translation>UDP</translation>
+    </message>
+    <message>
+        <source>HID</source>
+        <translation>HID</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="384" />
@@ -6785,12 +6805,12 @@ Alarm with Temperature Range</translation>
     <message>
         <location filename="../../src/core/communication/SerialPort.cpp" line="56" />
         <source>Port not found: %1</source>
-        <translation type="unfinished" />
+        <translation>Port not found: %1</translation>
     </message>
     <message>
         <location filename="../../src/core/communication/SerialPort.cpp" line="68" />
         <source>Cannot open port %1. Port may be in use or access denied.</source>
-        <translation type="unfinished" />
+        <translation>Cannot open port %1. Port may be in use or access denied.</translation>
     </message>
     <message>
         <location filename="../../src/core/communication/SerialPort.cpp" line="106" />

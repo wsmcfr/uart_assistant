@@ -9,7 +9,7 @@ ComAssistant 采用模块化架构设计：
 ```
 src/
 ├── core/                   # 核心模块
-│   ├── communication/      # 通信模块（串口、TCP、UDP）
+│   ├── communication/      # 通信模块（串口、TCP、UDP、USB HID）
 │   ├── protocol/           # 协议解析模块
 │   ├── config/             # 配置管理
 │   ├── utils/              # 工具类
@@ -28,9 +28,9 @@ src/
 ## 开发环境
 
 ### 必需工具
-- CMake 3.20+
-- Qt 6.5+
-- Visual Studio 2019+ 或 MSVC 工具集
+- CMake 3.14+
+- Qt 5.12.9
+- MinGW 7.3 64-bit（本地）或 Visual Studio 2017+ / MSVC 工具集（CI/发布）
 - vcpkg（包管理器）
 
 ### 可选工具
@@ -42,8 +42,8 @@ src/
 ### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/comassistant/comassistant.git
-cd comassistant
+git clone https://github.com/wsmcfr/uart_assistant.git
+cd uart_assistant
 ```
 
 ### 2. 安装依赖
@@ -96,15 +96,18 @@ cmake --build build --config Debug
 ```cpp
 class ICommunication {
 public:
-    virtual bool open(const QVariantMap& params) = 0;
+    virtual bool open() = 0;
     virtual void close() = 0;
     virtual bool isOpen() const = 0;
     virtual qint64 write(const QByteArray& data) = 0;
+    virtual QByteArray readAll() = 0;
 signals:
     void dataReceived(const QByteArray& data);
     void errorOccurred(const QString& error);
 };
 ```
+
+当前通信工厂支持串口、TCP 客户端、TCP 服务端、UDP 与 USB HID。HID 后端通过 `hidapi` 启用；未安装 hidapi 时工程仍可编译，但运行时会给出明确的后端未启用提示。
 
 ### 协议模块 (protocol)
 
@@ -165,7 +168,7 @@ private slots:
 ## 发布流程
 
 1. 同步更新版本号（`src/version.h` 与 `CMakeLists.txt`）
-2. 更新 CHANGELOG.md
+2. 更新 `CHANGELOG.md`、`README.md` 与内置帮助文档 `resources/help/quickstart.html`
 3. 运行所有测试
 4. 构建 Release 版本
 5. 创建安装包

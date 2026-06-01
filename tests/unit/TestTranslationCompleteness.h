@@ -35,6 +35,7 @@ private slots:
     void testMainWindowHamburgerMenuTranslations();
     void testMainWindowToolbarTranslations();
     void testQuickSendTranslations();
+    void testNoUnfinishedTranslations();
 
 private:
     ContextTranslations loadTranslations() const;

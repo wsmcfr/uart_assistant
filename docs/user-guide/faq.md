@@ -17,6 +17,14 @@
 3. 点击"刷新"按钮重新扫描
 4. 尝试重新插拔设备
 
+### Q: 找不到 HID 设备或提示"HID 后端未启用"？
+
+**A**:
+1. 确认工具栏"类型"已切换为 HID，并点击刷新按钮重新扫描
+2. 确认目标设备未被其他程序独占打开
+3. 如果提示"HID 后端未启用"，说明当前构建未链接 hidapi；请使用发布构建，或通过 vcpkg/toolchain 安装 `hidapi` 后重新配置构建
+4. 部分系统设备或安全设备可能不允许普通应用直接访问，需要使用厂商开放的 HID 接口或调整驱动/权限
+
 ### Q: 连接后无法收发数据？
 
 **A**:
@@ -24,6 +32,7 @@
 2. 检查数据位、停止位、校验位设置
 3. 确认设备端程序正常运行
 4. 尝试交换 TX/RX 线（如果是手工连接）
+5. HID 设备请确认输入/输出报告长度、Report ID 与设备协议一致
 
 ## 数据问题
 
@@ -156,5 +165,4 @@
 ## 获取帮助
 
 - 在线文档：[用户指南](index.md)
-- 问题反馈：[GitHub Issues](https://github.com/comassistant/comassistant/issues)
-- 技术支持：support@comassistant.com
+- 问题反馈：[GitHub Issues](https://github.com/wsmcfr/uart_assistant/issues)

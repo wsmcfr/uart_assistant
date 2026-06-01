@@ -42,8 +42,16 @@ void TestPlotterManagerLifecycle::testClosedWindowIsDestroyedBeforeSameIdIsRecre
 
     PlotterWindow* recreatedWindow = manager->createWindow(QStringLiteral("lifecycle_test"));
     QVERIFY(recreatedWindow != nullptr);
-    QVERIFY2(recreatedWindow != firstWindow,
-             "后续同 ID 数据到来时，应创建新的窗口对象，而不是复用已关闭对象");
+    /*
+     * 旧对象销毁后，内存分配器可能把新窗口放回同一个地址，因此不能
+     * 用裸指针地址是否相同判断“是否复用旧对象”。这里改为验证旧
+     * QPointer 已经失效，并且管理器已经重新登记同 ID 窗口。
+     */
+    QVERIFY2(destroyedProbe.isNull(),
+             "后续同 ID 数据到来时，旧窗口指针仍应保持失效状态");
+    QVERIFY2(manager->hasWindow(QStringLiteral("lifecycle_test")),
+             "后续同 ID 数据到来时，管理器应登记新创建的窗口");
+    QCOMPARE(manager->getWindow(QStringLiteral("lifecycle_test")), recreatedWindow);
 
     manager->closeAllWindows();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);

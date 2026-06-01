@@ -96,6 +96,7 @@ struct SessionData {
     CommType commType = CommType::Serial;   ///< 通信类型
     SerialConfig serialConfig;              ///< 串口配置
     NetworkConfig networkConfig;            ///< 网络配置
+    HidConfig hidConfig;                    ///< HID 配置
 
     // 协议配置
     int protocolType = 0;               ///< 协议类型
@@ -158,6 +159,22 @@ struct SessionData {
         networkObj["remoteIp"] = networkConfig.remoteIp;
         networkObj["remotePort"] = networkConfig.remotePort;
         obj["networkConfig"] = networkObj;
+
+        // HID 配置
+        QJsonObject hidObj;
+        hidObj["name"] = hidConfig.name;
+        hidObj["path"] = hidConfig.path;
+        hidObj["vendorId"] = static_cast<int>(hidConfig.vendorId);
+        hidObj["productId"] = static_cast<int>(hidConfig.productId);
+        hidObj["interfaceNumber"] = static_cast<int>(hidConfig.interfaceNumber);
+        hidObj["usagePage"] = static_cast<int>(hidConfig.usagePage);
+        hidObj["usage"] = static_cast<int>(hidConfig.usage);
+        hidObj["inputReportLength"] = hidConfig.inputReportLength;
+        hidObj["outputReportLength"] = hidConfig.outputReportLength;
+        hidObj["firstDataIsLength"] = hidConfig.firstDataIsLength;
+        hidObj["outReportId"] = static_cast<int>(hidConfig.outReportId);
+        hidObj["removeInReportId"] = hidConfig.removeInReportId;
+        obj["hidConfig"] = hidObj;
 
         // 协议和显示模式
         obj["protocolType"] = protocolType;
@@ -234,6 +251,21 @@ struct SessionData {
         data.networkConfig.listenPort = networkObj["listenPort"].toInt(8080);
         data.networkConfig.remoteIp = networkObj["remoteIp"].toString();
         data.networkConfig.remotePort = networkObj["remotePort"].toInt(0);
+
+        // HID 配置
+        QJsonObject hidObj = obj["hidConfig"].toObject();
+        data.hidConfig.name = hidObj["name"].toString();
+        data.hidConfig.path = hidObj["path"].toString();
+        data.hidConfig.vendorId = static_cast<quint16>(hidObj["vendorId"].toInt(0));
+        data.hidConfig.productId = static_cast<quint16>(hidObj["productId"].toInt(0));
+        data.hidConfig.interfaceNumber = static_cast<quint8>(hidObj["interfaceNumber"].toInt(0));
+        data.hidConfig.usagePage = static_cast<quint16>(hidObj["usagePage"].toInt(0));
+        data.hidConfig.usage = static_cast<quint16>(hidObj["usage"].toInt(0));
+        data.hidConfig.inputReportLength = hidObj["inputReportLength"].toInt(64);
+        data.hidConfig.outputReportLength = hidObj["outputReportLength"].toInt(64);
+        data.hidConfig.firstDataIsLength = hidObj["firstDataIsLength"].toBool(false);
+        data.hidConfig.outReportId = static_cast<quint8>(hidObj["outReportId"].toInt(0));
+        data.hidConfig.removeInReportId = hidObj["removeInReportId"].toBool(false);
 
         // 协议和显示模式
         data.protocolType = obj["protocolType"].toInt();

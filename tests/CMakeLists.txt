@@ -27,11 +27,20 @@ set(TEST_SOURCES
     unit/TestTabbedReceiveWidget.cpp
     unit/TestTerminalModeWidget.cpp
     unit/TestTranslationCompleteness.cpp
+    unit/TestHidCommunication.cpp
+    unit/TestReleaseMetadata.cpp
 )
 
 # 创建测试可执行文件
 add_executable(ComAssistant_tests
     ${TEST_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/ICommunication.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
 )
@@ -96,7 +105,18 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.cpp
 )
+
+if(COMASSISTANT_HIDAPI_TARGET)
+    target_compile_definitions(ComAssistant_tests PRIVATE COMASSISTANT_ENABLE_HIDAPI)
+    target_link_libraries(ComAssistant_tests PRIVATE ${COMASSISTANT_HIDAPI_TARGET})
+endif()
 
 # 注册测试
 add_test(NAME ComAssistant_tests COMMAND ComAssistant_tests)

@@ -114,11 +114,14 @@ struct NetworkConfig {
  */
 struct HidConfig {
     QString name;                   ///< 设备名称
+    QString path;                   ///< hidapi 设备路径，优先用于重新打开同一物理设备
     quint16 vendorId = 0;           ///< 厂商ID
     quint16 productId = 0;          ///< 产品ID
     quint8 interfaceNumber = 0;     ///< 接口号
-    quint8 usagePage = 0;           ///< 使用页
-    quint8 usage = 0;               ///< 使用
+    quint16 usagePage = 0;          ///< 使用页，厂商自定义页常见为 0xFF00
+    quint16 usage = 0;              ///< 使用
+    int inputReportLength = 64;     ///< 输入报告长度（字节，包含可能存在的 Report ID）
+    int outputReportLength = 64;    ///< 输出报告长度（字节，包含可能存在的 Report ID）
     bool firstDataIsLength = false; ///< 首字节为长度
     quint8 outReportId = 0;         ///< 输出报告ID
     bool removeInReportId = false;  ///< 移除输入报告ID

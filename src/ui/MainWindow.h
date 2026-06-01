@@ -150,6 +150,7 @@ private slots:
     void onToolbarBaudChanged(int index);
     void onOpenPortClicked();
     void refreshPorts();
+    void refreshHidDevices();  ///< 刷新 HID 设备列表，复用端口下拉框显示
 
     // 状态栏更新
     void updateStatusBar();
@@ -211,6 +212,7 @@ private:
     // 配置
     SerialConfig m_serialConfig;
     NetworkConfig m_networkConfig;
+    HidConfig m_hidConfig;
 
     // UI组件
     SideNavigationBar* m_sideNavBar = nullptr;

@@ -33,10 +33,16 @@ std::unique_ptr<ICommunication> CommunicationFactory::createUdp(const NetworkCon
     return std::make_unique<UdpSocket>(config);
 }
 
+std::unique_ptr<ICommunication> CommunicationFactory::createHid(const HidConfig& config)
+{
+    return std::make_unique<HidDevice>(config);
+}
+
 std::unique_ptr<ICommunication> CommunicationFactory::create(
     CommType type,
     const SerialConfig& serialConfig,
-    const NetworkConfig& networkConfig)
+    const NetworkConfig& networkConfig,
+    const HidConfig& hidConfig)
 {
     switch (type) {
         case CommType::Serial:
@@ -48,8 +54,7 @@ std::unique_ptr<ICommunication> CommunicationFactory::create(
         case CommType::Udp:
             return createUdp(networkConfig);
         case CommType::Hid:
-            // TODO: HID实现
-            return nullptr;
+            return createHid(hidConfig);
         default:
             return nullptr;
     }
@@ -79,6 +84,11 @@ ICommunication* CommunicationFactory::createUdp(const NetworkConfig& config, QOb
     return new UdpSocket(config, parent);
 }
 
+ICommunication* CommunicationFactory::createHid(const HidConfig& config, QObject* parent)
+{
+    return new HidDevice(config, parent);
+}
+
 //=============================================================================
 // 工具方法
 //=============================================================================
@@ -101,8 +111,8 @@ QList<CommType> CommunicationFactory::supportedTypes()
         CommType::Serial,
         CommType::TcpClient,
         CommType::TcpServer,
-        CommType::Udp
-        // CommType::Hid  // 暂未实现
+        CommType::Udp,
+        CommType::Hid
     };
 }
 
