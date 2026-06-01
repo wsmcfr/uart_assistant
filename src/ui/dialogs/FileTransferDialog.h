@@ -18,6 +18,9 @@
 #include <QGroupBox>
 #include <QTextEdit>
 #include <QEvent>
+#include <QCheckBox>
+#include <QSpinBox>
+#include <QStackedWidget>
 
 #include "transfer/FileTransfer.h"
 
@@ -57,33 +60,81 @@ signals:
 private slots:
     void onBrowseClicked();
     void onStartClicked();
+    void onPauseClicked();
     void onCancelClicked();
     void onProgressUpdated(const TransferProgress& progress);
     void onTransferCompleted(bool success, const QString& message);
+    void onModeChanged(int index);
+    void onFilePathChanged(const QString& path);
 
 protected:
     void changeEvent(QEvent* event) override;
 
 private:
+    enum class DialogTransferMode {
+        RawStream,
+        StandardProtocol,
+        CustomOta
+    };
+
     void setupUi();
     void updateUI();
+    void updateFileInfo();
+    void resetFileInfo();
+    void updateEstimatedInfo();
+    void setTransferControlsEnabled(bool enabled);
+    DialogTransferMode currentMode() const;
+    int currentBlockSize() const;
+    int currentIntervalMs() const;
+    bool calculateSelectedFileCrc32(quint32& crc32, QString& errorMessage) const;
     void appendLog(const QString& message);
     void retranslateUi();
 
 private:
+    // 模式选择
+    QComboBox* m_modeCombo = nullptr;
+
     // 传输方向
+    QGroupBox* m_directionGroup = nullptr;
     QRadioButton* m_sendRadio = nullptr;
     QRadioButton* m_receiveRadio = nullptr;
 
     // 协议选择
+    QLabel* m_protocolLabel = nullptr;
     QComboBox* m_protocolCombo = nullptr;
+    QWidget* m_standardOptionsWidget = nullptr;
+    QStackedWidget* m_optionsStack = nullptr;
+
+    // 裸流参数
+    QWidget* m_rawOptionsWidget = nullptr;
+    QSpinBox* m_rawBlockSizeSpin = nullptr;
+    QSpinBox* m_rawIntervalSpin = nullptr;
+
+    // OTA 参数
+    QWidget* m_otaOptionsWidget = nullptr;
+    QLineEdit* m_otaMagicEdit = nullptr;
+    QSpinBox* m_otaBlockSizeSpin = nullptr;
+    QSpinBox* m_otaIntervalSpin = nullptr;
+    QCheckBox* m_otaWaitAckCheck = nullptr;
+    QLineEdit* m_otaAckEdit = nullptr;
+    QSpinBox* m_otaTimeoutSpin = nullptr;
+    QSpinBox* m_otaRetrySpin = nullptr;
 
     // 文件选择
     QLineEdit* m_filePathEdit = nullptr;
     QPushButton* m_browseBtn = nullptr;
 
+    // 文件信息
+    QGroupBox* m_fileInfoGroup = nullptr;
+    QLabel* m_fileNameValueLabel = nullptr;
+    QLabel* m_fileSizeValueLabel = nullptr;
+    QLabel* m_crc32ValueLabel = nullptr;
+    QLabel* m_blockCountValueLabel = nullptr;
+    QLabel* m_estimatedValueLabel = nullptr;
+
     // 控制按钮
     QPushButton* m_startBtn = nullptr;
+    QPushButton* m_pauseBtn = nullptr;
     QPushButton* m_cancelBtn = nullptr;
 
     // 进度显示
@@ -101,6 +152,9 @@ private:
     // 状态
     bool m_connected = false;
     bool m_iapMode = false;
+    bool m_transferPaused = false;
+    quint32 m_selectedFileCrc32 = 0;
+    qint64 m_selectedFileSize = 0;
 };
 
 } // namespace ComAssistant

@@ -304,6 +304,21 @@
         <li><strong>HID Report:</strong> Output、Set Feature、Get Feature 会显示 Report 预览并记录方向、类型、长度和 HEX 内容 / Output, Set Feature and Get Feature show Report previews and record direction, type, length and HEX content</li>
     </ul>
 
+    <h3>发送文件 / Send File</h3>
+    <p><strong>中文：</strong>工具栏的 <strong>发送文件</strong> 按钮可打开文件发送中心，适合发送 Keil/GD32 工程生成的 <code>.bin</code>、<code>.hex</code> 或其他文件。</p>
+    <p><strong>English:</strong> Use the <strong>Send File</strong> toolbar button to open the file transfer center for <code>.bin</code>, <code>.hex</code> or other files.</p>
+
+    <ul>
+        <li><strong>裸流分块 / Raw Chunks:</strong> 按指定“每包字节”和“包间隔”直接发送文件内容，适合 MCU 程序自行顺序接收。</li>
+        <li><strong>XMODEM/YMODEM:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader。</li>
+        <li><strong>自定义 OTA / Custom OTA:</strong> 发送文件头、分块数据和结束包，可选择等待 <code>ACK</code>、设置超时和重试。</li>
+    </ul>
+
+    <div class="warning">
+        <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；发送过程中不要断开连接或关闭程序。<br>
+        Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity, and do not disconnect during transfer.
+    </div>
+
     <h3>示例 / Examples:</h3>
     <p><strong>文本发送 / Text Send:</strong></p>
     <pre>Hello World</pre>
@@ -410,9 +425,9 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.5.0（发布于 2026-06-01 / released on 2026-06-01）</p>
-    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.5.0/ComAssistant_v1.5.0_Windows_x64_Portable.zip">ComAssistant_v1.5.0_Windows_x64_Portable.zip</a><br>
-    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.5.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
+    <p><strong>当前版本 / Current Version:</strong> v1.6.0（发布于 2026-06-01 / released on 2026-06-01）</p>
+    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.6.0/ComAssistant_v1.6.0_Windows_x64_Portable.zip">ComAssistant_v1.6.0_Windows_x64_Portable.zip</a><br>
+    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.6.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">

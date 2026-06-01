@@ -210,7 +210,34 @@ void TestTranslationCompleteness::testMainWindowToolbarTranslations()
             {QStringLiteral("停止服务"), QStringLiteral("Stop Service")},
             {QStringLiteral("解绑"), QStringLiteral("Unbind")},
             {QStringLiteral("打开 HID"), QStringLiteral("Open HID")},
-            {QStringLiteral("关闭 HID"), QStringLiteral("Close HID")}
+            {QStringLiteral("关闭 HID"), QStringLiteral("Close HID")},
+            {QStringLiteral("发送文件"), QStringLiteral("Send File")},
+            {QStringLiteral("发送文件：裸流分块、XMODEM/YMODEM 或自定义 OTA"), QStringLiteral("Send file: raw chunks, XMODEM/YMODEM, or custom OTA")}
+        });
+}
+
+void TestTranslationCompleteness::testFileTransferDialogTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+    verifyTranslations(
+        translations,
+        QStringLiteral("ComAssistant::FileTransferDialog"),
+        {
+            {QStringLiteral("发送模式:"), QStringLiteral("Transfer Mode:")},
+            {QStringLiteral("裸流分块"), QStringLiteral("Raw Chunks")},
+            {QStringLiteral("XMODEM/YMODEM"), QStringLiteral("XMODEM/YMODEM")},
+            {QStringLiteral("自定义 OTA"), QStringLiteral("Custom OTA")},
+            {QStringLiteral("每包字节:"), QStringLiteral("Bytes/Packet:")},
+            {QStringLiteral("包间隔:"), QStringLiteral("Packet Interval:")},
+            {QStringLiteral("等待 ACK"), QStringLiteral("Wait for ACK")},
+            {QStringLiteral("ACK超时:"), QStringLiteral("ACK Timeout:")},
+            {QStringLiteral("重试次数:"), QStringLiteral("Retries:")},
+            {QStringLiteral("文件信息"), QStringLiteral("File Information")},
+            {QStringLiteral("文件名:"), QStringLiteral("File Name:")},
+            {QStringLiteral("大小:"), QStringLiteral("Size:")},
+            {QStringLiteral("分块数:"), QStringLiteral("Blocks:")},
+            {QStringLiteral("预计耗时:"), QStringLiteral("Estimated Time:")},
+            {QStringLiteral("请先打开当前连接后再发送文件。"), QStringLiteral("Please open the current connection before sending a file.")}
         });
 }
 

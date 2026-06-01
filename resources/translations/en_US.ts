@@ -1455,24 +1455,24 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="40" />
         <source>传输方向</source>
-        <translation>Transmission direction</translation>
+        <translation>Transfer Direction</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="42" />
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="317" />
         <source>发送文件</source>
-        <translation>Send files</translation>
+        <translation>Send File</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="43" />
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="318" />
         <source>接收文件</source>
-        <translation>receive file</translation>
+        <translation>Receive File</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="52" />
         <source>传输协议:</source>
-        <translation>transport agreement</translation>
+        <translation>Protocol:</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="65" />
@@ -1508,13 +1508,13 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="84" />
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="331" />
         <source>速度: --</source>
-        <translation>Speed:</translation>
+        <translation>Speed: --</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="85" />
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="332" />
         <source>数据包: 0/0</source>
-        <translation>Packs</translation>
+        <translation>Packets: 0/0</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="93" />
@@ -1525,7 +1525,7 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="103" />
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="322" />
         <source>开始传输</source>
-        <translation>Starting Transfer</translation>
+        <translation>Start Transfer</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="104" />
@@ -1548,7 +1548,7 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="134" />
         <source>所有文件 (*);;HEX文件 (*.hex);;BIN文件 (*.bin)</source>
-        <translation>All files (*);; hex files (* .hex);; bin files (* .bin)</translation>
+        <translation>All Files (*);;HEX Files (*.hex);;BIN Files (*.bin)</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="137" />
@@ -1577,11 +1577,6 @@ Time spent: % 4</translation>
         <translation>Failed to create transfer object</translation>
     </message>
     <message>
-        <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="190" />
-        <source>传输开始...</source>
-        <translation>Transmission started...</translation>
-    </message>
-    <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="192" />
         <source>启动传输失败</source>
         <translation>Failed to start transfer</translation>
@@ -1594,7 +1589,7 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="211" />
         <source>等待开始...</source>
-        <translation>Menunggu mulai</translation>
+        <translation>Waiting to start...</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="214" />
@@ -1609,17 +1604,17 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="227" />
         <source>速度: %1 KB/s</source>
-        <translation>Speed: % 1 KB/s</translation>
+        <translation>Speed: %1 KB/s</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="230" />
         <source>数据包: %1/%2</source>
-        <translation>Packet: % 1/% 2</translation>
+        <translation>Packets: %1/%2</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="234" />
         <source>重试 %1 次</source>
-        <translation>Retry % 1 times</translation>
+        <translation>Retried %1 times</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="250" />
@@ -1629,7 +1624,7 @@ Time spent: % 4</translation>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="251" />
         <source>传输成功: %1</source>
-        <translation>Transfer succeeded: % 1</translation>
+        <translation>Transfer succeeded: %1</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="252" />
@@ -1668,6 +1663,114 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/dialogs/FileTransferDialog.cpp" line="310" />
         <source>选择固件文件 (.hex/.bin)</source>
         <translation>Select Firmware File (.hex/.bin)</translation>
+    </message>
+    <message>
+        <source>发送模式:</source>
+        <translation>Transfer Mode:</translation>
+    </message>
+    <message>
+        <source>裸流分块</source>
+        <translation>Raw Chunks</translation>
+    </message>
+    <message>
+        <source>XMODEM/YMODEM</source>
+        <translation>XMODEM/YMODEM</translation>
+    </message>
+    <message>
+        <source>自定义 OTA</source>
+        <translation>Custom OTA</translation>
+    </message>
+    <message>
+        <source>每包字节:</source>
+        <translation>Bytes/Packet:</translation>
+    </message>
+    <message>
+        <source>包间隔:</source>
+        <translation>Packet Interval:</translation>
+    </message>
+    <message>
+        <source>等待 ACK</source>
+        <translation>Wait for ACK</translation>
+    </message>
+    <message>
+        <source>ACK超时:</source>
+        <translation>ACK Timeout:</translation>
+    </message>
+    <message>
+        <source>重试次数:</source>
+        <translation>Retries:</translation>
+    </message>
+    <message>
+        <source>文件信息</source>
+        <translation>File Information</translation>
+    </message>
+    <message>
+        <source>文件名:</source>
+        <translation>File Name:</translation>
+    </message>
+    <message>
+        <source>大小:</source>
+        <translation>Size:</translation>
+    </message>
+    <message>
+        <source>CRC32:</source>
+        <translation>CRC32:</translation>
+    </message>
+    <message>
+        <source>分块数:</source>
+        <translation>Blocks:</translation>
+    </message>
+    <message>
+        <source>预计耗时:</source>
+        <translation>Estimated Time:</translation>
+    </message>
+    <message>
+        <source>暂停</source>
+        <translation>Pause</translation>
+    </message>
+    <message>
+        <source>继续</source>
+        <translation>Resume</translation>
+    </message>
+    <message>
+        <source>请先打开当前连接后再发送文件。</source>
+        <translation>Please open the current connection before sending a file.</translation>
+    </message>
+    <message>
+        <source>传输开始...</source>
+        <translation>Transfer started...</translation>
+    </message>
+    <message>
+        <source>继续裸流发送</source>
+        <translation>Raw transfer resumed</translation>
+    </message>
+    <message>
+        <source>暂停裸流发送</source>
+        <translation>Raw transfer paused</translation>
+    </message>
+    <message>
+        <source>继续 OTA 发送</source>
+        <translation>OTA transfer resumed</translation>
+    </message>
+    <message>
+        <source>暂停 OTA 发送</source>
+        <translation>OTA transfer paused</translation>
+    </message>
+    <message>
+        <source>计算失败</source>
+        <translation>Failed to calculate</translation>
+    </message>
+    <message>
+        <source>CRC32计算失败: %1</source>
+        <translation>CRC32 calculation failed: %1</translation>
+    </message>
+    <message>
+        <source>由串口速率和设备处理速度决定</source>
+        <translation>Depends on baud rate and device processing speed</translation>
+    </message>
+    <message>
+        <source>约 %1 秒（仅按包间隔估算）</source>
+        <translation>About %1 s (estimated from packet interval only)</translation>
     </message>
 </context>
 <context>
@@ -2472,6 +2575,14 @@ Time spent: % 4</translation>
     <message>
         <source>菜单</source>
         <translation>Menu</translation>
+    </message>
+    <message>
+        <source>发送文件</source>
+        <translation>Send File</translation>
+    </message>
+    <message>
+        <source>发送文件：裸流分块、XMODEM/YMODEM 或自定义 OTA</source>
+        <translation>Send file: raw chunks, XMODEM/YMODEM, or custom OTA</translation>
     </message>
     <message>
         <source>导出数据...</source>

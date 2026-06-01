@@ -414,6 +414,19 @@ void MainWindow::setupToolBar()
     m_mainToolBar->addSeparator();
 
     /*
+     * 文件发送入口放在连接按钮右侧、弹性空白左侧，也就是主工具栏中部。
+     * 该按钮打开统一文件发送中心，内部再选择裸流、XMODEM/YMODEM 或 OTA。
+     */
+    m_fileTransferBtn = new QPushButton(tr("发送文件"));
+    m_fileTransferBtn->setMinimumWidth(96);
+    m_fileTransferBtn->setMaximumWidth(120);
+    m_fileTransferBtn->setToolTip(tr("发送文件：裸流分块、XMODEM/YMODEM 或自定义 OTA"));
+    connect(m_fileTransferBtn, &QPushButton::clicked, this, &MainWindow::onFileTransfer);
+    m_mainToolBar->addWidget(m_fileTransferBtn);
+
+    m_mainToolBar->addSeparator();
+
+    /*
      * 主工具栏左侧是连接参数，右侧是全局操作和显示模式。中间使用弹性
      * spacer 吃掉窗口剩余宽度，避免所有控件挤在左侧、右边留出一整块空白。
      */
@@ -930,6 +943,15 @@ void MainWindow::onDisconnectClicked()
 
 void MainWindow::onDataReceived(const QByteArray& data)
 {
+    /*
+     * 文件传输对话框中的 XMODEM/YMODEM 和自定义 OTA ACK 模式都依赖
+     * 设备返回数据推进状态机。这里在正常显示接收数据之前先转发一份，
+     * 不拦截原始数据，保证用户仍能在接收区看到 Bootloader 返回内容。
+     */
+    if (m_fileTransferDialog) {
+        m_fileTransferDialog->processReceivedData(data);
+    }
+
     // 串口类型继续进入当前显示模式；网络/HID 类型进入对应专用工作台。
     if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
         m_currentModeWidget->appendReceivedData(data);
@@ -1062,6 +1084,9 @@ void MainWindow::onConnectionStatusChanged(bool connected)
     }
     if (m_debugModeWidget) {
         m_debugModeWidget->setConnected(connected);
+    }
+    if (m_fileTransferDialog) {
+        m_fileTransferDialog->setConnected(connected);
     }
     if (m_tcpClientWorkspace) {
         m_tcpClientWorkspace->setConnected(connected);
@@ -1757,6 +1782,10 @@ void MainWindow::retranslateUi()
     }
     if (m_baudCombo) {
         m_baudCombo->setToolTip(tr("波特率"));
+    }
+    if (m_fileTransferBtn) {
+        m_fileTransferBtn->setText(tr("发送文件"));
+        m_fileTransferBtn->setToolTip(tr("发送文件：裸流分块、XMODEM/YMODEM 或自定义 OTA"));
     }
 
     // 更新显示模式下拉框（clear + addItem 确保翻译生效）
@@ -2561,6 +2590,7 @@ void MainWindow::onFileTransfer()
 
     // 更新连接状态
     m_fileTransferDialog->setConnected(m_connected);
+    m_fileTransferDialog->setIAPMode(false);
     m_fileTransferDialog->show();
     m_fileTransferDialog->raise();
     m_fileTransferDialog->activateWindow();

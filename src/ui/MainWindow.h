@@ -263,6 +263,7 @@ private:
     QComboBox* m_baudCombo = nullptr;
     QPushButton* m_refreshBtn = nullptr;   ///< 刷新按钮
     QPushButton* m_openPortBtn = nullptr;
+    QPushButton* m_fileTransferBtn = nullptr; ///< 工具栏发送文件按钮，打开三模式文件发送中心
 
     // 工具栏控件对应的Action（用于控制可见性）
     QAction* m_portComboAction = nullptr;

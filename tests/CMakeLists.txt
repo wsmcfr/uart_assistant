@@ -30,6 +30,7 @@ set(TEST_SOURCES
     unit/TestHidCommunication.cpp
     unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
+    unit/TestFileTransfer.cpp
 )
 
 # 创建测试可执行文件
@@ -43,6 +44,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.h
@@ -124,6 +126,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp
 )
 
 if(COMASSISTANT_HIDAPI_TARGET)
