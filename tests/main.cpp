@@ -27,6 +27,7 @@
 #include "unit/TestReleaseMetadata.h"
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
+#include "unit/TestMainWindowCommunicationController.h"
 
 int main(int argc, char *argv[])
 {
@@ -141,6 +142,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] DocumentationLinks";
         TestDocumentationLinks test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowCommunicationController";
+        TestMainWindowCommunicationController test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

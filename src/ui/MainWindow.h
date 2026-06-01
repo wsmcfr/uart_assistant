@@ -28,7 +28,6 @@
 #include <memory>
 
 #include "communication/ICommunication.h"
-#include "communication/CommunicationFactory.h"
 #include "protocol/IProtocol.h"
 #include "config/AppConfig.h"
 #include "modes/IModeWidget.h"
@@ -82,6 +81,7 @@ class SerialModeWidget;
 class TerminalModeWidget;
 class FrameModeWidget;
 class DebugModeWidget;
+class MainWindowCommunicationController;
 
 /**
  * @brief 主窗口类
@@ -213,7 +213,7 @@ private:
 
 private:
     // 通信相关
-    std::unique_ptr<ICommunication> m_communication;
+    MainWindowCommunicationController* m_commController = nullptr; ///< 通信生命周期控制器，负责创建、打开、关闭和发送
     CommType m_currentCommType = CommType::Serial;
     bool m_connected = false;
 

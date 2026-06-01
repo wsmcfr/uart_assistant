@@ -7,6 +7,7 @@
 
 #include "MainWindow.h"
 #include "HelpDialog.h"
+#include "MainWindowCommunicationController.h"
 #include "PlotterManager.h"
 #include "PlotterWindow.h"
 #include "dialogs/ToolboxDialog.h"
@@ -40,7 +41,6 @@
 #include "utils/Logger.h"
 #include "config/ConfigManager.h"
 #include "config/DisplaySettingsPolicy.h"
-#include "communication/TcpClient.h"
 #include "communication/TcpServer.h"
 #include "communication/UdpSocket.h"
 #include "communication/HidDevice.h"
@@ -86,6 +86,8 @@ namespace ComAssistant {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    m_commController = new MainWindowCommunicationController(this);
+
     setupUi();
     setupToolBar();
     setupStatusBar();
@@ -517,6 +519,49 @@ void MainWindow::setupConnections()
 {
     // 注意：不要直接连接 m_sendWidget->sendRequested，因为它已经通过
     // SerialModeWidget 的 sendDataRequested 转发了，直接连接会导致数据发送两次
+    if (m_commController) {
+        /*
+         * 通信控制器不直接依赖 UI 工作台。这里用回调把 TCP Client
+         * 自动重连选项延迟提供给控制器，保持控制器只知道配置值。
+         */
+        m_commController->setTcpClientReconnectOptionsProvider([this]() {
+            MainWindowCommunicationController::TcpClientReconnectOptions options;
+            options.enabled = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->autoReconnectEnabled()
+                : false;
+            options.intervalMs = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->reconnectIntervalMs()
+                : 3000;
+            return options;
+        });
+
+        connect(m_commController, &MainWindowCommunicationController::dataReceived,
+                this, &MainWindow::onDataReceived);
+        connect(m_commController, &MainWindowCommunicationController::dataSent,
+                this, &MainWindow::onDataSent);
+        connect(m_commController, &MainWindowCommunicationController::connectionStatusChanged,
+                this, &MainWindow::onConnectionStatusChanged);
+        connect(m_commController, &MainWindowCommunicationController::errorOccurred,
+                this, &MainWindow::onErrorOccurred);
+        connect(m_commController, &MainWindowCommunicationController::tcpServerClientConnected,
+                this, [this](const QString& clientId) {
+            if (m_tcpServerWorkspace) {
+                m_tcpServerWorkspace->addClient(clientId);
+            }
+        });
+        connect(m_commController, &MainWindowCommunicationController::tcpServerClientDisconnected,
+                this, [this](const QString& clientId) {
+            if (m_tcpServerWorkspace) {
+                m_tcpServerWorkspace->removeClient(clientId);
+            }
+        });
+        connect(m_commController, &MainWindowCommunicationController::udpDatagramRemoteReceived,
+                this, [this](const QString& senderIp, int senderPort) {
+            if (m_udpWorkspace) {
+                m_udpWorkspace->addRecentRemote(senderIp, senderPort);
+            }
+        });
+    }
 
     // 快捷发送
     if (m_quickSendWidget) {
@@ -558,7 +603,9 @@ void MainWindow::setupConnections()
     if (m_tcpServerWorkspace) {
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::sendToClientRequested,
                 this, [this](const QString& clientId, const QByteArray& data) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法发送到客户端。"), 3000);
                 return;
@@ -571,7 +618,9 @@ void MainWindow::setupConnections()
         });
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::broadcastDataRequested,
                 this, [this](const QByteArray& data) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法广播。"), 3000);
                 return;
@@ -586,7 +635,9 @@ void MainWindow::setupConnections()
         });
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::disconnectClientRequested,
                 this, [this](const QString& clientId) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法断开客户端。"), 3000);
                 return;
@@ -603,7 +654,9 @@ void MainWindow::setupConnections()
     if (m_udpWorkspace) {
         connect(m_udpWorkspace, &UdpWorkspaceWidget::sendDatagramRequested,
                 this, [this](const QByteArray& data, const QString& ip, int port) {
-            auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get());
+            auto* udpSocket = m_commController
+                ? dynamic_cast<UdpSocket*>(m_commController->communication())
+                : nullptr;
             if (!udpSocket || !m_connected) {
                 statusBar()->showMessage(tr("UDP 未绑定，无法发送数据报。"), 3000);
                 return;
@@ -620,7 +673,9 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onSendData);
         connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportSetRequested,
                 this, [this](const QByteArray& report) {
-            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            auto* hidDevice = m_commController
+                ? dynamic_cast<HidDevice*>(m_commController->communication())
+                : nullptr;
             if (!hidDevice || !m_connected) {
                 statusBar()->showMessage(tr("HID 未打开，无法发送 Feature Report。"), 3000);
                 return;
@@ -634,7 +689,9 @@ void MainWindow::setupConnections()
         });
         connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportGetRequested,
                 this, [this](const QByteArray& requestReport) {
-            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            auto* hidDevice = m_commController
+                ? dynamic_cast<HidDevice*>(m_commController->communication())
+                : nullptr;
             if (!hidDevice || !m_connected) {
                 statusBar()->showMessage(tr("HID 未打开，无法读取 Feature Report。"), 3000);
                 return;
@@ -845,64 +902,20 @@ void MainWindow::applyDisplaySettings()
 
 void MainWindow::createCommunication()
 {
-    destroyCommunication();
-
-    m_communication = CommunicationFactory::create(m_currentCommType,
-                                                    m_serialConfig,
-                                                    m_networkConfig,
-                                                    m_hidConfig);
-
-    if (m_communication) {
-        if (auto* tcpClient = dynamic_cast<TcpClient*>(m_communication.get())) {
-            const bool autoReconnect = m_tcpClientWorkspace
-                ? m_tcpClientWorkspace->autoReconnectEnabled()
-                : false;
-            const int reconnectIntervalMs = m_tcpClientWorkspace
-                ? m_tcpClientWorkspace->reconnectIntervalMs()
-                : 3000;
-            tcpClient->setAutoReconnect(autoReconnect, reconnectIntervalMs);
-        }
-
-        connect(m_communication.get(), &ICommunication::dataReceived,
-                this, &MainWindow::onDataReceived);
-        connect(m_communication.get(), &ICommunication::dataSent,
-                this, &MainWindow::onDataSent);
-        connect(m_communication.get(), &ICommunication::connectionStatusChanged,
-                this, &MainWindow::onConnectionStatusChanged);
-        connect(m_communication.get(), &ICommunication::errorOccurred,
-                this, &MainWindow::onErrorOccurred);
-
-        if (auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get())) {
-            connect(tcpServer, &TcpServer::clientConnected,
-                    this, [this](const QString& clientId) {
-                if (m_tcpServerWorkspace) {
-                    m_tcpServerWorkspace->addClient(clientId);
-                }
-            });
-            connect(tcpServer, &TcpServer::clientDisconnected,
-                    this, [this](const QString& clientId) {
-                if (m_tcpServerWorkspace) {
-                    m_tcpServerWorkspace->removeClient(clientId);
-                }
-            });
-        }
-        if (auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get())) {
-            connect(udpSocket, &UdpSocket::datagramReceived,
-                    this, [this](const QByteArray& data, const QString& senderIp, int senderPort) {
-                Q_UNUSED(data)
-                if (m_udpWorkspace) {
-                    m_udpWorkspace->addRecentRemote(senderIp, senderPort);
-                }
-            });
-        }
+    if (!m_commController) {
+        return;
     }
+
+    m_commController->openCurrent(m_currentCommType,
+                                  m_serialConfig,
+                                  m_networkConfig,
+                                  m_hidConfig);
 }
 
 void MainWindow::destroyCommunication()
 {
-    if (m_communication) {
-        m_communication->close();
-        m_communication.reset();
+    if (m_commController) {
+        m_commController->closeCurrent();
     }
 }
 
@@ -911,14 +924,14 @@ void MainWindow::onConnectClicked()
     syncCurrentWorkspaceToConfig();
     createCommunication();
 
-    if (!m_communication) {
+    if (!m_commController || !m_commController->communication()) {
         QMessageBox::critical(this, tr("错误"), tr("无法创建通信实例"));
         return;
     }
 
-    if (!m_communication->open()) {
+    if (!m_commController->isConnected()) {
         QMessageBox::critical(this, tr("错误"),
-            tr("无法打开连接: %1").arg(m_communication->lastError()));
+            tr("无法打开连接: %1").arg(m_commController->lastError()));
         updateCommunicationWidgetsForType();
         updateConnectionButtonText();
         return;
@@ -927,14 +940,15 @@ void MainWindow::onConnectClicked()
     m_connected = true;
     updateCommunicationWidgetsForType();
     updateConnectionButtonText();
-    LOG_INFO(QString("Connected: %1").arg(m_communication->statusString()));
+    LOG_INFO(QString("Connected: %1").arg(
+        m_commController->communication()
+            ? m_commController->communication()->statusString()
+            : QString()));
 }
 
 void MainWindow::onDisconnectClicked()
 {
-    if (m_communication) {
-        m_communication->close();
-    }
+    destroyCommunication();
     m_connected = false;
     updateCommunicationWidgetsForType();
     updateConnectionButtonText();
@@ -1054,14 +1068,13 @@ void MainWindow::onDataSent(const QByteArray& data)
 
 void MainWindow::onSendData(const QByteArray& data)
 {
-    if (!m_communication || !m_connected) {
+    if (!m_commController || !m_commController->isConnected()) {
         statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
         return;
     }
 
-    qint64 written = m_communication->write(data);
-    if (written < 0) {
-        LOG_ERROR(QString("Send failed: %1").arg(m_communication->lastError()));
+    if (!m_commController->sendData(data)) {
+        LOG_ERROR(QString("Send failed: %1").arg(m_commController->lastError()));
     }
 }
 
@@ -1113,7 +1126,9 @@ void MainWindow::onConnectionStatusChanged(bool connected)
 
     if (connected) {
         m_statusLabel->setText(tr("已连接: %1").arg(
-            m_communication ? m_communication->statusString() : QString()));
+            m_commController && m_commController->communication()
+                ? m_commController->communication()->statusString()
+                : QString()));
         m_statusLabel->setProperty("connected", true);
         m_statusLabel->style()->unpolish(m_statusLabel);
         m_statusLabel->style()->polish(m_statusLabel);
