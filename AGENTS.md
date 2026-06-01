@@ -16,6 +16,13 @@
 - 如果确认本次改动不需要更新帮助文档，必须在最终说明中明确写出“不需要更新帮助文档”的理由，避免遗漏。
 - 发布信息相关改动还必须同时遵守下方“更新说明文档”流程，保证 `CHANGELOG.md`、`README.md` 与 `resources/help/quickstart.html` 的版本信息一致。
 
+## 本地 Release 构建目录要求
+
+- 本项目本地可运行的正式 Release 构建目录统一使用 `D:\comassistant\build_release`，不要把可运行版本长期放在 `build_release_hid`、`build_release_vcpkg` 或其他临时目录中。
+- 如果需要启用 USB HID，必须让 `build_release` 通过 vcpkg toolchain 配置并找到 `hidapi`，确保 CMake 输出包含 `hidapi found`，并在 `build_release\CMakeFiles\ComAssistant.dir\flags.make` 中能看到 `COMASSISTANT_ENABLE_HIDAPI`。
+- 如果 `build_release\CMakeCache.txt` 中出现 `hidapi_DIR-NOTFOUND`，说明当前 `build_release` 不是 HID 可用构建，必须重新配置 `build_release`，不能让用户改跑其他构建目录。
+- 本地构建完成后，用户默认运行路径应始终是 `D:\comassistant\build_release\ComAssistant.exe`。
+
 ## 发布流程（每次版本升级必须执行）
 
 ### 1. 版本号更新（3个文件）
@@ -114,8 +121,8 @@ Release Notes 必须包含以下结构：
 
 ```bash
 # 本地 Release 构建
-cmake -B build_release -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build_release --config Release
+cmake -B build_release -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=E:/QT/5.12.9/mingw73_64 -DCMAKE_TOOLCHAIN_FILE=F:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-mingw-dynamic -DVCPKG_FEATURE_FLAGS=manifests
+cmake --build build_release --config Release --parallel
 
 # CI Release 构建（MSVC）
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT" -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
