@@ -24,6 +24,8 @@ set(TEST_SOURCES
     unit/TestDisplaySettingsPolicy.cpp
     unit/TestPlotterDataPolicy.cpp
     unit/TestPlotRenderQuality.cpp
+    unit/TestPlotterRenderCoordinator.cpp
+    unit/TestPlotterAnalysisService.cpp
     unit/TestPlotterStatisticsCalculator.cpp
     unit/TestPlotterManagerLifecycle.cpp
     unit/TestTabbedReceiveWidget.cpp
@@ -64,6 +66,8 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterAnalysisService.h
 )
 
 # 包含目录
@@ -114,6 +118,8 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterAnalysisService.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterStatisticsCalculator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterWindow.cpp

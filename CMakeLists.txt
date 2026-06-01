@@ -250,6 +250,8 @@ set(UI_SOURCES
     src/ui/HelpDialog.cpp
     src/ui/PlotterDataPolicy.cpp
     src/ui/PlotRenderQuality.cpp
+    src/ui/PlotterRenderCoordinator.cpp
+    src/ui/PlotterAnalysisService.cpp
     src/ui/PlotterStatisticsCalculator.cpp
     src/ui/PlotterWindow.cpp
     src/ui/PlotterManager.cpp
@@ -307,6 +309,8 @@ set(UI_HEADERS
     src/ui/HelpDialog.h
     src/ui/PlotterDataPolicy.h
     src/ui/PlotRenderQuality.h
+    src/ui/PlotterRenderCoordinator.h
+    src/ui/PlotterAnalysisService.h
     src/ui/PlotterStatisticsCalculator.h
     src/ui/PlotterWindow.h
     src/ui/PlotterManager.h

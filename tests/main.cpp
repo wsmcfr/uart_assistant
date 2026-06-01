@@ -19,6 +19,8 @@
 #include "unit/TestDisplaySettingsPolicy.h"
 #include "unit/TestPlotterDataPolicy.h"
 #include "unit/TestPlotRenderQuality.h"
+#include "unit/TestPlotterRenderCoordinator.h"
+#include "unit/TestPlotterAnalysisService.h"
 #include "unit/TestPlotterStatisticsCalculator.h"
 #include "unit/TestPlotterManagerLifecycle.h"
 #include "unit/TestTabbedReceiveWidget.h"
@@ -107,6 +109,16 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] PlotRenderQuality";
         TestPlotRenderQuality test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterRenderCoordinator";
+        TestPlotterRenderCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterAnalysisService";
+        TestPlotterAnalysisService test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
