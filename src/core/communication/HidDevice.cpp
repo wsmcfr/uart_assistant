@@ -6,6 +6,7 @@
  */
 
 #include "HidDevice.h"
+#include "HidReportCodec.h"
 #include "utils/Logger.h"
 
 #include <QtGlobal>
@@ -304,37 +305,12 @@ void HidDevice::pollInputReport()
 
 QByteArray HidDevice::buildOutputReport(const QByteArray& data) const
 {
-    const int configuredLength = qMax(1, m_config.outputReportLength);
-    QByteArray report;
-
-    /*
-     * hid_write 要求首字节始终是 Report ID；没有 Report ID 的设备也要
-     * 传 0。上层发送的是 payload，所以这里统一补齐首字节。
-     */
-    report.reserve(configuredLength + 1);
-    report.append(static_cast<char>(m_config.outReportId));
-
-    if (m_config.firstDataIsLength) {
-        report.append(static_cast<char>(qMin(data.size(), 255)));
-    }
-    report.append(data);
-
-    if (report.size() < configuredLength) {
-        report.append(QByteArray(configuredLength - report.size(), '\0'));
-    } else if (report.size() > configuredLength) {
-        report.truncate(configuredLength);
-    }
-
-    return report;
+    return HidReportCodec::buildOutputReport(m_config, data);
 }
 
 QByteArray HidDevice::normalizeInputReport(const QByteArray& report) const
 {
-    QByteArray payload = report;
-    if (m_config.removeInReportId && !payload.isEmpty()) {
-        payload.remove(0, 1);
-    }
-    return payload;
+    return HidReportCodec::normalizeInputReport(m_config, report);
 }
 
 QString HidDevice::displayName() const

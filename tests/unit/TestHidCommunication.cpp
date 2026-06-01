@@ -8,6 +8,7 @@
 #include "TestHidCommunication.h"
 
 #include "communication/CommunicationFactory.h"
+#include "communication/HidReportCodec.h"
 #include "session/SessionData.h"
 
 using namespace ComAssistant;
@@ -59,6 +60,8 @@ void TestHidCommunication::testSessionPersistsHidConfig()
     session.hidConfig.inputReportLength = 64;
     session.hidConfig.outputReportLength = 65;
     session.hidConfig.outReportId = 3;
+    session.hidConfig.featureReportLength = 33;
+    session.hidConfig.featureReportId = 7;
     session.hidConfig.firstDataIsLength = true;
     session.hidConfig.removeInReportId = true;
 
@@ -76,6 +79,49 @@ void TestHidCommunication::testSessionPersistsHidConfig()
     QCOMPARE(restored.hidConfig.inputReportLength, session.hidConfig.inputReportLength);
     QCOMPARE(restored.hidConfig.outputReportLength, session.hidConfig.outputReportLength);
     QCOMPARE(restored.hidConfig.outReportId, session.hidConfig.outReportId);
+    QCOMPARE(restored.hidConfig.featureReportLength, session.hidConfig.featureReportLength);
+    QCOMPARE(restored.hidConfig.featureReportId, session.hidConfig.featureReportId);
     QCOMPARE(restored.hidConfig.firstDataIsLength, session.hidConfig.firstDataIsLength);
     QCOMPARE(restored.hidConfig.removeInReportId, session.hidConfig.removeInReportId);
+}
+
+void TestHidCommunication::testOutputReportCodecBuildsPaddedReport()
+{
+    HidConfig config;
+    config.outputReportLength = 8;
+    config.outReportId = 0x05;
+    config.firstDataIsLength = true;
+
+    const QByteArray report = HidReportCodec::buildOutputReport(config, QByteArray::fromHex("A1B2C3"));
+
+    QCOMPARE(report.size(), 8);
+    QCOMPARE(static_cast<quint8>(report.at(0)), static_cast<quint8>(0x05));
+    QCOMPARE(static_cast<quint8>(report.at(1)), static_cast<quint8>(3));
+    QCOMPARE(report.mid(2, 3), QByteArray::fromHex("A1B2C3"));
+    QCOMPARE(report.mid(5), QByteArray::fromHex("000000"));
+}
+
+void TestHidCommunication::testInputReportCodecRemovesReportId()
+{
+    HidConfig config;
+    config.removeInReportId = true;
+
+    const QByteArray payload =
+        HidReportCodec::normalizeInputReport(config, QByteArray::fromHex("02010203"));
+
+    QCOMPARE(payload, QByteArray::fromHex("010203"));
+}
+
+void TestHidCommunication::testFeatureReportCodecUsesFeatureSettings()
+{
+    HidConfig config;
+    config.featureReportLength = 6;
+    config.featureReportId = 0x09;
+
+    const QByteArray report =
+        HidReportCodec::buildFeatureReport(config, QByteArray::fromHex("112233445566"));
+
+    QCOMPARE(report.size(), 6);
+    QCOMPARE(static_cast<quint8>(report.at(0)), static_cast<quint8>(0x09));
+    QCOMPARE(report.mid(1), QByteArray::fromHex("1122334455"));
 }

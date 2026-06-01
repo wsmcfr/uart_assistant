@@ -152,8 +152,10 @@ bool ConfigManager::loadConfig(const QString& filePath)
     m_hidConfig.usage = m_settings->value("Usage", 0).toUInt();
     m_hidConfig.inputReportLength = m_settings->value("InputReportLength", 64).toInt();
     m_hidConfig.outputReportLength = m_settings->value("OutputReportLength", 64).toInt();
+    m_hidConfig.featureReportLength = m_settings->value("FeatureReportLength", 64).toInt();
     m_hidConfig.firstDataIsLength = m_settings->value("FirstDataIsLength", false).toBool();
     m_hidConfig.outReportId = m_settings->value("OutReportId", 0).toUInt();
+    m_hidConfig.featureReportId = m_settings->value("FeatureReportId", 0).toUInt();
     m_hidConfig.removeInReportId = m_settings->value("RemoveInReportId", false).toBool();
     m_settings->endGroup();
 
@@ -216,8 +218,10 @@ bool ConfigManager::saveConfig(const QString& filePath)
     m_settings->setValue("Usage", m_hidConfig.usage);
     m_settings->setValue("InputReportLength", m_hidConfig.inputReportLength);
     m_settings->setValue("OutputReportLength", m_hidConfig.outputReportLength);
+    m_settings->setValue("FeatureReportLength", m_hidConfig.featureReportLength);
     m_settings->setValue("FirstDataIsLength", m_hidConfig.firstDataIsLength);
     m_settings->setValue("OutReportId", m_hidConfig.outReportId);
+    m_settings->setValue("FeatureReportId", m_hidConfig.featureReportId);
     m_settings->setValue("RemoveInReportId", m_hidConfig.removeInReportId);
     m_settings->endGroup();
 

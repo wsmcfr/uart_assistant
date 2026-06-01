@@ -122,8 +122,10 @@ struct HidConfig {
     quint16 usage = 0;              ///< 使用
     int inputReportLength = 64;     ///< 输入报告长度（字节，包含可能存在的 Report ID）
     int outputReportLength = 64;    ///< 输出报告长度（字节，包含可能存在的 Report ID）
+    int featureReportLength = 64;   ///< Feature 报告长度（字节，包含 Report ID）
     bool firstDataIsLength = false; ///< 首字节为长度
     quint8 outReportId = 0;         ///< 输出报告ID
+    quint8 featureReportId = 0;     ///< Feature 报告ID
     bool removeInReportId = false;  ///< 移除输入报告ID
 };
 

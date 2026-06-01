@@ -36,6 +36,7 @@ add_executable(ComAssistant_tests
     ${TEST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/ICommunication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
@@ -106,6 +107,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp

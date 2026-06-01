@@ -171,8 +171,10 @@ struct SessionData {
         hidObj["usage"] = static_cast<int>(hidConfig.usage);
         hidObj["inputReportLength"] = hidConfig.inputReportLength;
         hidObj["outputReportLength"] = hidConfig.outputReportLength;
+        hidObj["featureReportLength"] = hidConfig.featureReportLength;
         hidObj["firstDataIsLength"] = hidConfig.firstDataIsLength;
         hidObj["outReportId"] = static_cast<int>(hidConfig.outReportId);
+        hidObj["featureReportId"] = static_cast<int>(hidConfig.featureReportId);
         hidObj["removeInReportId"] = hidConfig.removeInReportId;
         obj["hidConfig"] = hidObj;
 
@@ -263,8 +265,10 @@ struct SessionData {
         data.hidConfig.usage = static_cast<quint16>(hidObj["usage"].toInt(0));
         data.hidConfig.inputReportLength = hidObj["inputReportLength"].toInt(64);
         data.hidConfig.outputReportLength = hidObj["outputReportLength"].toInt(64);
+        data.hidConfig.featureReportLength = hidObj["featureReportLength"].toInt(64);
         data.hidConfig.firstDataIsLength = hidObj["firstDataIsLength"].toBool(false);
         data.hidConfig.outReportId = static_cast<quint8>(hidObj["outReportId"].toInt(0));
+        data.hidConfig.featureReportId = static_cast<quint8>(hidObj["featureReportId"].toInt(0));
         data.hidConfig.removeInReportId = hidObj["removeInReportId"].toBool(false);
 
         // 协议和显示模式
