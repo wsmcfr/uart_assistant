@@ -9,7 +9,10 @@
 #define COMASSISTANT_COMMUNICATIONWORKSPACEWIDGET_H
 
 #include <QByteArray>
+#include <QString>
 #include <QWidget>
+
+class QPlainTextEdit;
 
 namespace ComAssistant {
 
@@ -64,6 +67,59 @@ protected:
      * @return 大写 HEX 字符串。
      */
     QString bytesToHex(const QByteArray& data) const;
+
+    /**
+     * @brief 规范化用户输入的 HEX 文本。
+     *
+     * 主要流程：移除 0x 前缀和非十六进制字符；如果剩余位数为奇数，
+     * 在最前面补 0；最后按两个字符一组输出大写 HEX，便于阅读和复制。
+     *
+     * @param text 用户输入的任意 HEX 文本。
+     * @return 规范化后的分组大写 HEX 文本。
+     */
+    QString normalizeHexText(const QString& text) const;
+
+    /**
+     * @brief 生成 payload 的文本预览。
+     *
+     * 主要流程：按 UTF-8 尝试转换为文本；控制字符替换为点号；
+     * 超过 maxChars 时截断并追加省略号，避免日志行被长报文撑开。
+     *
+     * @param data 原始 payload 字节。
+     * @param maxChars 最多保留的预览字符数。
+     * @return 适合显示在日志行里的文本摘要。
+     */
+    QString payloadPreview(const QByteArray& data, int maxChars = 48) const;
+
+    /**
+     * @brief 生成统一收发日志行。
+     *
+     * 日志固定包含时间、方向、数据类型、字节数、HEX 和文本摘要，
+     * 让 TCP、UDP、HID 工作台的历史记录保持同一阅读节奏。
+     *
+     * @param direction 方向，例如 RX 或 TX。
+     * @param type 数据类型，例如 TCP、UDP、HID Output。
+     * @param data 原始字节。
+     * @return 格式化后的单行日志。
+     */
+    QString formatLogLine(const QString& direction,
+                          const QString& type,
+                          const QByteArray& data) const;
+
+    /**
+     * @brief 追加统一日志行到文本控件。
+     *
+     * @param logEdit 目标日志控件。
+     * @param direction 方向，例如 RX 或 TX。
+     * @param type 数据类型，例如 TCP、UDP、HID Feature。
+     * @param data 原始字节。
+     * @param autoScroll true 表示追加后滚动到底部；false 表示保留当前滚动位置。
+     */
+    void appendLogLine(QPlainTextEdit* logEdit,
+                       const QString& direction,
+                       const QString& type,
+                       const QByteArray& data,
+                       bool autoScroll) const;
 
     /**
      * @brief 解析用户输入的 HEX 或文本。

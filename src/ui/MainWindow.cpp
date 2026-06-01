@@ -571,6 +571,21 @@ void MainWindow::setupConnections()
                 statusBar()->showMessage(tr("当前没有已连接客户端。"), 3000);
             }
         });
+        connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::disconnectClientRequested,
+                this, [this](const QString& clientId) {
+            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            if (!tcpServer || !m_connected) {
+                statusBar()->showMessage(tr("TCP服务器未启动，无法断开客户端。"), 3000);
+                return;
+            }
+
+            /*
+             * 断开客户端仍由通信对象执行，工作台只表达用户选择的客户端 ID，
+             * 避免 UI 持有 socket 生命周期或重复维护连接状态。
+             */
+            tcpServer->disconnectClient(clientId);
+            statusBar()->showMessage(tr("已请求断开客户端: %1").arg(clientId), 3000);
+        });
     }
     if (m_udpWorkspace) {
         connect(m_udpWorkspace, &UdpWorkspaceWidget::sendDatagramRequested,

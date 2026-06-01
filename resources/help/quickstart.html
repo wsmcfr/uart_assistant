@@ -227,11 +227,13 @@
         <li>选择"TCP客户端"，在工作台填写服务器 IP、端口和连接超时</li>
         <li>需要时启用自动重连并设置重连间隔</li>
         <li>点击工具栏"连接"，在网络流日志中查看收发数据</li>
+        <li>使用"自动滚动"、"复制"、"清空"管理日志，发送区支持 HEX格式化 和 Ctrl+Enter</li>
     </ol>
     <ol>
         <li>Select "TCP Client", then enter server IP, port and timeout in the workspace</li>
         <li>Enable auto reconnect when needed and set the reconnect interval</li>
         <li>Click "Connect" and inspect data in the network stream log</li>
+        <li>Use auto scroll, copy and clear log tools; the send area supports HEX formatting and Ctrl+Enter</li>
     </ol>
 
     <h3>TCP服务器 / TCP Server</h3>
@@ -239,23 +241,27 @@
         <li>选择"TCP服务器"，设置监听端口和最大连接数</li>
         <li>点击"启动服务"，客户端连接后会出现在目标客户端列表</li>
         <li>可向指定客户端发送，也可广播给全部客户端</li>
+        <li>选中客户端后可点击"断开选中"，日志工具同样支持自动滚动、复制和清空</li>
     </ol>
     <ol>
         <li>Select "TCP Server", set listen port and max connections</li>
         <li>Click "Start Service"; connected clients appear in the target list</li>
         <li>Send to a selected client or broadcast to all clients</li>
+        <li>Select a client and click "Disconnect Selected"; log tools also support auto scroll, copy and clear</li>
     </ol>
 
     <h3>UDP / UDP</h3>
     <ol>
         <li>选择"UDP"，设置本地端口、目标 IP 和目标端口</li>
         <li>点击"绑定端口"，收到数据报后可从"最近远端"快速切换目标</li>
-        <li>需要广播时勾选"广播发送"</li>
+        <li>最近远端可通过"清空最近"重置，需要广播时勾选"广播发送"</li>
+        <li>发送区支持 HEX格式化、追加换行、字节数提示和 Ctrl+Enter</li>
     </ol>
     <ol>
         <li>Select "UDP", set local port, target IP and target port</li>
         <li>Click "Bind Port"; recent senders can be selected as targets</li>
-        <li>Check "Broadcast" when broadcast datagrams are required</li>
+        <li>Clear recent remotes with "Clear Recent"; check "Broadcast" when broadcast datagrams are required</li>
+        <li>The send area supports HEX formatting, append newline, byte count and Ctrl+Enter</li>
     </ol>
 
     <h3>HID 连接 / HID Connection</h3>
@@ -267,6 +273,7 @@
         <li>在 HID Report 工作台确认 Input、Output、Feature 长度和 Report ID</li>
         <li>点击"打开 HID"按钮</li>
         <li>使用 Output payload、Set Feature 和 Get Feature 调试报告</li>
+        <li>查看 Report 预览、payload 字节数和截断提示，发送前确认最终 HEX</li>
     </ol>
 
     <p><strong>English:</strong></p>
@@ -277,6 +284,7 @@
         <li>Confirm Input, Output, Feature lengths and Report IDs in the HID Report workspace</li>
         <li>Click "Open HID" button</li>
         <li>Debug reports with Output payload, Set Feature and Get Feature</li>
+        <li>Check Report previews, payload byte counts and truncation warnings before sending</li>
     </ol>
 
     <div class="tip">
@@ -291,7 +299,9 @@
     <ul>
         <li><strong>文本模式 / Text Mode:</strong> 直接输入文本 / Enter text directly</li>
         <li><strong>HEX模式 / HEX Mode:</strong> 输入十六进制（如 AA BB CC）/ Enter hexadecimal (e.g., AA BB CC)</li>
-        <li><strong>HID Report:</strong> Output、Set Feature、Get Feature 会记录报告方向、类型、长度和 HEX 内容 / Output, Set Feature and Get Feature record direction, type, length and HEX content</li>
+        <li><strong>HEX格式化 / HEX Format:</strong> 将 <code>0x0a bb c</code> 规范化为 <code>0A BB 0C</code> / Normalize input such as <code>0x0a bb c</code> to <code>0A BB 0C</code></li>
+        <li><strong>快捷发送 / Quick Send:</strong> TCP/UDP 发送输入框支持 <code>Ctrl+Enter</code> / TCP/UDP send editors support <code>Ctrl+Enter</code></li>
+        <li><strong>HID Report:</strong> Output、Set Feature、Get Feature 会显示 Report 预览并记录方向、类型、长度和 HEX 内容 / Output, Set Feature and Get Feature show Report previews and record direction, type, length and HEX content</li>
     </ul>
 
     <h3>示例 / Examples:</h3>
@@ -318,8 +328,8 @@
     Check "Timestamp" option to show time before each line.</p>
 
     <h3>自动滚动 / Auto Scroll</h3>
-    <p>勾选"自动滚动"，接收区会自动滚动到最新数据。<br>
-    Check "Auto Scroll" to automatically scroll to latest data.</p>
+    <p>勾选"自动滚动"，串口接收区或网络工作台日志会自动滚动到最新数据；关闭后可停留在历史位置对照旧数据。<br>
+    Check "Auto Scroll" to automatically scroll serial receive views or network workspace logs to latest data; uncheck it to stay at the current history position.</p>
 
     <h3>HEX显示 / HEX Display</h3>
     <p>勾选"HEX显示"，数据以十六进制格式显示。<br>
@@ -374,6 +384,10 @@
         <tr>
             <td><code>Ctrl+L</code></td>
             <td>清空全部 / Clear All</td>
+        </tr>
+        <tr>
+            <td><code>Ctrl+Enter</code></td>
+            <td>TCP/UDP 发送输入框快速发送 / Quick send in TCP/UDP send editors</td>
         </tr>
         <tr>
             <td><code>F1</code></td>

@@ -11,17 +11,33 @@
 #include "ui/widgets/TcpServerWorkspaceWidget.h"
 #include "ui/widgets/UdpWorkspaceWidget.h"
 #include "ui/widgets/HidReportWorkspaceWidget.h"
+#include "ui/widgets/CommunicationWorkspaceWidget.h"
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSpinBox>
+#include <QTest>
 
 using namespace ComAssistant;
 
 namespace {
+
+/**
+ * @brief 暴露通信工作台基类的受保护辅助函数，便于单元测试直接验证格式规则。
+ *
+ * 测试只通过该探针读取共享格式化结果，不参与生产界面的事件流程。
+ */
+class CommunicationWorkspaceProbe : public CommunicationWorkspaceWidget
+{
+public:
+    using CommunicationWorkspaceWidget::formatLogLine;
+    using CommunicationWorkspaceWidget::normalizeHexText;
+    using CommunicationWorkspaceWidget::payloadPreview;
+};
 
 /**
  * @brief 按 objectName 查找子控件，并在缺失时让测试给出明确错误。
@@ -33,11 +49,33 @@ template <typename T>
 T* requireChild(QWidget& root, const char* objectName)
 {
     T* child = root.findChild<T*>(QString::fromLatin1(objectName));
-    Q_ASSERT(child);
+    if (!child) {
+        qFatal("Missing child widget: %s", objectName);
+    }
     return child;
 }
 
 } // namespace
+
+void TestCommunicationWorkspaces::testCommunicationWorkspaceSharedHelpers()
+{
+    CommunicationWorkspaceProbe widget;
+
+    QCOMPARE(widget.normalizeHexText(QStringLiteral("0x0a bb c")),
+             QStringLiteral("0A BB 0C"));
+
+    const QByteArray previewBytes("line1\nline2\t0123456789");
+    QCOMPARE(widget.payloadPreview(previewBytes, 12), QStringLiteral("line1.line2...."));
+
+    const QString logLine = widget.formatLogLine(QStringLiteral("TX"),
+                                                 QStringLiteral("UDP"),
+                                                 QByteArray("Hi\n"));
+    QVERIFY(logLine.contains(QStringLiteral("TX")));
+    QVERIFY(logLine.contains(QStringLiteral("UDP")));
+    QVERIFY(logLine.contains(QStringLiteral("3 字节")));
+    QVERIFY(logLine.contains(QStringLiteral("48 69 0A")));
+    QVERIFY(logLine.contains(QStringLiteral("Hi.")));
+}
 
 void TestCommunicationWorkspaces::testTcpClientWorkspaceConfigAndSendSignal()
 {
@@ -66,6 +104,36 @@ void TestCommunicationWorkspaces::testTcpClientWorkspaceConfigAndSendSignal()
 
     QCOMPARE(sendSpy.count(), 1);
     QCOMPARE(sendSpy.takeFirst().at(0).toByteArray(), QByteArray("ping"));
+}
+
+void TestCommunicationWorkspaces::testTcpClientWorkspaceSendHelpersAndLogTools()
+{
+    TcpClientWorkspaceWidget widget;
+
+    QPlainTextEdit* sendEdit = requireChild<QPlainTextEdit>(widget, "tcpClientSendEdit");
+    QPlainTextEdit* logEdit = requireChild<QPlainTextEdit>(widget, "tcpClientLogEdit");
+    QPushButton* formatButton = requireChild<QPushButton>(widget, "tcpClientFormatHexButton");
+    QPushButton* clearButton = requireChild<QPushButton>(widget, "tcpClientClearLogButton");
+    QCheckBox* appendNewlineCheck = requireChild<QCheckBox>(widget, "tcpClientAppendNewlineCheck");
+    QLabel* byteCountLabel = requireChild<QLabel>(widget, "tcpClientByteCountLabel");
+
+    sendEdit->setPlainText(QStringLiteral("0x0a bb c"));
+    formatButton->click();
+    QCOMPARE(sendEdit->toPlainText(), QStringLiteral("0A BB 0C"));
+    QVERIFY(byteCountLabel->text().contains(QStringLiteral("3")));
+
+    QSignalSpy sendSpy(&widget, SIGNAL(sendDataRequested(QByteArray)));
+    requireChild<QCheckBox>(widget, "tcpClientHexSendCheck")->setChecked(false);
+    appendNewlineCheck->setChecked(true);
+    sendEdit->setPlainText(QStringLiteral("ping"));
+    QTest::keyClick(sendEdit, Qt::Key_Return, Qt::ControlModifier);
+    QCOMPARE(sendSpy.count(), 1);
+    QCOMPARE(sendSpy.takeFirst().at(0).toByteArray(), QByteArray("ping\n"));
+
+    widget.appendReceivedData(QByteArray("pong"));
+    QVERIFY(logEdit->toPlainText().contains(QStringLiteral("TCP")));
+    clearButton->click();
+    QVERIFY(logEdit->toPlainText().isEmpty());
 }
 
 void TestCommunicationWorkspaces::testTcpServerWorkspaceClientTargetAndBroadcast()
@@ -97,6 +165,35 @@ void TestCommunicationWorkspaces::testTcpServerWorkspaceClientTargetAndBroadcast
     QCOMPARE(broadcastSpy.takeFirst().at(0).toByteArray(), QByteArray("hello"));
 }
 
+void TestCommunicationWorkspaces::testTcpServerWorkspaceClientManagementHelpers()
+{
+    TcpServerWorkspaceWidget widget;
+
+    QLabel* clientCountLabel = requireChild<QLabel>(widget, "tcpServerClientCountLabel");
+    QPushButton* sendClientButton = requireChild<QPushButton>(widget, "tcpServerSendClientButton");
+    QPushButton* disconnectButton = requireChild<QPushButton>(widget, "tcpServerDisconnectClientButton");
+    QPushButton* formatButton = requireChild<QPushButton>(widget, "tcpServerFormatHexButton");
+    QPlainTextEdit* sendEdit = requireChild<QPlainTextEdit>(widget, "tcpServerSendEdit");
+
+    QVERIFY(!sendClientButton->isEnabled());
+    QVERIFY(!disconnectButton->isEnabled());
+
+    widget.setClients(QStringList() << QStringLiteral("127.0.0.1:52000")
+                                    << QStringLiteral("127.0.0.1:52001"));
+    QVERIFY(clientCountLabel->text().contains(QStringLiteral("2")));
+    QVERIFY(sendClientButton->isEnabled());
+    QVERIFY(disconnectButton->isEnabled());
+
+    QSignalSpy disconnectSpy(&widget, SIGNAL(disconnectClientRequested(QString)));
+    disconnectButton->click();
+    QCOMPARE(disconnectSpy.count(), 1);
+    QCOMPARE(disconnectSpy.takeFirst().at(0).toString(), QStringLiteral("127.0.0.1:52000"));
+
+    sendEdit->setPlainText(QStringLiteral("1 2 0xff"));
+    formatButton->click();
+    QCOMPARE(sendEdit->toPlainText(), QStringLiteral("01 02 FF"));
+}
+
 void TestCommunicationWorkspaces::testUdpWorkspaceConfigRecentRemoteAndSendSignal()
 {
     UdpWorkspaceWidget widget;
@@ -122,6 +219,37 @@ void TestCommunicationWorkspaces::testUdpWorkspaceConfigRecentRemoteAndSendSigna
     QCOMPARE(args.at(0).toByteArray(), QByteArray("udp-data"));
     QCOMPARE(args.at(1).toString(), QStringLiteral("10.0.0.12"));
     QCOMPARE(args.at(2).toInt(), 6000);
+}
+
+void TestCommunicationWorkspaces::testUdpWorkspaceRecentRemoteAndSendHelpers()
+{
+    UdpWorkspaceWidget widget;
+
+    QComboBox* recentCombo = requireChild<QComboBox>(widget, "udpRecentRemoteCombo");
+    QPushButton* clearRecentButton = requireChild<QPushButton>(widget, "udpClearRecentRemoteButton");
+    QPushButton* formatButton = requireChild<QPushButton>(widget, "udpFormatHexButton");
+    QPlainTextEdit* sendEdit = requireChild<QPlainTextEdit>(widget, "udpSendEdit");
+    QLabel* statusLabel = requireChild<QLabel>(widget, "udpSummaryLabel");
+
+    widget.addRecentRemote(QStringLiteral("10.0.0.12"), 6000);
+    widget.addRecentRemote(QStringLiteral("10.0.0.13"), 6001);
+    QCOMPARE(recentCombo->count(), 2);
+    clearRecentButton->click();
+    QCOMPARE(recentCombo->count(), 0);
+
+    sendEdit->setPlainText(QStringLiteral("aa b c"));
+    formatButton->click();
+    QCOMPARE(sendEdit->toPlainText(), QStringLiteral("AA 0B 0C"));
+
+    QSignalSpy datagramSpy(&widget, SIGNAL(sendDatagramRequested(QByteArray,QString,int)));
+    requireChild<QCheckBox>(widget, "udpHexSendCheck")->setChecked(false);
+    sendEdit->setPlainText(QStringLiteral("quick"));
+    QTest::keyClick(sendEdit, Qt::Key_Return, Qt::ControlModifier);
+    QCOMPARE(datagramSpy.count(), 1);
+    QCOMPARE(datagramSpy.takeFirst().at(0).toByteArray(), QByteArray("quick"));
+
+    widget.setConnected(true);
+    QVERIFY(statusLabel->text().contains(QStringLiteral("目标")));
 }
 
 void TestCommunicationWorkspaces::testHidReportWorkspaceConfigAndFeatureSignals()
@@ -162,4 +290,45 @@ void TestCommunicationWorkspaces::testHidReportWorkspaceConfigAndFeatureSignals(
     requireChild<QPushButton>(widget, "hidFeatureGetButton")->click();
     QCOMPARE(featureGetSpy.count(), 1);
     QCOMPARE(featureGetSpy.takeFirst().at(0).toByteArray(), QByteArray::fromHex("0300000000000000"));
+}
+
+void TestCommunicationWorkspaces::testHidReportWorkspacePreviewAndHistoryTools()
+{
+    HidReportWorkspaceWidget widget;
+
+    HidConfig config;
+    config.name = QStringLiteral("Preview HID");
+    config.outputReportLength = 4;
+    config.featureReportLength = 5;
+    config.outReportId = 2;
+    config.featureReportId = 3;
+    widget.setConfig(config);
+
+    QPlainTextEdit* outputEdit = requireChild<QPlainTextEdit>(widget, "hidOutputPayloadEdit");
+    QPlainTextEdit* featureEdit = requireChild<QPlainTextEdit>(widget, "hidFeaturePayloadEdit");
+    QLabel* outputPreviewLabel = requireChild<QLabel>(widget, "hidOutputPreviewLabel");
+    QLabel* featurePreviewLabel = requireChild<QLabel>(widget, "hidFeaturePreviewLabel");
+    QLabel* outputCountLabel = requireChild<QLabel>(widget, "hidOutputByteCountLabel");
+    QLabel* warningLabel = requireChild<QLabel>(widget, "hidTruncationWarningLabel");
+    QPlainTextEdit* historyEdit = requireChild<QPlainTextEdit>(widget, "hidHistoryEdit");
+
+    outputEdit->setPlainText(QStringLiteral("a b c d"));
+    QVERIFY(outputPreviewLabel->text().contains(QStringLiteral("02 0A 0B 0C")));
+    QVERIFY(outputCountLabel->text().contains(QStringLiteral("4")));
+    QVERIFY(!warningLabel->isHidden());
+    QVERIFY(warningLabel->text().contains(QStringLiteral("截断")));
+
+    requireChild<QPushButton>(widget, "hidOutputFormatHexButton")->click();
+    QCOMPARE(outputEdit->toPlainText(), QStringLiteral("0A 0B 0C 0D"));
+
+    featureEdit->setPlainText(QStringLiteral("1 2"));
+    QVERIFY(featurePreviewLabel->text().contains(QStringLiteral("03 01 02 00 00")));
+
+    requireChild<QPushButton>(widget, "hidFeatureFormatHexButton")->click();
+    QCOMPARE(featureEdit->toPlainText(), QStringLiteral("01 02"));
+
+    widget.appendReceivedData(QByteArray::fromHex("010203"));
+    QVERIFY(historyEdit->toPlainText().contains(QStringLiteral("Input")));
+    requireChild<QPushButton>(widget, "hidClearHistoryButton")->click();
+    QVERIFY(historyEdit->toPlainText().isEmpty());
 }

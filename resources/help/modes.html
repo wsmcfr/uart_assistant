@@ -221,6 +221,38 @@
         The "Type" dropdown switches communication workspaces. TCP Client, TCP Server, UDP and HID have dedicated workspaces; the "Mode" dropdown is shown only for Serial.
     </div>
 
+    <h2>通信类型工作台 Communication Workspaces</h2>
+    <div class="mode-box">
+        <p><strong>用途 / Purpose:</strong> TCP客户端、TCP服务器、UDP 和 HID 不复用串口显示模式，而是在主体区域提供协议专用调试界面。</p>
+        <p>TCP Client, TCP Server, UDP and HID use protocol-specific workspaces instead of serial display modes.</p>
+
+        <h3>网络工作台 Network Workspaces</h3>
+        <ul>
+            <li>TCP客户端显示服务器连接状态、自动重连状态、网络流日志和发送字节数</li>
+            <li>TCP服务器显示监听状态、客户端数量、指定客户端/广播发送，并支持断开选中客户端</li>
+            <li>UDP 显示本地绑定、目标地址、最近远端；最近远端可一键选择或清空</li>
+            <li>TCP/UDP 发送区支持 <code>Ctrl+Enter</code>、追加换行、HEX格式化 和日志自动滚动</li>
+        </ul>
+        <ul>
+            <li>TCP Client shows server status, auto reconnect, stream log and send byte count</li>
+            <li>TCP Server shows listen status, client count, selected-client/broadcast send and disconnect selected client</li>
+            <li>UDP shows local binding, target endpoint and recent remotes; recent remotes can be selected or cleared</li>
+            <li>TCP/UDP send areas support <code>Ctrl+Enter</code>, append newline, HEX formatting and log auto scroll</li>
+        </ul>
+
+        <h3>HID Report 工作台 HID Report Workspace</h3>
+        <ul>
+            <li>Output 和 Feature 输入区会实时显示完整 Report 预览</li>
+            <li>预览包含 Report ID、补零结果和最终 HEX；payload 过长时显示截断提示</li>
+            <li>Output/Feature payload 支持 HEX格式化，历史支持复制和清空</li>
+        </ul>
+        <ul>
+            <li>Output and Feature editors show live full Report previews</li>
+            <li>Preview includes Report ID, padding and final HEX; overlong payloads show truncation warnings</li>
+            <li>Output/Feature payloads support HEX formatting; history can be copied and cleared</li>
+        </ul>
+    </div>
+
     <h2>1. 串口模式 Serial Mode</h2>
     <div class="mode-box">
         <p><strong>用途 / Purpose:</strong> 标准串口通信模式，适合日常收发数据。</p>
