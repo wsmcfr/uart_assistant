@@ -36,6 +36,7 @@ set(TEST_SOURCES
     unit/TestReleaseMetadata.cpp
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
+    unit/TestSendQueue.cpp
     unit/TestMainWindowCommunicationController.cpp
     unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
     unit/TestMainWindowPlotDataRouter.cpp
@@ -48,6 +49,8 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/ICommunication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
@@ -148,6 +151,8 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp

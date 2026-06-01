@@ -190,6 +190,8 @@ set(COMMUNICATION_SOURCES
     src/core/communication/UdpSocket.cpp
     src/core/communication/HidDevice.cpp
     src/core/communication/HidReportCodec.cpp
+    src/core/communication/SendQueue.cpp
+    src/core/communication/SendDispatcher.cpp
     src/core/communication/CommunicationFactory.cpp
     src/core/communication/SerialPortMonitor.cpp
     src/core/communication/MultiPortManager.cpp
@@ -203,6 +205,8 @@ set(COMMUNICATION_HEADERS
     src/core/communication/UdpSocket.h
     src/core/communication/HidDevice.h
     src/core/communication/HidReportCodec.h
+    src/core/communication/SendQueue.h
+    src/core/communication/SendDispatcher.h
     src/core/communication/CommunicationFactory.h
     src/core/communication/SerialPortMonitor.h
     src/core/communication/MultiPortManager.h

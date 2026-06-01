@@ -31,6 +31,7 @@
 #include "unit/TestReleaseMetadata.h"
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
+#include "unit/TestSendQueue.h"
 #include "unit/TestMainWindowCommunicationController.h"
 #include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
 #include "unit/TestMainWindowPlotDataRouter.h"
@@ -169,6 +170,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] DocumentationLinks";
         TestDocumentationLinks test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] SendQueue";
+        TestSendQueue test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
