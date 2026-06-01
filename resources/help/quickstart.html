@@ -202,6 +202,9 @@
     <h1>快速入门 Quick Start</h1>
 
     <h2>1. 建立连接 / Connection</h2>
+    <p><strong>中文：</strong>工具栏"类型"会切换通信工作台；串口、TCP客户端、TCP服务器、UDP 和 HID 都有各自的主体界面。右上"模式"只用于串口显示模式。</p>
+    <p><strong>English:</strong> The toolbar "Type" dropdown switches communication workspaces. Serial, TCP Client, TCP Server, UDP and HID each have their own main workspace. The "Mode" dropdown is only for serial display modes.</p>
+
     <h3>串口连接 / Serial Connection</h3>
     <p><strong>中文：</strong></p>
     <ol>
@@ -219,13 +222,51 @@
         <li>Click "Open Port" button</li>
     </ol>
 
+    <h3>TCP客户端 / TCP Client</h3>
+    <ol>
+        <li>选择"TCP客户端"，在工作台填写服务器 IP、端口和连接超时</li>
+        <li>需要时启用自动重连并设置重连间隔</li>
+        <li>点击工具栏"连接"，在网络流日志中查看收发数据</li>
+    </ol>
+    <ol>
+        <li>Select "TCP Client", then enter server IP, port and timeout in the workspace</li>
+        <li>Enable auto reconnect when needed and set the reconnect interval</li>
+        <li>Click "Connect" and inspect data in the network stream log</li>
+    </ol>
+
+    <h3>TCP服务器 / TCP Server</h3>
+    <ol>
+        <li>选择"TCP服务器"，设置监听端口和最大连接数</li>
+        <li>点击"启动服务"，客户端连接后会出现在目标客户端列表</li>
+        <li>可向指定客户端发送，也可广播给全部客户端</li>
+    </ol>
+    <ol>
+        <li>Select "TCP Server", set listen port and max connections</li>
+        <li>Click "Start Service"; connected clients appear in the target list</li>
+        <li>Send to a selected client or broadcast to all clients</li>
+    </ol>
+
+    <h3>UDP / UDP</h3>
+    <ol>
+        <li>选择"UDP"，设置本地端口、目标 IP 和目标端口</li>
+        <li>点击"绑定端口"，收到数据报后可从"最近远端"快速切换目标</li>
+        <li>需要广播时勾选"广播发送"</li>
+    </ol>
+    <ol>
+        <li>Select "UDP", set local port, target IP and target port</li>
+        <li>Click "Bind Port"; recent senders can be selected as targets</li>
+        <li>Check "Broadcast" when broadcast datagrams are required</li>
+    </ol>
+
     <h3>HID 连接 / HID Connection</h3>
     <p><strong>中文：</strong></p>
     <ol>
         <li>在工具栏"类型"中选择"HID"</li>
         <li>点击刷新按钮扫描当前系统可见的 HID 设备</li>
         <li>在设备下拉框中选择目标设备（显示名称包含 VID、PID 与接口号）</li>
+        <li>在 HID Report 工作台确认 Input、Output、Feature 长度和 Report ID</li>
         <li>点击"打开 HID"按钮</li>
+        <li>使用 Output payload、Set Feature 和 Get Feature 调试报告</li>
     </ol>
 
     <p><strong>English:</strong></p>
@@ -233,21 +274,24 @@
         <li>Select "HID" in the toolbar "Type" dropdown</li>
         <li>Click refresh to scan visible HID devices</li>
         <li>Select the target device from the device dropdown (VID, PID and interface number are shown)</li>
+        <li>Confirm Input, Output, Feature lengths and Report IDs in the HID Report workspace</li>
         <li>Click "Open HID" button</li>
+        <li>Debug reports with Output payload, Set Feature and Get Feature</li>
     </ol>
 
     <div class="tip">
-        <strong>💡 提示 / Tip:</strong> 连接前请确保端口或 HID 设备未被其他程序占用。HID 需要发布构建或已安装 hidapi 的本地构建支持。<br>
-        Make sure the port or HID device is not occupied by other programs before connecting. HID requires a release build or a local build with hidapi enabled.
+        <strong>💡 提示 / Tip:</strong> 连接前请确保端口或 HID 设备未被其他程序占用。HID 需要发布构建或已安装 hidapi 的本地构建支持，且 Report 长度和 Report ID 必须符合设备协议。<br>
+        Make sure the port or HID device is not occupied before connecting. HID requires hidapi support, and Report length / Report ID must match the device protocol.
     </div>
 
     <h2>2. 发送数据 / Send Data</h2>
-    <p><strong>中文：</strong>在发送区输入数据，点击"发送"按钮</p>
-    <p><strong>English:</strong> Enter data in send area and click "Send" button</p>
+    <p><strong>中文：</strong>在当前通信工作台的发送区输入数据并点击发送。TCP服务器可选择指定客户端或广播；UDP 可选择目标远端；HID 使用 Report 发送按钮。</p>
+    <p><strong>English:</strong> Enter data in the current communication workspace and send. TCP Server can send to a selected client or broadcast; UDP can choose the remote target; HID uses report buttons.</p>
 
     <ul>
         <li><strong>文本模式 / Text Mode:</strong> 直接输入文本 / Enter text directly</li>
         <li><strong>HEX模式 / HEX Mode:</strong> 输入十六进制（如 AA BB CC）/ Enter hexadecimal (e.g., AA BB CC)</li>
+        <li><strong>HID Report:</strong> Output、Set Feature、Get Feature 会记录报告方向、类型、长度和 HEX 内容 / Output, Set Feature and Get Feature record direction, type, length and HEX content</li>
     </ul>
 
     <h3>示例 / Examples:</h3>
@@ -258,8 +302,8 @@
     <pre>AA 55 01 02 03 04</pre>
 
     <h2>3. 接收数据 / Receive Data</h2>
-    <p><strong>中文：</strong>数据会自动显示在接收区的不同标签页</p>
-    <p><strong>English:</strong> Data will be automatically displayed in different tabs of receive area</p>
+    <p><strong>中文：</strong>串口数据会显示在接收区标签页；TCP、UDP 和 HID 数据会显示在对应工作台日志或报告历史中。</p>
+    <p><strong>English:</strong> Serial data appears in receive tabs; TCP, UDP and HID data appears in the corresponding workspace log or report history.</p>
 
     <ul>
         <li><strong>文本标签 / Text Tab:</strong> 显示文本格式 / Display text format</li>

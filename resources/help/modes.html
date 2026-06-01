@@ -213,8 +213,13 @@
 <body>
     <h1>显示模式说明 Display Modes</h1>
 
-    <p>ComAssistant 提供四种显示模式，适用于不同的使用场景。可在工具栏的"模式"下拉框中切换。</p>
-    <p>ComAssistant provides four display modes for different use cases. Switch via the "Mode" dropdown in toolbar.</p>
+    <p>ComAssistant 提供四种串口显示模式，适用于不同的串口使用场景。可在工具栏的"模式"下拉框中切换。</p>
+    <p>ComAssistant provides four serial display modes for different serial use cases. Switch via the "Mode" dropdown in toolbar.</p>
+
+    <div class="tip">
+        <strong>说明 / Note:</strong> 左上角"类型"用于切换通信工作台。TCP客户端、TCP服务器、UDP 和 HID 有独立工作台；右上角"模式"只在串口类型下显示。<br>
+        The "Type" dropdown switches communication workspaces. TCP Client, TCP Server, UDP and HID have dedicated workspaces; the "Mode" dropdown is shown only for Serial.
+    </div>
 
     <h2>1. 串口模式 Serial Mode</h2>
     <div class="mode-box">
@@ -471,6 +476,14 @@
         <tr>
             <td>时序分析/异常捕获</td>
             <td>调试模式 Debug Mode</td>
+        </tr>
+        <tr>
+            <td>TCP/UDP 网络调试</td>
+            <td>切换左上"类型"到对应网络工作台 / Switch "Type" to the corresponding network workspace</td>
+        </tr>
+        <tr>
+            <td>HID Report 调试</td>
+            <td>切换左上"类型"到 HID 工作台 / Switch "Type" to the HID workspace</td>
         </tr>
     </table>
 
