@@ -246,6 +246,7 @@ set(UI_SOURCES
     src/ui/MainWindowCommunicationController.cpp
     src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
     src/ui/MainWindowPlotDataRouter.cpp
+    src/ui/MainWindowSessionCoordinator.cpp
     src/ui/HelpDialog.cpp
     src/ui/PlotterDataPolicy.cpp
     src/ui/PlotRenderQuality.cpp
@@ -302,6 +303,7 @@ set(UI_HEADERS
     src/ui/MainWindowCommunicationController.h
     src/ui/MainWindowCommunicationWorkspaceCoordinator.h
     src/ui/MainWindowPlotDataRouter.h
+    src/ui/MainWindowSessionCoordinator.h
     src/ui/HelpDialog.h
     src/ui/PlotterDataPolicy.h
     src/ui/PlotRenderQuality.h

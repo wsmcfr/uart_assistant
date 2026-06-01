@@ -94,7 +94,20 @@ MainWindow::MainWindow(QWidget* parent)
                                          m_tcpServerWorkspace,
                                          m_udpWorkspace,
                                          m_hidWorkspace);
+    m_sessionCoordinator.setConfigurationWidgets(m_serialSettings,
+                                                 m_networkSettings,
+                                                 m_tcpClientWorkspace,
+                                                 m_tcpServerWorkspace,
+                                                 m_udpWorkspace,
+                                                 m_hidWorkspace);
     setupToolBar();
+    m_sessionCoordinator.setToolbarWidgets(m_commTypeCombo,
+                                           m_portCombo,
+                                           m_baudCombo,
+                                           m_ipEdit,
+                                           m_portSpin,
+                                           m_displayModeCombo);
+    m_sessionCoordinator.setQuickSendWidget(m_quickSendWidget);
     setupStatusBar();
     setupConnections();
     loadSettings();
@@ -1239,142 +1252,31 @@ void MainWindow::onLoadSession()
  */
 void MainWindow::applySessionDataToUi(const SessionData& session)
 {
-    // 通信配置先写回成员变量，再同步到设置面板和工具栏。
-    m_currentCommType = session.commType;
-    m_serialConfig = session.serialConfig;
-    m_networkConfig = session.networkConfig;
-    m_hidConfig = session.hidConfig;
-
-    if (m_serialSettings) {
-        m_serialSettings->setConfig(m_serialConfig);
-    }
-    if (m_networkSettings) {
-        m_networkSettings->setConfig(m_networkConfig);
-    }
-    if (m_tcpClientWorkspace) {
-        m_tcpClientWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_tcpServerWorkspace) {
-        m_tcpServerWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_udpWorkspace) {
-        m_udpWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_hidWorkspace) {
-        m_hidWorkspace->setConfig(m_hidConfig);
-    }
-
-    if (m_commTypeCombo) {
-        const int commIndex = m_commTypeCombo->findData(static_cast<int>(m_currentCommType));
-        if (commIndex >= 0) {
-            m_commTypeCombo->blockSignals(true);
-            m_commTypeCombo->setCurrentIndex(commIndex);
-            m_commTypeCombo->blockSignals(false);
-        }
-    }
+    /*
+     * 会话中的配置对象、设置页、工作台和轻量工具栏状态由协调器统一回填。
+     * MainWindow 只继续负责依赖真实环境的端口刷新、协议对象创建和窗口几何恢复。
+     */
+    const MainWindowSessionCoordinator::ApplyResult applyResult =
+        m_sessionCoordinator.applySession(session,
+                                          m_currentCommType,
+                                          m_serialConfig,
+                                          m_networkConfig,
+                                          m_hidConfig);
 
     if (m_currentCommType == CommType::Hid) {
         refreshHidDevices();
     } else {
         refreshPorts();
     }
+    m_sessionCoordinator.selectRestoredPort(m_currentCommType, m_serialConfig, m_hidConfig);
 
-    if (m_portCombo && m_currentCommType == CommType::Serial && !m_serialConfig.portName.isEmpty()) {
-        int portIdx = m_portCombo->findData(m_serialConfig.portName);
-        if (portIdx < 0) {
-            portIdx = m_portCombo->findText(m_serialConfig.portName);
-        }
-        if (portIdx >= 0) {
-            m_portCombo->setCurrentIndex(portIdx);
-        }
-    }
-
-    if (m_portCombo && m_currentCommType == CommType::Hid && !m_hidConfig.path.isEmpty()) {
-        int hidIdx = m_portCombo->findData(m_hidConfig.path);
-        if (hidIdx < 0) {
-            hidIdx = m_portCombo->findText(m_hidConfig.name);
-        }
-        if (hidIdx >= 0) {
-            m_portCombo->setCurrentIndex(hidIdx);
-        }
-    }
-
-    if (m_baudCombo) {
-        const int baudIdx = m_baudCombo->findData(m_serialConfig.baudRate);
-        if (baudIdx >= 0) {
-            m_baudCombo->setCurrentIndex(baudIdx);
-        } else {
-            m_baudCombo->setCurrentText(QString::number(m_serialConfig.baudRate));
-        }
-    }
-
-    if (m_ipEdit) {
-        switch (m_currentCommType) {
-            case CommType::TcpClient:
-                m_ipEdit->setText(m_networkConfig.serverIp);
-                break;
-            case CommType::TcpServer:
-                m_ipEdit->setText(QStringLiteral("0.0.0.0"));
-                break;
-            case CommType::Udp:
-                m_ipEdit->setText(m_networkConfig.remoteIp.isEmpty()
-                                      ? QStringLiteral("127.0.0.1")
-                                      : m_networkConfig.remoteIp);
-                break;
-            case CommType::Serial:
-            case CommType::Hid:
-            default:
-                break;
-        }
-    }
-
-    if (m_portSpin) {
-        switch (m_currentCommType) {
-            case CommType::TcpClient:
-                m_portSpin->setValue(m_networkConfig.serverPort);
-                break;
-            case CommType::TcpServer:
-                m_portSpin->setValue(m_networkConfig.listenPort);
-                break;
-            case CommType::Udp:
-                m_portSpin->setValue(m_networkConfig.remotePort > 0
-                                         ? m_networkConfig.remotePort
-                                         : m_networkConfig.listenPort);
-                break;
-            case CommType::Serial:
-            case CommType::Hid:
-            default:
-                break;
-        }
-    }
-
-    // 协议枚举来自会话文件，落在 supportedTypes 外时保守退回 Raw，避免非法值进入工厂。
-    ProtocolType restoredProtocol = static_cast<ProtocolType>(session.protocolType);
-    if (!ProtocolFactory::supportedTypes().contains(restoredProtocol)) {
-        restoredProtocol = ProtocolType::Raw;
-    }
-    onProtocolTypeChanged(restoredProtocol);
+    onProtocolTypeChanged(applyResult.restoredProtocolType);
     if (m_protocolActionGroup) {
         for (QAction* action : m_protocolActionGroup->actions()) {
             if (action->data().toInt() == static_cast<int>(m_currentProtocolType)) {
                 action->setChecked(true);
                 break;
             }
-        }
-    }
-
-    // 显示模式只接受已知 0..3 范围，损坏会话文件中的非法值不会触发越界切换。
-    if (m_displayModeCombo) {
-        const int displayIndex = m_displayModeCombo->findData(session.displayMode);
-        if (displayIndex >= 0) {
-            m_displayModeCombo->setCurrentIndex(displayIndex);
-        }
-    }
-
-    if (m_quickSendWidget) {
-        m_quickSendWidget->clearAll();
-        for (const auto& item : session.quickSendItems) {
-            m_quickSendWidget->addItem(item);
         }
     }
 

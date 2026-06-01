@@ -32,6 +32,7 @@
 #include "config/AppConfig.h"
 #include "ui/MainWindowCommunicationWorkspaceCoordinator.h"
 #include "ui/MainWindowPlotDataRouter.h"
+#include "ui/MainWindowSessionCoordinator.h"
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
@@ -217,6 +218,7 @@ private:
     // 通信相关
     MainWindowCommunicationController* m_commController = nullptr; ///< 通信生命周期控制器，负责创建、打开、关闭和发送
     MainWindowCommunicationWorkspaceCoordinator m_workspaceCoordinator; ///< 通信工作台配置协调器
+    MainWindowSessionCoordinator m_sessionCoordinator; ///< 会话恢复协调器，负责配置和轻量 UI 状态回填。
     CommType m_currentCommType = CommType::Serial;
     bool m_connected = false;
 

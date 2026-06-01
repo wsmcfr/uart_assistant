@@ -32,6 +32,7 @@
 #include "unit/TestMainWindowCommunicationController.h"
 #include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
 #include "unit/TestMainWindowPlotDataRouter.h"
+#include "unit/TestMainWindowSessionCoordinator.h"
 
 int main(int argc, char *argv[])
 {
@@ -171,6 +172,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] MainWindowPlotDataRouter";
         TestMainWindowPlotDataRouter test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowSessionCoordinator";
+        TestMainWindowSessionCoordinator test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 
