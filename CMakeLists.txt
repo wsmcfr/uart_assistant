@@ -248,6 +248,7 @@ set(UI_SOURCES
     src/ui/MainWindowPlotDataRouter.cpp
     src/ui/HelpDialog.cpp
     src/ui/PlotRenderQuality.cpp
+    src/ui/PlotterStatisticsCalculator.cpp
     src/ui/PlotterWindow.cpp
     src/ui/PlotterManager.cpp
     src/ui/SpectrumWindow.cpp
@@ -302,6 +303,7 @@ set(UI_HEADERS
     src/ui/MainWindowPlotDataRouter.h
     src/ui/HelpDialog.h
     src/ui/PlotRenderQuality.h
+    src/ui/PlotterStatisticsCalculator.h
     src/ui/PlotterWindow.h
     src/ui/PlotterManager.h
     src/ui/SpectrumWindow.h

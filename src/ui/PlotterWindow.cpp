@@ -8,6 +8,7 @@
 #include "PlotterWindow.h"
 #include "PlotterManager.h"
 #include "PlotRenderQuality.h"
+#include "PlotterStatisticsCalculator.h"
 #include "SpectrumWindow.h"
 #include "RealTimeFFTWindow.h"
 #include "dialogs/FFTSettingsDialog.h"
@@ -2709,30 +2710,22 @@ void PlotterWindow::calculateStatistics(int curveIndex, double& minVal, double& 
     QCPGraph* graph = m_plot->graph(curveIndex);
     if (graph->data()->isEmpty()) return;
 
-    double sum = 0;
-    double sumSq = 0;
-    int count = 0;
-    bool first = true;
-
+    /*
+     * PlotterWindow 只负责把 QCustomPlot 数据容器转换成纯数值序列。
+     * 统计公式统一交给 PlotterStatisticsCalculator，减少窗口类职责。
+     */
+    QVector<double> values;
+    values.reserve(graph->data()->size());
     for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
-        double v = it->value;
-        if (first) {
-            minVal = maxVal = v;
-            first = false;
-        } else {
-            minVal = qMin(minVal, v);
-            maxVal = qMax(maxVal, v);
-        }
-        sum += v;
-        sumSq += v * v;
-        count++;
+        values.append(it->value);
     }
 
-    if (count > 0) {
-        avg = sum / count;
-        double variance = (sumSq / count) - (avg * avg);
-        stddev = std::sqrt(qMax(0.0, variance));
-    }
+    const PlotterStatisticsCalculator::BasicStatistics stats =
+        PlotterStatisticsCalculator::calculateBasic(values);
+    minVal = stats.minValue;
+    maxVal = stats.maxValue;
+    avg = stats.average;
+    stddev = stats.stdDev;
 }
 
 void PlotterWindow::calculatePIDMetrics(int curveIndex, double setpoint,
@@ -2749,81 +2742,19 @@ void PlotterWindow::calculatePIDMetrics(int curveIndex, double setpoint,
     QCPGraph* graph = m_plot->graph(curveIndex);
     if (graph->data()->size() < 10) return;
 
-    // 收集数据
+    // 收集数据，PID 公式由 PlotterStatisticsCalculator 统一计算。
     QVector<double> values;
+    values.reserve(graph->data()->size());
     for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
         values.append(it->value);
     }
 
-    // 假设初始值为第一个数据点
-    double initialValue = values.first();
-    double responseRange = setpoint - initialValue;
-
-    if (qAbs(responseRange) < 0.001) {
-        steadyError = 0;
-        return;
-    }
-
-    // 计算上升时间 (10% -> 90%)
-    double thresh10 = initialValue + responseRange * 0.1;
-    double thresh90 = initialValue + responseRange * 0.9;
-    int idx10 = -1, idx90 = -1;
-
-    for (int i = 0; i < values.size(); ++i) {
-        if (idx10 < 0 && ((responseRange > 0 && values[i] >= thresh10) ||
-                          (responseRange < 0 && values[i] <= thresh10))) {
-            idx10 = i;
-        }
-        if (idx90 < 0 && ((responseRange > 0 && values[i] >= thresh90) ||
-                          (responseRange < 0 && values[i] <= thresh90))) {
-            idx90 = i;
-            break;
-        }
-    }
-
-    if (idx10 >= 0 && idx90 >= 0) {
-        riseTime = idx90 - idx10;
-    }
-
-    // 计算超调量
-    double peakValue = values.first();
-    for (double v : values) {
-        if (responseRange > 0) {
-            peakValue = qMax(peakValue, v);
-        } else {
-            peakValue = qMin(peakValue, v);
-        }
-    }
-
-    if (qAbs(responseRange) > 0.001) {
-        overshoot = qAbs(peakValue - setpoint) / qAbs(responseRange) * 100.0;
-        if ((responseRange > 0 && peakValue <= setpoint) ||
-            (responseRange < 0 && peakValue >= setpoint)) {
-            overshoot = 0;  // 没有超调
-        }
-    }
-
-    // 计算稳态误差（使用最后10%数据的平均值）
-    int steadyStart = values.size() * 9 / 10;
-    double steadySum = 0;
-    int steadyCount = 0;
-    for (int i = steadyStart; i < values.size(); ++i) {
-        steadySum += values[i];
-        steadyCount++;
-    }
-    double steadyAvg = steadyCount > 0 ? steadySum / steadyCount : values.last();
-    steadyError = setpoint - steadyAvg;
-
-    // 计算调节时间（±2%范围内稳定）
-    double tolerance = qAbs(responseRange) * 0.02;
-    settlingTime = values.size() - 1;
-
-    for (int i = values.size() - 1; i >= 0; --i) {
-        if (qAbs(values[i] - setpoint) > tolerance) {
-            settlingTime = i + 1;
-            break;
-        }
-    }
+    const PlotterStatisticsCalculator::PidMetrics metrics =
+        PlotterStatisticsCalculator::calculatePidMetrics(values, setpoint);
+    overshoot = metrics.overshoot;
+    settlingTime = metrics.settlingTime;
+    riseTime = metrics.riseTime;
+    steadyError = metrics.steadyError;
 }
 
 void PlotterWindow::onPIDAnalysisClicked()
@@ -4600,95 +4531,29 @@ void PlotterWindow::updatePeakAnnotations()
 
 CurveStatistics PlotterWindow::calculateAdvancedStatistics(int curveIndex, double rangeStart, double rangeEnd)
 {
-    CurveStatistics stats;
-
     if (curveIndex < 0 || curveIndex >= m_plot->graphCount()) {
-        return stats;
+        return CurveStatistics();
     }
 
     QCPGraph* graph = m_plot->graph(curveIndex);
     if (graph->data()->isEmpty()) {
-        return stats;
+        return CurveStatistics();
     }
 
-    // 收集数据
-    QVector<double> xData, yData;
-    double firstX = 0, lastX = 0;
-    bool first = true;
-
+    /*
+     * 只从 QCustomPlot 抽取采样点；区间筛选、中位数、RMS 等公式交给
+     * PlotterStatisticsCalculator，便于后续单独扩展分析能力。
+     */
+    QVector<PlotterStatisticsCalculator::Sample> samples;
+    samples.reserve(graph->data()->size());
     for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
-        double x = it->key;
-        double y = it->value;
-
-        // 检查是否在范围内
-        if (rangeStart >= 0 && rangeEnd > rangeStart) {
-            if (x < rangeStart || x > rangeEnd) {
-                continue;
-            }
-            stats.isRangeStats = true;
-            stats.rangeStart = rangeStart;
-            stats.rangeEnd = rangeEnd;
-        }
-
-        xData.append(x);
-        yData.append(y);
-
-        if (first) {
-            firstX = x;
-            first = false;
-        }
-        lastX = x;
+        PlotterStatisticsCalculator::Sample sample;
+        sample.x = it->key;
+        sample.y = it->value;
+        samples.append(sample);
     }
 
-    if (yData.isEmpty()) {
-        return stats;
-    }
-
-    stats.dataCount = yData.size();
-
-    // 计算基本统计
-    double sum = 0;
-    double sumSq = 0;
-    stats.minValue = yData[0];
-    stats.maxValue = yData[0];
-
-    for (double v : yData) {
-        sum += v;
-        sumSq += v * v;
-        stats.minValue = qMin(stats.minValue, v);
-        stats.maxValue = qMax(stats.maxValue, v);
-    }
-
-    stats.average = sum / stats.dataCount;
-    double variance = (sumSq / stats.dataCount) - (stats.average * stats.average);
-    stats.stdDev = std::sqrt(qMax(0.0, variance));
-
-    // 峰峰值
-    stats.peakToPeak = stats.maxValue - stats.minValue;
-
-    // RMS（均方根值）
-    stats.rms = std::sqrt(sumSq / stats.dataCount);
-
-    // 波峰因子 (Crest Factor = Peak / RMS)
-    double peakAbs = qMax(qAbs(stats.maxValue), qAbs(stats.minValue));
-    stats.crestFactor = (stats.rms > 0) ? (peakAbs / stats.rms) : 0;
-
-    // 中位数
-    QVector<double> sortedData = yData;
-    std::sort(sortedData.begin(), sortedData.end());
-    if (stats.dataCount % 2 == 0) {
-        stats.median = (sortedData[stats.dataCount / 2 - 1] + sortedData[stats.dataCount / 2]) / 2.0;
-    } else {
-        stats.median = sortedData[stats.dataCount / 2];
-    }
-
-    // 时长和采样率
-    stats.duration = lastX - firstX;
-    if (stats.duration > 0 && stats.dataCount > 1) {
-        stats.sampleRate = (stats.dataCount - 1) / stats.duration;
-    }
-
-    return stats;
+    return PlotterStatisticsCalculator::calculateAdvanced(samples, rangeStart, rangeEnd);
 }
 
 void PlotterWindow::onAdvancedStatsClicked()
