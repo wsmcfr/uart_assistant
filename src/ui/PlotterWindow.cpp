@@ -2075,6 +2075,7 @@ void PlotterWindow::applyRenderQualityMode()
 {
     PlotterRenderCoordinator::State state;
     state.openGlRequested = m_openGLEnabled;
+    state.openGlActive = m_plot ? m_plot->openGl() : false;
     state.throttleAutoRangeUpdates = m_throttleAutoRangeUpdates;
     state.valuePanelUpdateEvery = m_valuePanelUpdateEvery;
 

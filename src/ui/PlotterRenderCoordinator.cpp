@@ -17,14 +17,14 @@ namespace ComAssistant {
  * 主要流程：
  * 1. 由 RenderQualityMode 生成可测试的 RenderQualityProfile；
  * 2. 把抗锯齿、快速折线、拖拽抗锯齿、刷新周期写入 QCustomPlot/QTimer；
- * 3. 根据窗口层传入的 OpenGL 请求回调切换绘图后端；
+ * 3. 根据窗口层传入的 OpenGL 请求与实际后端状态，必要时才切换绘图后端；
  * 4. 遍历已有曲线并同步曲线级抗锯齿和自适应采样状态。
  *
  * @param plot 目标 QCustomPlot；为空时函数直接返回未应用结果。
  * @param updateTimer 刷新定时器；可为空，空值表示只应用绘图控件状态。
  * @param mode 渲染质量档位。
  * @param openGlSetter OpenGL 切换回调；由窗口层处理真实硬件探测。
- * @param state 输入当前 OpenGL 请求，并输出高频路径需要的节流参数。
+ * @param state 输入当前 OpenGL 请求和实际状态，并输出高频路径需要的节流参数。
  * @param xyCurve XY 视图曲线；可为空，非空时同步抗锯齿状态。
  * @return 应用结果，包含是否应用成功、OpenGL 实际状态和使用的策略。
  */
@@ -76,11 +76,41 @@ PlotterRenderCoordinator::Result PlotterRenderCoordinator::applyQualityProfile(
     }
 
     const bool openGlRequested = state ? state->openGlRequested : false;
-    if (openGlRequested && openGlSetter) {
-        result.openGlEnabled = openGlSetter(true);
+    const bool openGlActive = state ? state->openGlActive : plot->openGl();
+    if (openGlRequested) {
+        /*
+         * QCustomPlot::setOpenGl(true) 会释放并重建内部 OpenGL/FBO paint buffers。
+         * 如果同一次用户点击中重复调用，部分 Windows 驱动组合可能在随后一帧只呈现
+         * 刚清空的白色缓冲，表现为状态栏继续更新但主绘图区全白。
+         * 因此只有“请求开启但实际尚未开启”时才进入窗口层切换回调。
+         */
+        if (openGlActive) {
+            result.openGlEnabled = true;
+        } else if (openGlSetter) {
+            result.openGlEnabled = openGlSetter(true);
+        } else {
+            result.openGlEnabled = plot->openGl();
+        }
     } else {
-        plot->setOpenGl(false);
+        /*
+         * 关闭路径同样只在实际处于 OpenGL 后端时调用 setOpenGl(false)，避免普通
+         * 质量档位刷新频繁触发 QCustomPlot 重新分配软件 paint buffer。
+         */
+        if (openGlActive) {
+            plot->setOpenGl(false);
+        }
         result.openGlEnabled = false;
+    }
+
+    if (result.openGlEnabled) {
+        /*
+         * QCustomPlot::setOpenGl(true) 成功后会关闭标签缓存并把绘制抗锯齿覆盖到
+         * aeAll。渲染质量档位刷新会先统一写入软件绘制提示，因此在“不重复调用
+         * setOpenGl(true)”的路径上必须显式保留这两项 OpenGL 兼容设置。
+         * 否则轴标签缓存会重新走软件 pixmap，容易和 OpenGL FBO 混合后出现白屏。
+         */
+        plot->setPlottingHint(QCP::phCacheLabels, false);
+        plot->setAntialiasedElements(QCP::aeAll);
     }
 
     for (int i = 0; i < plot->graphCount(); ++i) {

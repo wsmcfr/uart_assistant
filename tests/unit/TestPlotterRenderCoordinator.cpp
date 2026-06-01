@@ -93,6 +93,58 @@ void TestPlotterRenderCoordinator::testApplyHighQualityProfileToExistingGraphs()
 }
 
 /**
+ * @brief 验证 OpenGL 已启用时刷新渲染档位不会重复重建后端。
+ *
+ * 主要流程：
+ * 1. 用回调模拟窗口层已经成功启用 OpenGL；
+ * 2. 第一次应用档位时允许调用后端切换回调；
+ * 3. 第二次在后端已启用的状态下再次应用档位；
+ * 4. 断言协调器不会重复调用 OpenGL 切换回调，同时保留 OpenGL 兼容绘图提示。
+ */
+void TestPlotterRenderCoordinator::testOpenGlProfileKeepsBackendAndCompatibleHints()
+{
+    QCustomPlot plot;
+    QTimer timer;
+
+    PlotterRenderCoordinator::State state;
+    state.openGlRequested = true;
+    state.openGlActive = false;
+
+    int openGlSwitchCount = 0;
+    const PlotterRenderCoordinator::OpenGlSetter setter = [&openGlSwitchCount](bool enabled) {
+        ++openGlSwitchCount;
+        return enabled;
+    };
+
+    const PlotterRenderCoordinator::Result firstResult =
+        PlotterRenderCoordinator::applyQualityProfile(
+            &plot,
+            &timer,
+            RenderQualityMode::HighQuality,
+            setter,
+            &state);
+
+    QVERIFY(firstResult.applied);
+    QVERIFY(firstResult.openGlEnabled);
+    QCOMPARE(openGlSwitchCount, 1);
+
+    state.openGlActive = firstResult.openGlEnabled;
+    const PlotterRenderCoordinator::Result secondResult =
+        PlotterRenderCoordinator::applyQualityProfile(
+            &plot,
+            &timer,
+            RenderQualityMode::HighQuality,
+            setter,
+            &state);
+
+    QVERIFY(secondResult.applied);
+    QVERIFY(secondResult.openGlEnabled);
+    QCOMPARE(openGlSwitchCount, 1);
+    QVERIFY(!plot.plottingHints().testFlag(QCP::phCacheLabels));
+    QVERIFY(plot.antialiasedElements().testFlag(QCP::aeAll));
+}
+
+/**
  * @brief 验证 XY 参数曲线会跟随渲染质量档位同步抗锯齿状态。
  *
  * 主要流程：

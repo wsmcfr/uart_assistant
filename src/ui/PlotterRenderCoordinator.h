@@ -39,6 +39,7 @@ public:
     struct State
     {
         bool openGlRequested = false;         ///< 用户或配置层当前是否请求 OpenGL。
+        bool openGlActive = false;            ///< QCustomPlot 当前实际是否已经处于 OpenGL 后端。
         bool throttleAutoRangeUpdates = false;///< 是否节流 Y 轴自动范围刷新。
         int valuePanelUpdateEvery = 1;        ///< 数值面板每 N 帧刷新一次。
     };

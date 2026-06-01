@@ -18,6 +18,7 @@ class TestPlotterRenderCoordinator : public QObject
 private slots:
     void testApplyHighPerformanceProfileToPlot();
     void testApplyHighQualityProfileToExistingGraphs();
+    void testOpenGlProfileKeepsBackendAndCompatibleHints();
     void testApplyCurveDefaultsFollowsQualityMode();
 };
 
