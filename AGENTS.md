@@ -16,6 +16,13 @@
 - 如果确认本次改动不需要更新帮助文档，必须在最终说明中明确写出“不需要更新帮助文档”的理由，避免遗漏。
 - 发布信息相关改动还必须同时遵守下方“更新说明文档”流程，保证 `CHANGELOG.md`、`README.md` 与 `resources/help/quickstart.html` 的版本信息一致。
 
+## RecallLoom 记忆同步要求（每次修改完成必须执行）
+
+- 每次完成代码、功能、UI、文档、配置、测试、构建、发布流程或项目规则修改后，必须同步检查并更新 `.recallloom/` 记忆文件，确保后续会话能恢复最新项目状态。
+- 写入 `.recallloom/` 时必须遵循 RecallLoom 分层：长期规则或项目约束写入 `context_brief.md` 或 `update_protocol.md`；当前状态、风险、判断和下一步写入 `rolling_summary.md`；发布、验证、提交、重要决策等里程碑写入 `daily_logs/YYYY-MM-DD.md`。
+- 修改 `.recallloom/` 时优先使用 RecallLoom 的 revision-aware helper，避免手动改坏 `state.json`、revision、entry 序号或文件标记。
+- 最终说明中必须明确本次是否已更新 `.recallloom/`，以及更新了哪些记忆层；如果只是纯查询且没有任何持久变化，必须说明无需更新的理由。
+
 ## 本地 Release 构建目录要求
 
 - 本项目本地可运行的正式 Release 构建目录统一使用 `D:\comassistant\build_release`，不要把可运行版本长期放在 `build_release_hid`、`build_release_vcpkg` 或其他临时目录中。
