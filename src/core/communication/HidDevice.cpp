@@ -217,6 +217,61 @@ HidConfig HidDevice::config() const
     return m_config;
 }
 
+bool HidDevice::sendFeatureReport(const QByteArray& report)
+{
+    if (!isOpen()) {
+        m_lastError = tr("HID device is not open.");
+        return false;
+    }
+
+#ifndef COMASSISTANT_ENABLE_HIDAPI
+    Q_UNUSED(report)
+    return false;
+#else
+    const int written = hid_send_feature_report(
+        m_device,
+        reinterpret_cast<const unsigned char*>(report.constData()),
+        static_cast<size_t>(report.size()));
+
+    if (written < 0) {
+        m_lastError = tr("Failed to send HID feature report.");
+        emit errorOccurred(m_lastError);
+        return false;
+    }
+    return true;
+#endif
+}
+
+QByteArray HidDevice::getFeatureReport(const QByteArray& requestReport)
+{
+    if (!isOpen()) {
+        m_lastError = tr("HID device is not open.");
+        return QByteArray();
+    }
+
+#ifndef COMASSISTANT_ENABLE_HIDAPI
+    Q_UNUSED(requestReport)
+    return QByteArray();
+#else
+    QByteArray report = requestReport;
+    if (report.isEmpty()) {
+        report = QByteArray(qMax(1, m_config.featureReportLength), '\0');
+    }
+
+    const int bytesRead = hid_get_feature_report(
+        m_device,
+        reinterpret_cast<unsigned char*>(report.data()),
+        static_cast<size_t>(report.size()));
+
+    if (bytesRead < 0) {
+        m_lastError = tr("Failed to get HID feature report.");
+        emit errorOccurred(m_lastError);
+        return QByteArray();
+    }
+    return report.left(bytesRead);
+#endif
+}
+
 QList<HidDeviceInfo> HidDevice::availableDevices()
 {
     QList<HidDeviceInfo> devices;

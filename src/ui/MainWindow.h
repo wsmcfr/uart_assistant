@@ -53,6 +53,11 @@ enum class DisplayMode {
 class SideNavigationBar;
 class SerialSettingsWidget;
 class NetworkSettingsWidget;
+class CommunicationWorkspaceWidget;
+class TcpClientWorkspaceWidget;
+class TcpServerWorkspaceWidget;
+class UdpWorkspaceWidget;
+class HidReportWorkspaceWidget;
 class SendWidget;
 class TabbedReceiveWidget;
 class DataStatistics;
@@ -189,6 +194,9 @@ private:
     // 工具栏状态同步
     void updateCommunicationWidgetsForType();  ///< 根据通信类型刷新工具栏显隐和提示
     void updateConnectionButtonText();         ///< 根据通信类型和连接状态刷新按钮文字
+    void updateCommunicationWorkspaceForType();///< 根据通信类型切换主体工作台
+    void syncCurrentWorkspaceToConfig();        ///< 打开连接前从当前工作台同步配置
+    CommunicationWorkspaceWidget* currentCommunicationWorkspace() const; ///< 当前非串口工作台
     void applySessionDataToUi(const SessionData& session);  ///< 将会话数据应用到主窗口和子控件
 
     // 应用更新
@@ -301,6 +309,8 @@ private:
 
     // 模式组件
     QStackedWidget* m_modeStack = nullptr;
+    QStackedWidget* m_commWorkspaceStack = nullptr; ///< 通信类型工作台栈，决定红框主体区域显示内容
+    QWidget* m_serialWorkspacePage = nullptr;       ///< 串口工作台页，内部承载现有显示模式栈
     IModeWidget* m_currentModeWidget = nullptr;
     SerialModeWidget* m_serialModeWidget = nullptr;
     TerminalModeWidget* m_terminalModeWidget = nullptr;
@@ -308,6 +318,10 @@ private:
     DebugModeWidget* m_debugModeWidget = nullptr;
     QWidget* m_modeToolBarContainer = nullptr;  ///< 模式专属工具栏容器
     QScrollArea* m_modeToolBarScrollArea = nullptr;  ///< 横向承载模式工具栏，避免英文长文本被裁剪
+    TcpClientWorkspaceWidget* m_tcpClientWorkspace = nullptr; ///< TCP 客户端专用工作台
+    TcpServerWorkspaceWidget* m_tcpServerWorkspace = nullptr; ///< TCP 服务器专用工作台
+    UdpWorkspaceWidget* m_udpWorkspace = nullptr;             ///< UDP 专用工作台
+    HidReportWorkspaceWidget* m_hidWorkspace = nullptr;       ///< HID Report 专用工作台
 
     // 翻译器
     QTranslator* m_translator = nullptr;

@@ -16,6 +16,11 @@
 #include "dialogs/FileTransferDialog.h"
 #include "widgets/SerialSettingsWidget.h"
 #include "widgets/NetworkSettingsWidget.h"
+#include "widgets/CommunicationWorkspaceWidget.h"
+#include "widgets/TcpClientWorkspaceWidget.h"
+#include "widgets/TcpServerWorkspaceWidget.h"
+#include "widgets/UdpWorkspaceWidget.h"
+#include "widgets/HidReportWorkspaceWidget.h"
 #include "widgets/SendWidget.h"
 #include "widgets/TabbedReceiveWidget.h"
 #include "widgets/DataStatistics.h"
@@ -36,6 +41,8 @@
 #include "config/ConfigManager.h"
 #include "config/DisplaySettingsPolicy.h"
 #include "communication/TcpClient.h"
+#include "communication/TcpServer.h"
+#include "communication/UdpSocket.h"
 #include "communication/HidDevice.h"
 #include "protocol/ProtocolFactory.h"
 #include "macro/MacroRecorder.h"
@@ -193,11 +200,8 @@ void MainWindow::setupUi()
     m_quickSendWidget->setMaximumWidth(200);
     mainLayout->addWidget(m_quickSendWidget);
 
-    // 中间区域容器（包含模式工具栏和模式内容）
-    QWidget* centerWidget = new QWidget;
-    QVBoxLayout* centerLayout = new QVBoxLayout(centerWidget);
-    centerLayout->setContentsMargins(0, 0, 0, 0);
-    centerLayout->setSpacing(0);
+    // 通信类型工作台栈：串口页承载旧的显示模式系统，网络/HID 页承载专用调试界面。
+    m_commWorkspaceStack = new QStackedWidget;
 
     // 模式专属工具栏容器：使用横向滚动区承载，英文和长按钮不会被右侧裁剪。
     m_modeToolBarScrollArea = new QScrollArea;
@@ -216,7 +220,12 @@ void MainWindow::setupUi()
     modeToolBarLayout->setContentsMargins(0, 0, 0, 0);
     modeToolBarLayout->setSpacing(0);
     m_modeToolBarScrollArea->setWidget(m_modeToolBarContainer);
-    centerLayout->addWidget(m_modeToolBarScrollArea);
+
+    m_serialWorkspacePage = new QWidget;
+    QVBoxLayout* serialWorkspaceLayout = new QVBoxLayout(m_serialWorkspacePage);
+    serialWorkspaceLayout->setContentsMargins(0, 0, 0, 0);
+    serialWorkspaceLayout->setSpacing(0);
+    serialWorkspaceLayout->addWidget(m_modeToolBarScrollArea);
 
     // 模式切换堆栈
     m_modeStack = new QStackedWidget;
@@ -237,8 +246,21 @@ void MainWindow::setupUi()
     m_currentModeWidget = m_serialModeWidget;
     m_modeStack->setCurrentWidget(m_serialModeWidget);
 
-    centerLayout->addWidget(m_modeStack, 1);
-    mainLayout->addWidget(centerWidget, 1);
+    serialWorkspaceLayout->addWidget(m_modeStack, 1);
+
+    // 网络和 HID 专用工作台：切换通信类型时直接替换红框主体区域。
+    m_tcpClientWorkspace = new TcpClientWorkspaceWidget;
+    m_tcpServerWorkspace = new TcpServerWorkspaceWidget;
+    m_udpWorkspace = new UdpWorkspaceWidget;
+    m_hidWorkspace = new HidReportWorkspaceWidget;
+
+    m_commWorkspaceStack->addWidget(m_serialWorkspacePage);
+    m_commWorkspaceStack->addWidget(m_tcpClientWorkspace);
+    m_commWorkspaceStack->addWidget(m_tcpServerWorkspace);
+    m_commWorkspaceStack->addWidget(m_udpWorkspace);
+    m_commWorkspaceStack->addWidget(m_hidWorkspace);
+    m_commWorkspaceStack->setCurrentWidget(m_serialWorkspacePage);
+    mainLayout->addWidget(m_commWorkspaceStack, 1);
 
     // 保留设置组件实例但不显示（用于配置和网络模式）
     m_serialSettings = new SerialSettingsWidget;
@@ -514,6 +536,91 @@ void MainWindow::setupConnections()
     connect(m_debugModeWidget, &IModeWidget::sendDataRequested,
             this, &MainWindow::onSendData);
 
+    // 连接通信类型专用工作台的发送信号。串口仍由模式组件发送，网络/HID
+    // 工作台只负责表达目标和 payload，真正写入由主窗口统一处理。
+    if (m_tcpClientWorkspace) {
+        connect(m_tcpClientWorkspace, &CommunicationWorkspaceWidget::sendDataRequested,
+                this, &MainWindow::onSendData);
+    }
+    if (m_tcpServerWorkspace) {
+        connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::sendToClientRequested,
+                this, [this](const QString& clientId, const QByteArray& data) {
+            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            if (!tcpServer || !m_connected) {
+                statusBar()->showMessage(tr("TCP服务器未启动，无法发送到客户端。"), 3000);
+                return;
+            }
+
+            const qint64 written = tcpServer->writeToClient(clientId, data);
+            if (written < 0) {
+                statusBar()->showMessage(tr("发送失败: %1").arg(tcpServer->lastError()), 5000);
+            }
+        });
+        connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::broadcastDataRequested,
+                this, [this](const QByteArray& data) {
+            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            if (!tcpServer || !m_connected) {
+                statusBar()->showMessage(tr("TCP服务器未启动，无法广播。"), 3000);
+                return;
+            }
+
+            const qint64 written = tcpServer->broadcast(data);
+            if (written < 0) {
+                statusBar()->showMessage(tr("广播失败: %1").arg(tcpServer->lastError()), 5000);
+            } else if (written == 0) {
+                statusBar()->showMessage(tr("当前没有已连接客户端。"), 3000);
+            }
+        });
+    }
+    if (m_udpWorkspace) {
+        connect(m_udpWorkspace, &UdpWorkspaceWidget::sendDatagramRequested,
+                this, [this](const QByteArray& data, const QString& ip, int port) {
+            auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get());
+            if (!udpSocket || !m_connected) {
+                statusBar()->showMessage(tr("UDP 未绑定，无法发送数据报。"), 3000);
+                return;
+            }
+
+            const qint64 written = udpSocket->writeTo(data, ip, port);
+            if (written < 0) {
+                statusBar()->showMessage(tr("UDP 发送失败: %1").arg(udpSocket->lastError()), 5000);
+            }
+        });
+    }
+    if (m_hidWorkspace) {
+        connect(m_hidWorkspace, &HidReportWorkspaceWidget::outputReportRequested,
+                this, &MainWindow::onSendData);
+        connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportSetRequested,
+                this, [this](const QByteArray& report) {
+            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            if (!hidDevice || !m_connected) {
+                statusBar()->showMessage(tr("HID 未打开，无法发送 Feature Report。"), 3000);
+                return;
+            }
+
+            if (hidDevice->sendFeatureReport(report)) {
+                m_hidWorkspace->appendFeatureReportSentData(report);
+            } else {
+                statusBar()->showMessage(tr("Feature Report 发送失败: %1").arg(hidDevice->lastError()), 5000);
+            }
+        });
+        connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportGetRequested,
+                this, [this](const QByteArray& requestReport) {
+            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            if (!hidDevice || !m_connected) {
+                statusBar()->showMessage(tr("HID 未打开，无法读取 Feature Report。"), 3000);
+                return;
+            }
+
+            const QByteArray report = hidDevice->getFeatureReport(requestReport);
+            if (report.isEmpty()) {
+                statusBar()->showMessage(tr("Feature Report 读取失败: %1").arg(hidDevice->lastError()), 5000);
+                return;
+            }
+            m_hidWorkspace->appendFeatureReportData(report);
+        });
+    }
+
     // 连接模式组件的状态消息信号
     connect(m_terminalModeWidget, &IModeWidget::statusMessage,
             [this](const QString& msg) { statusBar()->showMessage(msg, 3000); });
@@ -540,6 +647,18 @@ void MainWindow::loadSettings()
     }
     if (m_networkSettings) {
         m_networkSettings->setConfig(m_networkConfig);
+    }
+    if (m_tcpClientWorkspace) {
+        m_tcpClientWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_tcpServerWorkspace) {
+        m_tcpServerWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_udpWorkspace) {
+        m_udpWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_hidWorkspace) {
+        m_hidWorkspace->setConfig(m_hidConfig);
     }
 
     // 设置工具栏波特率
@@ -615,6 +734,18 @@ void MainWindow::applyDialogSettings()
     }
     if (m_networkSettings) {
         m_networkSettings->setConfig(m_networkConfig);
+    }
+    if (m_tcpClientWorkspace) {
+        m_tcpClientWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_tcpServerWorkspace) {
+        m_tcpServerWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_udpWorkspace) {
+        m_udpWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_hidWorkspace) {
+        m_hidWorkspace->setConfig(m_hidConfig);
     }
 
     // 刷新工具栏显示（仅更新当前显示，不主动改动连接状态）
@@ -695,10 +826,13 @@ void MainWindow::createCommunication()
 
     if (m_communication) {
         if (auto* tcpClient = dynamic_cast<TcpClient*>(m_communication.get())) {
-            QSettings settings;
-            const bool autoReconnect = settings.value("Serial/AutoReconnect", false).toBool();
-            const int reconnectIntervalSec = settings.value("Serial/ReconnectInterval", 3).toInt();
-            tcpClient->setAutoReconnect(autoReconnect, reconnectIntervalSec * 1000);
+            const bool autoReconnect = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->autoReconnectEnabled()
+                : false;
+            const int reconnectIntervalMs = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->reconnectIntervalMs()
+                : 3000;
+            tcpClient->setAutoReconnect(autoReconnect, reconnectIntervalMs);
         }
 
         connect(m_communication.get(), &ICommunication::dataReceived,
@@ -709,6 +843,30 @@ void MainWindow::createCommunication()
                 this, &MainWindow::onConnectionStatusChanged);
         connect(m_communication.get(), &ICommunication::errorOccurred,
                 this, &MainWindow::onErrorOccurred);
+
+        if (auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get())) {
+            connect(tcpServer, &TcpServer::clientConnected,
+                    this, [this](const QString& clientId) {
+                if (m_tcpServerWorkspace) {
+                    m_tcpServerWorkspace->addClient(clientId);
+                }
+            });
+            connect(tcpServer, &TcpServer::clientDisconnected,
+                    this, [this](const QString& clientId) {
+                if (m_tcpServerWorkspace) {
+                    m_tcpServerWorkspace->removeClient(clientId);
+                }
+            });
+        }
+        if (auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get())) {
+            connect(udpSocket, &UdpSocket::datagramReceived,
+                    this, [this](const QByteArray& data, const QString& senderIp, int senderPort) {
+                Q_UNUSED(data)
+                if (m_udpWorkspace) {
+                    m_udpWorkspace->addRecentRemote(senderIp, senderPort);
+                }
+            });
+        }
     }
 }
 
@@ -722,6 +880,7 @@ void MainWindow::destroyCommunication()
 
 void MainWindow::onConnectClicked()
 {
+    syncCurrentWorkspaceToConfig();
     createCommunication();
 
     if (!m_communication) {
@@ -756,9 +915,11 @@ void MainWindow::onDisconnectClicked()
 
 void MainWindow::onDataReceived(const QByteArray& data)
 {
-    // 将数据发送到当前模式组件
-    if (m_currentModeWidget) {
+    // 串口类型继续进入当前显示模式；网络/HID 类型进入对应专用工作台。
+    if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
         m_currentModeWidget->appendReceivedData(data);
+    } else if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
+        workspace->appendReceivedData(data);
     }
 
     if (m_statistics) {
@@ -835,9 +996,11 @@ void MainWindow::onDataReceived(const QByteArray& data)
 
 void MainWindow::onDataSent(const QByteArray& data)
 {
-    // 通知当前模式组件发送了数据
-    if (m_currentModeWidget) {
+    // 串口类型继续进入当前显示模式；网络/HID 类型进入对应专用工作台。
+    if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
         m_currentModeWidget->appendSentData(data);
+    } else if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
+        workspace->appendSentData(data);
     }
 
     if (m_statistics) {
@@ -855,6 +1018,7 @@ void MainWindow::onDataSent(const QByteArray& data)
 void MainWindow::onSendData(const QByteArray& data)
 {
     if (!m_communication || !m_connected) {
+        statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
         return;
     }
 
@@ -883,6 +1047,18 @@ void MainWindow::onConnectionStatusChanged(bool connected)
     }
     if (m_debugModeWidget) {
         m_debugModeWidget->setConnected(connected);
+    }
+    if (m_tcpClientWorkspace) {
+        m_tcpClientWorkspace->setConnected(connected);
+    }
+    if (m_tcpServerWorkspace) {
+        m_tcpServerWorkspace->setConnected(connected);
+    }
+    if (m_udpWorkspace) {
+        m_udpWorkspace->setConnected(connected);
+    }
+    if (m_hidWorkspace) {
+        m_hidWorkspace->setConnected(connected);
     }
 
     // 断开连接时重置自动检测器
@@ -928,6 +1104,7 @@ void MainWindow::onCommTypeChanged(int index)
         refreshPorts();
     }
     updateCommunicationWidgetsForType();
+    updateCommunicationWorkspaceForType();
     updateConnectionButtonText();
 
     LOG_INFO(QString("Communication type changed to: %1").arg(static_cast<int>(m_currentCommType)));
@@ -943,6 +1120,8 @@ void MainWindow::onNewSession()
 
 void MainWindow::onSaveSession()
 {
+    syncCurrentWorkspaceToConfig();
+
     SessionManager* sm = SessionManager::instance();
     SessionData& session = sm->currentSession();
 
@@ -1034,6 +1213,18 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     }
     if (m_networkSettings) {
         m_networkSettings->setConfig(m_networkConfig);
+    }
+    if (m_tcpClientWorkspace) {
+        m_tcpClientWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_tcpServerWorkspace) {
+        m_tcpServerWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_udpWorkspace) {
+        m_udpWorkspace->setConfig(m_networkConfig);
+    }
+    if (m_hidWorkspace) {
+        m_hidWorkspace->setConfig(m_hidConfig);
     }
 
     if (m_commTypeCombo) {
@@ -1159,6 +1350,7 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     }
 
     updateCommunicationWidgetsForType();
+    updateCommunicationWorkspaceForType();
     updateConnectionButtonText();
 }
 
@@ -1772,7 +1964,11 @@ void MainWindow::updateCommunicationWidgetsForType()
         m_baudComboAction->setVisible(serialMode);
     }
     if (m_networkWidgetAction) {
-        m_networkWidgetAction->setVisible(networkMode);
+        /*
+         * TCP/UDP 已有专用工作台承载完整地址、监听和目标配置。顶部不再显示
+         * 旧的轻量 IP/端口控件，避免两个入口同时存在但状态不同步。
+         */
+        m_networkWidgetAction->setVisible(false);
     }
 
     if (m_portCombo) {
@@ -1787,10 +1983,16 @@ void MainWindow::updateCommunicationWidgetsForType()
         m_baudCombo->setEnabled(serialMode && !m_connected);
     }
     if (m_networkToolbarWidget) {
-        m_networkToolbarWidget->setEnabled(networkMode && !m_connected);
+        m_networkToolbarWidget->setEnabled(false);
     }
     if (m_commTypeCombo) {
         m_commTypeCombo->setEnabled(!m_connected);
+    }
+    if (m_displayModeLabel) {
+        m_displayModeLabel->setVisible(serialMode);
+    }
+    if (m_displayModeCombo) {
+        m_displayModeCombo->setVisible(serialMode);
     }
 
     if (networkMode && m_ipEdit) {
@@ -1831,6 +2033,105 @@ void MainWindow::updateCommunicationWidgetsForType()
                 m_portSpin->setToolTip(tr("端口号"));
                 break;
         }
+    }
+}
+
+/**
+ * @brief 根据当前通信类型切换主体通信工作台。
+ *
+ * 串口显示原有“模式工具栏 + 显示模式栈”；TCP/UDP/HID 显示各自的
+ * 专用工作台，避免继续把网络或 HID 操作塞进串口调试界面。
+ */
+void MainWindow::updateCommunicationWorkspaceForType()
+{
+    if (!m_commWorkspaceStack) {
+        return;
+    }
+
+    QWidget* targetPage = m_serialWorkspacePage;
+    switch (m_currentCommType) {
+        case CommType::Serial:
+            targetPage = m_serialWorkspacePage;
+            break;
+        case CommType::TcpClient:
+            targetPage = m_tcpClientWorkspace;
+            break;
+        case CommType::TcpServer:
+            targetPage = m_tcpServerWorkspace;
+            break;
+        case CommType::Udp:
+            targetPage = m_udpWorkspace;
+            break;
+        case CommType::Hid:
+            targetPage = m_hidWorkspace;
+            break;
+    }
+
+    if (targetPage) {
+        m_commWorkspaceStack->setCurrentWidget(targetPage);
+    }
+}
+
+/**
+ * @brief 打开连接前从当前专用工作台同步配置。
+ *
+ * 网络与 HID 的关键参数现在位于主体工作台，顶部工具栏只保留高频入口。
+ * 连接前必须先读取工作台配置，否则通信对象会使用旧配置。
+ */
+void MainWindow::syncCurrentWorkspaceToConfig()
+{
+    switch (m_currentCommType) {
+        case CommType::TcpClient:
+            if (m_tcpClientWorkspace) {
+                m_networkConfig = m_tcpClientWorkspace->config();
+            }
+            break;
+        case CommType::TcpServer:
+            if (m_tcpServerWorkspace) {
+                m_networkConfig = m_tcpServerWorkspace->config();
+            }
+            break;
+        case CommType::Udp:
+            if (m_udpWorkspace) {
+                m_networkConfig = m_udpWorkspace->config();
+            }
+            break;
+        case CommType::Hid:
+            if (m_hidWorkspace) {
+                const HidConfig reportConfig = m_hidWorkspace->config();
+                m_hidConfig.inputReportLength = reportConfig.inputReportLength;
+                m_hidConfig.outputReportLength = reportConfig.outputReportLength;
+                m_hidConfig.featureReportLength = reportConfig.featureReportLength;
+                m_hidConfig.firstDataIsLength = reportConfig.firstDataIsLength;
+                m_hidConfig.outReportId = reportConfig.outReportId;
+                m_hidConfig.featureReportId = reportConfig.featureReportId;
+                m_hidConfig.removeInReportId = reportConfig.removeInReportId;
+            }
+            break;
+        case CommType::Serial:
+        default:
+            break;
+    }
+}
+
+/**
+ * @brief 获取当前非串口通信工作台。
+ * @return 当前工作台；串口模式返回 nullptr。
+ */
+CommunicationWorkspaceWidget* MainWindow::currentCommunicationWorkspace() const
+{
+    switch (m_currentCommType) {
+        case CommType::TcpClient:
+            return m_tcpClientWorkspace;
+        case CommType::TcpServer:
+            return m_tcpServerWorkspace;
+        case CommType::Udp:
+            return m_udpWorkspace;
+        case CommType::Hid:
+            return m_hidWorkspace;
+        case CommType::Serial:
+        default:
+            return nullptr;
     }
 }
 
@@ -1974,6 +2275,9 @@ void MainWindow::onToolbarPortChanged(int index)
                 m_portCombo->itemData(index, Qt::UserRole + 5).toUInt());
             m_hidConfig.usage = static_cast<quint16>(
                 m_portCombo->itemData(index, Qt::UserRole + 6).toUInt());
+            if (m_hidWorkspace) {
+                m_hidWorkspace->setConfig(m_hidConfig);
+            }
         } else {
             m_serialConfig.portName = m_portCombo->itemData(index).toString();
         }
@@ -1998,6 +2302,8 @@ void MainWindow::onOpenPortClicked()
         // 关闭连接后由统一刷新函数恢复控件可编辑状态和对应文案。
         onDisconnectClicked();
     } else {
+        syncCurrentWorkspaceToConfig();
+
         // 根据通信类型更新配置
         switch (m_currentCommType) {
             case CommType::Serial:
@@ -2014,31 +2320,15 @@ void MainWindow::onOpenPortClicked()
                 }
                 break;
             case CommType::TcpClient:
-                // 更新TCP客户端配置
-                if (m_ipEdit) {
-                    m_networkConfig.serverIp = m_ipEdit->text();
-                }
-                if (m_portSpin) {
-                    m_networkConfig.serverPort = m_portSpin->value();
-                }
+                // TCP 客户端配置已由专用工作台同步，这里只兜底确认模式。
                 m_networkConfig.mode = NetworkMode::TcpClient;
                 break;
             case CommType::TcpServer:
-                // 更新TCP服务器配置
-                if (m_portSpin) {
-                    m_networkConfig.listenPort = m_portSpin->value();
-                }
+                // TCP 服务器配置已由专用工作台同步，这里只兜底确认模式。
                 m_networkConfig.mode = NetworkMode::TcpServer;
                 break;
             case CommType::Udp:
-                // 更新UDP配置
-                if (m_ipEdit) {
-                    m_networkConfig.remoteIp = m_ipEdit->text();
-                }
-                if (m_portSpin) {
-                    m_networkConfig.remotePort = m_portSpin->value();
-                    m_networkConfig.listenPort = m_portSpin->value();
-                }
+                // UDP 配置已由专用工作台同步，这里只兜底确认模式。
                 m_networkConfig.mode = NetworkMode::Udp;
                 break;
             case CommType::Hid:

@@ -45,6 +45,12 @@ public:
      */
     void appendFeatureReportData(const QByteArray& data);
 
+    /**
+     * @brief 追加 Feature Report 发送记录。
+     * @param data Feature Report 原始字节。
+     */
+    void appendFeatureReportSentData(const QByteArray& data);
+
 signals:
     /**
      * @brief 请求发送 Output Report 的 payload。

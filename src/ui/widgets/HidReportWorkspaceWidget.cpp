@@ -162,6 +162,11 @@ void HidReportWorkspaceWidget::appendFeatureReportData(const QByteArray& data)
     appendHistoryLine(QStringLiteral("RX"), QStringLiteral("Feature"), data);
 }
 
+void HidReportWorkspaceWidget::appendFeatureReportSentData(const QByteArray& data)
+{
+    appendHistoryLine(QStringLiteral("TX"), QStringLiteral("Feature"), data);
+}
+
 void HidReportWorkspaceWidget::onOutputSendClicked()
 {
     const QByteArray payload = parsePayload(m_outputPayloadEdit->toPlainText(), true);

@@ -94,6 +94,22 @@ public:
     HidConfig config() const;
 
     /**
+     * @brief 发送 Feature Report。
+     *
+     * @param report 已包含 Report ID 的完整 Feature Report。
+     * @return true 表示 hidapi 已接受该报告。
+     */
+    bool sendFeatureReport(const QByteArray& report);
+
+    /**
+     * @brief 读取 Feature Report。
+     *
+     * @param requestReport 首字节为 Report ID 的接收缓冲区，长度决定读取上限。
+     * @return 读取到的完整 Feature Report；失败时返回空数组并写入 lastError。
+     */
+    QByteArray getFeatureReport(const QByteArray& requestReport);
+
+    /**
      * @brief 枚举当前系统可见 HID 设备。
      * @return 设备信息列表；未启用 hidapi 时返回空列表。
      */
