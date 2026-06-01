@@ -22,6 +22,7 @@ set(TEST_SOURCES
     unit/TestFFTUtils.cpp
     unit/TestFilterUtils.cpp
     unit/TestDisplaySettingsPolicy.cpp
+    unit/TestPlotterDataPolicy.cpp
     unit/TestPlotRenderQuality.cpp
     unit/TestPlotterStatisticsCalculator.cpp
     unit/TestPlotterManagerLifecycle.cpp
@@ -109,6 +110,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterStatisticsCalculator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterManager.cpp

@@ -25,6 +25,7 @@
 
 #include "qcustomplot/qcustomplot.h"
 #include "core/utils/FilterUtils.h"
+#include "PlotterDataPolicy.h"
 #include "PlotRenderQuality.h"
 
 namespace ComAssistant {
@@ -33,16 +34,6 @@ namespace ComAssistant {
 class SpectrumWindow;
 class RealTimeFFTWindow;
 class PlotControlPanel;
-
-/**
- * @brief 数据抽稀比例枚举
- */
-enum class DecimationRatio {
-    None = 1,    ///< 无抽稀 (1:1)
-    Half = 2,    ///< 1:2
-    Fifth = 5,   ///< 1:5
-    Tenth = 10   ///< 1:10
-};
 
 /**
  * @brief 绘图视图模式枚举
@@ -307,7 +298,7 @@ public:
      * @brief 获取数据抽稀比例
      * @return 抽稀比例
      */
-    DecimationRatio decimationRatio() const { return m_decimationRatio; }
+    DecimationRatio decimationRatio() const { return m_dataPolicy.decimationRatio(); }
 
     /**
      * @brief 设置曲线线宽
@@ -545,6 +536,7 @@ private:
     PlotControlPanel* m_controlPanel = nullptr;  ///< 控制面板
 
     // 数据管理
+    PlotterDataPolicy m_dataPolicy;        ///< 绘图数据策略，负责抽稀状态和裁剪计划等纯决策。
     int m_dataIndex = 0;                   ///< 自动递增的X轴索引
     int m_maxDataPoints = 5000;            ///< 最大数据点数（降低以提升性能）
     bool m_autoScale = true;               ///< 自动缩放
@@ -555,8 +547,6 @@ private:
     int m_openGlMultisamples = 4;          ///< OpenGL 多重采样级别，控制 FBO 抗锯齿与内存占用平衡
     int m_valuePanelUpdateEvery = 2;       ///< 数值面板刷新节流间隔
     RenderQualityMode m_renderQualityMode = RenderQualityMode::HighQuality;  ///< 渲染质量模式
-    DecimationRatio m_decimationRatio = DecimationRatio::None;  ///< 数据抽稀比例
-    int m_decimationCounter = 0;           ///< 抽稀计数器
     bool m_throttleAutoRangeUpdates = false;  ///< 是否节流Y轴范围更新
     int m_autoRangeUpdateCounter = 0;      ///< 自动范围更新节流计数器（高性能模式）
     int m_valuePanelUpdateCounter = 0;     ///< 数值面板更新节流计数器

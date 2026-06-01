@@ -17,6 +17,7 @@
 #include "unit/TestFFTUtils.h"
 #include "unit/TestFilterUtils.h"
 #include "unit/TestDisplaySettingsPolicy.h"
+#include "unit/TestPlotterDataPolicy.h"
 #include "unit/TestPlotRenderQuality.h"
 #include "unit/TestPlotterStatisticsCalculator.h"
 #include "unit/TestPlotterManagerLifecycle.h"
@@ -95,6 +96,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] DisplaySettingsPolicy";
         TestDisplaySettingsPolicy test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterDataPolicy";
+        TestPlotterDataPolicy test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

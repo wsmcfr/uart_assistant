@@ -1252,10 +1252,13 @@ void PlotterWindow::trimData()
 
         if (dataSize > m_maxDataPoints) {
             // 移除最早的数据，保留 90% 的最大点数以避免频繁裁剪
-            int targetSize = m_maxDataPoints * 9 / 10;  // 保留90%
-            int removeCount = dataSize - targetSize;
+            const PlotterDataPolicy::TrimPlan trimPlan =
+                PlotterDataPolicy::makeTrimPlan(dataSize, m_maxDataPoints);
+            if (!trimPlan.shouldTrim) {
+                continue;
+            }
 
-            if (removeCount >= dataSize) {
+            if (trimPlan.removeCount >= dataSize) {
                 m_totalDataPoints -= dataSize;
                 graph->data()->clear();
                 continue;
@@ -1263,13 +1266,13 @@ void PlotterWindow::trimData()
 
             // 使用真实边界 key 进行裁剪，避免非等步长 X 轴时的删除误差
             auto boundaryIt = graph->data()->constBegin();
-            for (int step = 0; step < removeCount && boundaryIt != graph->data()->constEnd(); ++step) {
+            for (int step = 0; step < trimPlan.removeCount && boundaryIt != graph->data()->constEnd(); ++step) {
                 ++boundaryIt;
             }
 
             if (boundaryIt != graph->data()->constEnd()) {
                 graph->data()->removeBefore(boundaryIt->key);
-                m_totalDataPoints -= removeCount;
+                m_totalDataPoints -= trimPlan.removeCount;
             } else {
                 m_totalDataPoints -= dataSize;
                 graph->data()->clear();
@@ -2125,24 +2128,15 @@ void PlotterWindow::applyRenderQualityMode()
 
 void PlotterWindow::setDecimationRatio(DecimationRatio ratio)
 {
-    m_decimationRatio = ratio;
-    m_decimationCounter = 0;
+    m_dataPolicy.setDecimationRatio(ratio);
     LOG_INFO(QString("Decimation ratio set to 1:%1 for window '%2'")
         .arg(static_cast<int>(ratio)).arg(m_windowId));
 }
 
 bool PlotterWindow::shouldDecimate()
 {
-    if (m_decimationRatio == DecimationRatio::None) {
-        return false;  // 不抽稀，保留所有数据
-    }
-
-    m_decimationCounter++;
-    if (m_decimationCounter >= static_cast<int>(m_decimationRatio)) {
-        m_decimationCounter = 0;
-        return false;  // 保留这个点
-    }
-    return true;  // 抽稀这个点
+    // 抽稀状态机已经下沉到 PlotterDataPolicy，窗口只使用其跳过决策。
+    return m_dataPolicy.shouldSkipNextPoint();
 }
 
 void PlotterWindow::setCurveLineWidth(int curveIndex, double width)
