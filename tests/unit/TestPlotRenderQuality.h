@@ -23,6 +23,7 @@ private slots:
     void testHighPerformanceProfile();
     void testModeDifference();
     void testBackendProfileIndependentFromQualityMode();
+    void testQCustomPlotFboDrawMakesContextCurrentBeforeReadback();
 };
 
 #endif // TESTPLOTRENDERQUALITY_H

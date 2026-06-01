@@ -930,6 +930,20 @@ void QCPPaintBufferGlFbo::draw(QCPPainter *painter) const
     qDebug() << Q_FUNC_INFO << "OpenGL frame buffer object doesn't exist, reallocateBuffer was not called?";
     return;
   }
+  /*
+    Qt 5.12 在部分 Windows OpenGL/ANGLE 驱动组合下，从 FBO 读回图像前
+    不会保证创建该 FBO 的 context 仍是 current。此时直接调用 toImage()
+    可能只能得到刚清空的空白缓冲，表现为 QCustomPlot 启用 OpenGL 后整块白屏。
+    绘制回 QWidget 前显式 makeCurrent，确保后续 readback 读取的是当前 FBO 内容。
+  */
+  QSharedPointer<QOpenGLContext> context = mGlContext.toStrongRef();
+  if (!context)
+  {
+    qDebug() << Q_FUNC_INFO << "OpenGL context doesn't exist";
+    return;
+  }
+  if (QOpenGLContext::currentContext() != context.data())
+    context->makeCurrent(context->surface());
   painter->drawImage(0, 0, mGlFrameBuffer->toImage());
 }
 

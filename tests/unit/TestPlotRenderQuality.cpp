@@ -8,6 +8,10 @@
 #include "TestPlotRenderQuality.h"
 #include "ui/PlotRenderQuality.h"
 
+#include <QFile>
+#include <QRegularExpression>
+#include <QTextStream>
+
 using namespace ComAssistant;
 
 void TestPlotRenderQuality::initTestCase()
@@ -81,4 +85,32 @@ void TestPlotRenderQuality::testBackendProfileIndependentFromQualityMode()
     QCOMPARE(backend.openGlMultisamples, 4);
     QCOMPARE(quality.updateIntervalMs, 33);
     QCOMPARE(performance.updateIntervalMs, 25);
+}
+
+void TestPlotRenderQuality::testQCustomPlotFboDrawMakesContextCurrentBeforeReadback()
+{
+    /*
+     * QCustomPlot 的 OpenGL FBO 缓冲最终通过 QOpenGLFramebufferObject::toImage()
+     * 读回并合成到 QWidget。部分 Windows/Qt 5.12/OpenGL 驱动组合要求读回前
+     * 当前线程必须重新 makeCurrent 到创建该 FBO 的 context，否则会得到空白图像。
+     * 这里用源码级回归测试锁住该补丁，避免后续升级第三方文件时丢失。
+     */
+    QFile sourceFile(QStringLiteral(COMASSISTANT_SOURCE_DIR)
+                     + QStringLiteral("/src/third_party/qcustomplot/qcustomplot.cpp"));
+    QVERIFY2(sourceFile.open(QIODevice::ReadOnly | QIODevice::Text),
+             qPrintable(QStringLiteral("无法读取 qcustomplot.cpp: %1").arg(sourceFile.errorString())));
+
+    QTextStream stream(&sourceFile);
+    const QString source = stream.readAll();
+    const QRegularExpression drawFunctionPattern(
+        QStringLiteral("void QCPPaintBufferGlFbo::draw\\(QCPPainter \\*painter\\) const\\s*\\{(?<body>.*?)\\n\\}"),
+        QRegularExpression::DotMatchesEverythingOption);
+    const QRegularExpressionMatch match = drawFunctionPattern.match(source);
+
+    QVERIFY2(match.hasMatch(), "未找到 QCPPaintBufferGlFbo::draw 实现。");
+    const QString body = match.captured(QStringLiteral("body"));
+    QVERIFY(body.contains(QStringLiteral("mGlContext.toStrongRef()")));
+    QVERIFY(body.contains(QStringLiteral("context->makeCurrent(context->surface())")));
+    QVERIFY(body.indexOf(QStringLiteral("context->makeCurrent(context->surface())"))
+            < body.indexOf(QStringLiteral("mGlFrameBuffer->toImage()")));
 }
