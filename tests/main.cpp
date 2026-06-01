@@ -29,6 +29,7 @@
 #include "unit/TestDocumentationLinks.h"
 #include "unit/TestMainWindowCommunicationController.h"
 #include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
+#include "unit/TestMainWindowPlotDataRouter.h"
 
 int main(int argc, char *argv[])
 {
@@ -153,6 +154,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] MainWindowCommunicationWorkspaceCoordinator";
         TestMainWindowCommunicationWorkspaceCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowPlotDataRouter";
+        TestMainWindowPlotDataRouter test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

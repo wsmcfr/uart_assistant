@@ -31,6 +31,7 @@
 #include "protocol/IProtocol.h"
 #include "config/AppConfig.h"
 #include "ui/MainWindowCommunicationWorkspaceCoordinator.h"
+#include "ui/MainWindowPlotDataRouter.h"
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
@@ -302,7 +303,7 @@ private:
     // 绘图协议相关
     std::unique_ptr<IProtocol> m_currentProtocol;
     ProtocolType m_currentProtocolType = ProtocolType::Raw;
-    QByteArray m_plotDataBuffer;  ///< 绘图数据缓冲（按行处理）
+    MainWindowPlotDataRouter m_plotDataRouter; ///< 绘图协议接收路由器，维护按行解析缓冲和路由结果。
     PlotProtocolDetector* m_plotDetector = nullptr;  ///< 绘图协议自动检测器
     QActionGroup* m_protocolActionGroup = nullptr;   ///< 协议菜单项组（用于同步选中状态）
 

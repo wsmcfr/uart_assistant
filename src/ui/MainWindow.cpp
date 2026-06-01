@@ -8,6 +8,7 @@
 #include "MainWindow.h"
 #include "HelpDialog.h"
 #include "MainWindowCommunicationController.h"
+#include "MainWindowPlotDataRouter.h"
 #include "PlotterManager.h"
 #include "PlotterWindow.h"
 #include "dialogs/ToolboxDialog.h"
@@ -1001,50 +1002,27 @@ void MainWindow::onDataReceived(const QByteArray& data)
         m_dataTableWidget->addReceivedData(data, protocolName, parsedValues);
     }
 
-    // 自动检测绘图协议（仅在未手动选择协议时）
-    if (m_currentProtocolType == ProtocolType::Raw && m_plotDetector) {
-        m_plotDetector->feedData(data);
+    /*
+     * 绘图协议接收路由已下沉到 MainWindowPlotDataRouter。MainWindow
+     * 只负责把 Raw 数据喂给自动检测器，以及把路由结果交给绘图管理器。
+     */
+    const MainWindowPlotDataRouter::ProcessResult plotResult =
+        m_plotDataRouter.processReceivedData(data,
+                                             m_currentProtocolType,
+                                             m_currentProtocol.get());
+    if (plotResult.shouldFeedDetector) {
+        if (m_plotDetector) {
+            m_plotDetector->feedData(data);
+        }
         return;
     }
 
-    // 绘图协议解析和数据路由
-    if (m_currentProtocol && m_currentProtocol->isPlotProtocol()) {
-        // 将数据添加到缓冲区
-        m_plotDataBuffer.append(data);
-
-        // 按行处理数据
-        int pos;
-        while ((pos = m_plotDataBuffer.indexOf('\n')) >= 0) {
-            QByteArray line = m_plotDataBuffer.left(pos);
-            m_plotDataBuffer.remove(0, pos + 1);
-
-            // 移除可能的 \r
-            if (line.endsWith('\r')) {
-                line.chop(1);
-            }
-
-            if (line.isEmpty()) continue;
-
-            // 解析绘图数据
-            PlotData plotData = m_currentProtocol->parsePlotData(line);
-            if (plotData.valid && !plotData.windowId.isEmpty()) {
-                // 路由到绘图管理器
-                if (plotData.useTimestamp) {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.timestamp, plotData.yValues);
-                } else if (plotData.useCustomX) {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.xValue, plotData.yValues);
-                } else {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.yValues);
-                }
-            }
-        }
-
-        // 防止缓冲区过大
-        if (m_plotDataBuffer.size() > 4096) {
-            m_plotDataBuffer.clear();
+    for (const MainWindowPlotDataRouter::PlotRoute& route : plotResult.routes) {
+        if (route.xMode == MainWindowPlotDataRouter::PlotRoute::Timestamp ||
+            route.xMode == MainWindowPlotDataRouter::PlotRoute::CustomX) {
+            PlotterManager::instance()->routeData(route.windowId, route.x, route.values);
+        } else {
+            PlotterManager::instance()->routeData(route.windowId, route.values);
         }
     }
 }
@@ -2399,8 +2377,8 @@ void MainWindow::onProtocolTypeChanged(ProtocolType type)
         m_currentProtocol = ProtocolFactory::create(m_currentProtocolType);
     }
 
-    // 清空绘图数据缓冲
-    m_plotDataBuffer.clear();
+    // 清空绘图路由器缓冲，避免旧协议残留的半行影响新协议解析。
+    m_plotDataRouter.reset();
 
     // 重置自动检测器（手动切换协议后停止自动检测）
     if (m_plotDetector) {
@@ -2422,7 +2400,7 @@ void MainWindow::onPlotProtocolAutoDetected(ProtocolType type)
     // 更新协议状态
     m_currentProtocolType = type;
     m_currentProtocol = ProtocolFactory::create(type);
-    m_plotDataBuffer.clear();
+    m_plotDataRouter.reset();
 
     // 同步菜单选中状态
     if (m_protocolActionGroup) {
