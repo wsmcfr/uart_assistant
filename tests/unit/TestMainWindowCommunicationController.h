@@ -33,6 +33,16 @@ private slots:
     void testOpenSuccessAllowsSendingData();
 
     /**
+     * @brief 底层写入失败时应保留队首，恢复后可重试同一数据。
+     */
+    void testFailedSendIsKeptForRetry();
+
+    /**
+     * @brief 关闭连接时应取消所有待发送任务，避免旧连接数据泄漏到新连接。
+     */
+    void testCloseCurrentCancelsPendingSends();
+
+    /**
      * @brief 打开失败时应保留错误信息，并保持未连接状态。
      */
     void testOpenFailureKeepsDisconnectedStateAndError();

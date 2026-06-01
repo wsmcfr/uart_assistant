@@ -39,6 +39,15 @@ void SendDispatcher::setWriteHandler(WriteHandler handler)
     m_writeHandler = std::move(handler);
 }
 
+void SendDispatcher::setErrorProvider(ErrorProvider provider)
+{
+    /*
+     * 错误提供器和写入回调同样不拥有通信对象。关闭连接时控制器会清空
+     * 它，避免调度器在失败路径读取已释放对象的 lastError()。
+     */
+    m_errorProvider = std::move(provider);
+}
+
 SendEnqueueResult SendDispatcher::enqueue(const QByteArray& payload, const QString& source)
 {
     const SendEnqueueResult result = m_queue.enqueue(payload, source);
@@ -60,7 +69,7 @@ void SendDispatcher::dispatchPending()
          */
         m_lastError = tr("发送通道不可用");
         if (m_queue.hasPending()) {
-            const SendItem item = m_queue.peek();
+            const SendQueueItem item = m_queue.peek();
             m_queue.completeHead(SendCompletion::failed(m_lastError));
             emit itemFailed(item.id, item.payload, m_lastError);
             emitQueueChanged();
@@ -69,14 +78,17 @@ void SendDispatcher::dispatchPending()
     }
 
     while (m_queue.hasPending()) {
-        const SendItem item = m_queue.peek();
+        const SendQueueItem item = m_queue.peek();
         const qint64 written = m_writeHandler(item.payload);
         if (written < 0) {
             /*
              * 底层明确失败时保留队首。这里先复制 item，是为了 completeHead()
              * 更新队首 attemptCount 后仍能用原始 payload 发出失败信号。
              */
-            m_lastError = tr("发送失败");
+            m_lastError = m_errorProvider ? m_errorProvider() : QString();
+            if (m_lastError.isEmpty()) {
+                m_lastError = tr("发送失败");
+            }
             m_queue.completeHead(SendCompletion::failed(m_lastError));
             emit itemFailed(item.id, item.payload, m_lastError);
             emitQueueChanged();
@@ -109,7 +121,7 @@ int SendDispatcher::pendingCount() const
     return m_queue.size();
 }
 
-const SendItem& SendDispatcher::peekPending() const
+const SendQueueItem& SendDispatcher::peekPending() const
 {
     return m_queue.peek();
 }

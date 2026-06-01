@@ -66,7 +66,7 @@ SendEnqueueResult SendQueue::enqueue(const QByteArray& payload, const QString& s
         return result;
     }
 
-    SendItem item;
+    SendQueueItem item;
     item.id = nextId();
     item.payload = payload;
     item.source = source;
@@ -91,7 +91,7 @@ bool SendQueue::completeHead(const SendCompletion& completion)
          * 失败时只更新队首元数据，不移动队列。attemptCount 记录失败次数，
          * 后续重试或诊断可以判断是否已经多次卡在同一 payload。
          */
-        SendItem& item = m_items.head();
+        SendQueueItem& item = m_items.head();
         item.attemptCount++;
         item.lastError = completion.error.isEmpty()
             ? QStringLiteral("发送失败")
@@ -100,7 +100,7 @@ bool SendQueue::completeHead(const SendCompletion& completion)
         return false;
     }
 
-    const SendItem item = m_items.dequeue();
+    const SendQueueItem item = m_items.dequeue();
     m_queuedBytes -= item.payload.size();
     if (m_queuedBytes < 0) {
         /*
@@ -127,7 +127,7 @@ bool SendQueue::hasPending() const
     return !m_items.isEmpty();
 }
 
-const SendItem& SendQueue::peek() const
+const SendQueueItem& SendQueue::peek() const
 {
     return m_items.head();
 }

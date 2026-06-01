@@ -9,6 +9,7 @@
 #define COMASSISTANT_MAINWINDOWCOMMUNICATIONCONTROLLER_H
 
 #include "communication/ICommunication.h"
+#include "communication/SendDispatcher.h"
 #include "config/AppConfig.h"
 
 #include <QObject>
@@ -97,9 +98,25 @@ public:
     /**
      * @brief 发送数据到当前通信对象。
      * @param data 待发送原始字节。
-     * @return 成功写入返回 true；未连接或写入失败返回 false。
+     * @return 成功写入或成功进入发送队列返回 true；未连接、入队失败或写入失败返回 false。
      */
     bool sendData(const QByteArray& data);
+
+    /**
+     * @brief 重试当前待发送队列。
+     *
+     * 底层 write() 失败时，调度器会保留队首任务。连接恢复或用户触发
+     * 重试时调用该函数，可以从同一个队首 payload 继续发送。
+     *
+     * @return 队列已清空或至少成功推进返回 true；仍有失败任务返回 false。
+     */
+    bool retryPendingSends();
+
+    /**
+     * @brief 获取待发送任务数量。
+     * @return 发送队列中尚未成功写出的任务数。
+     */
+    int pendingSendCount() const;
 
     /**
      * @brief 获取当前通信对象。
@@ -172,10 +189,16 @@ private:
      */
     void applyTcpClientOptionsIfNeeded();
 
+    /**
+     * @brief 把发送调度器绑定到当前通信对象。
+     */
+    void bindSendDispatcher();
+
 private:
     CommunicationFactoryFn m_factory;  ///< 通信对象创建函数。
     TcpClientReconnectOptionsProvider m_tcpClientReconnectOptionsProvider; ///< TCP 自动重连配置来源。
     std::unique_ptr<ICommunication> m_communication; ///< 当前通信对象。
+    SendDispatcher m_sendDispatcher;   ///< 统一发送队列调度器。
     bool m_connected = false;          ///< 控制器记录的连接状态。
     QString m_lastError;               ///< 最近一次错误信息。
 };

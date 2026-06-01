@@ -87,6 +87,13 @@ public:
     {
         ++writeCallCount;
         lastWrittenData = data;
+        if (failNextWrite) {
+            failNextWrite = false;
+            m_lastError = writeErrorText.isEmpty()
+                ? QStringLiteral("write failed")
+                : writeErrorText;
+            return -1;
+        }
         emit dataSent(data);
         return data.size();
     }
@@ -176,6 +183,8 @@ public:
     int closeCallCount = 0;        ///< close() 调用次数。
     int writeCallCount = 0;        ///< write() 调用次数。
     QByteArray lastWrittenData;    ///< 最近一次写入数据。
+    bool failNextWrite = false;    ///< 下一次 write() 是否模拟失败。
+    QString writeErrorText;        ///< 模拟写入失败时返回的错误文本。
     int* m_externalCloseCallCount = nullptr; ///< 对象释放后仍可读取的关闭调用计数器。
 };
 
@@ -246,6 +255,76 @@ void TestMainWindowCommunicationController::testOpenSuccessAllowsSendingData()
     QVERIFY(fake != nullptr);
     QCOMPARE(fake->writeCallCount, 1);
     QCOMPARE(fake->lastWrittenData, QByteArray("hello"));
+}
+
+void TestMainWindowCommunicationController::testFailedSendIsKeptForRetry()
+{
+    /*
+     * 第三阶段要求写入失败时不要丢弃队首数据。这里先让假通信对象失败
+     * 一次，再触发控制器重试，验证同一个 payload 会重新写入。
+     */
+    FakeCommunication* fake = nullptr;
+    MainWindowCommunicationController controller;
+    controller.setCommunicationFactory([&fake](CommType,
+                                               const SerialConfig&,
+                                               const NetworkConfig&,
+                                               const HidConfig&) {
+        FakeCommunicationHandle handle = makeFakeCommunication(true);
+        fake = handle.raw;
+        return std::move(handle.owned);
+    });
+
+    QVERIFY(controller.openCurrent(CommType::Serial,
+                                  SerialConfig(),
+                                  NetworkConfig(),
+                                  HidConfig()));
+    QVERIFY(fake != nullptr);
+
+    fake->failNextWrite = true;
+    fake->writeErrorText = QStringLiteral("temporary write failure");
+
+    QVERIFY(!controller.sendData(QByteArray("retry-me")));
+    QCOMPARE(fake->writeCallCount, 1);
+    QCOMPARE(controller.pendingSendCount(), 1);
+    QVERIFY(controller.lastError().contains(QStringLiteral("temporary write failure")));
+
+    QVERIFY(controller.retryPendingSends());
+    QCOMPARE(fake->writeCallCount, 2);
+    QCOMPARE(fake->lastWrittenData, QByteArray("retry-me"));
+    QCOMPARE(controller.pendingSendCount(), 0);
+}
+
+void TestMainWindowCommunicationController::testCloseCurrentCancelsPendingSends()
+{
+    /*
+     * 用户断开连接时，旧连接中排队但尚未成功写出的数据不能泄漏到下次
+     * 连接。通过一次失败制造待发送任务，再关闭连接验证队列被取消。
+     */
+    FakeCommunication* fake = nullptr;
+    MainWindowCommunicationController controller;
+    controller.setCommunicationFactory([&fake](CommType,
+                                               const SerialConfig&,
+                                               const NetworkConfig&,
+                                               const HidConfig&) {
+        FakeCommunicationHandle handle = makeFakeCommunication(true);
+        fake = handle.raw;
+        return std::move(handle.owned);
+    });
+
+    QVERIFY(controller.openCurrent(CommType::Serial,
+                                  SerialConfig(),
+                                  NetworkConfig(),
+                                  HidConfig()));
+    QVERIFY(fake != nullptr);
+
+    fake->failNextWrite = true;
+    QVERIFY(!controller.sendData(QByteArray("old-connection-data")));
+    QCOMPARE(controller.pendingSendCount(), 1);
+
+    controller.closeCurrent();
+
+    QCOMPARE(controller.pendingSendCount(), 0);
+    QVERIFY(!controller.isConnected());
 }
 
 void TestMainWindowCommunicationController::testOpenFailureKeepsDisconnectedStateAndError()

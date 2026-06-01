@@ -37,6 +37,14 @@ public:
     using WriteHandler = std::function<qint64(const QByteArray&)>;
 
     /**
+     * @brief 底层错误文本提供函数类型。
+     *
+     * write() 只返回 -1，真实错误通常保存在通信对象 lastError() 中。
+     * 调度器通过该回调拿到更具体的失败原因，避免诊断日志只有通用错误。
+     */
+    using ErrorProvider = std::function<QString()>;
+
+    /**
      * @brief 构造发送调度器。
      * @param parent Qt 父对象。
      */
@@ -53,6 +61,12 @@ public:
      * @param handler 写入函数；传空函数会让调度器进入不可发送状态。
      */
     void setWriteHandler(WriteHandler handler);
+
+    /**
+     * @brief 设置底层错误文本提供回调。
+     * @param provider 错误文本函数；传空函数时使用通用失败文本。
+     */
+    void setErrorProvider(ErrorProvider provider);
 
     /**
      * @brief 添加发送任务。
@@ -93,7 +107,7 @@ public:
      * @brief 获取队首待发送任务。
      * @return 队首任务引用；调用前需确保 hasPending()。
      */
-    const SendItem& peekPending() const;
+    const SendQueueItem& peekPending() const;
 
     /**
      * @brief 获取最近一次错误。
@@ -140,6 +154,7 @@ private:
 private:
     SendQueue m_queue;          ///< 纯发送队列，负责容量和失败保持。
     WriteHandler m_writeHandler;///< 底层通信写入回调。
+    ErrorProvider m_errorProvider; ///< 底层通信错误文本来源。
     QString m_lastError;        ///< 最近一次调度器错误。
 };
 

@@ -33,7 +33,7 @@ struct SendQueueOptions
  * id 是队列内递增编号，用于日志和测试定位；payload 是真实写入底层
  * 通信对象的数据；source 记录来源，方便诊断队列满或失败来自哪个入口。
  */
-struct SendItem
+struct SendQueueItem
 {
     qint64 id = 0;              ///< 队列分配的单调递增任务编号。
     QByteArray payload;         ///< 待发送原始字节。
@@ -128,7 +128,7 @@ public:
      * @brief 获取队首任务。
      * @return 队首任务引用；调用前必须确保 hasPending() 为 true。
      */
-    const SendItem& peek() const;
+    const SendQueueItem& peek() const;
 
     /**
      * @brief 获取待发送任务条数。
@@ -163,7 +163,7 @@ private:
 
 private:
     SendQueueOptions m_options; ///< 清洗后的队列容量配置。
-    QQueue<SendItem> m_items;   ///< FIFO 发送任务队列。
+    QQueue<SendQueueItem> m_items; ///< FIFO 发送任务队列。
     qint64 m_queuedBytes = 0;   ///< 当前队列 payload 总字节数。
     qint64 m_nextId = 1;        ///< 下一条任务编号。
     QString m_lastError;        ///< 最近一次队列级错误。
