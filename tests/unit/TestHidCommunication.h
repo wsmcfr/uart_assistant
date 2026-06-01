@@ -45,6 +45,16 @@ private slots:
      * @brief 验证 Feature Report 使用独立的 Report ID 和报告长度。
      */
     void testFeatureReportCodecUsesFeatureSettings();
+
+    /**
+     * @brief 验证 HID 通信对象拥有独立 worker 线程并能在析构时安全停止。
+     */
+    void testHidDeviceOwnsAndStopsWorkerThread();
+
+    /**
+     * @brief 验证 Feature Report 请求会在 worker 线程中串行执行。
+     */
+    void testHidWorkerSerializesConcurrentFeatureReports();
 };
 
 #endif // TESTHIDCOMMUNICATION_H

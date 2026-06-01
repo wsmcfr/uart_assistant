@@ -36,7 +36,9 @@ FileTransferDialog::~FileTransferDialog()
          */
         const TransferState state = m_transfer->state();
         if (state == TransferState::WaitingStart ||
-            state == TransferState::Transferring ||
+            state == TransferState::Running ||
+            state == TransferState::Paused ||
+            state == TransferState::Cancelling ||
             state == TransferState::Completing) {
             m_transfer->cancel();
         }
@@ -421,11 +423,28 @@ void FileTransferDialog::onProgressUpdated(const TransferProgress& progress)
     case TransferState::WaitingStart:
         statusText = tr("等待开始...");
         break;
-    case TransferState::Transferring:
+    case TransferState::Running:
         statusText = tr("传输中...");
+        break;
+    case TransferState::Paused:
+        statusText = tr("已暂停");
+        break;
+    case TransferState::Cancelling:
+        statusText = tr("正在取消...");
         break;
     case TransferState::Completing:
         statusText = tr("完成中...");
+        break;
+    case TransferState::Completed:
+        statusText = tr("传输完成");
+        break;
+    case TransferState::Cancelled:
+        statusText = tr("已取消");
+        break;
+    case TransferState::Failed:
+        statusText = progress.errorMessage.isEmpty()
+            ? tr("传输失败")
+            : tr("传输失败: %1").arg(progress.errorMessage);
         break;
     default:
         statusText = tr("就绪");

@@ -76,6 +76,30 @@ private slots:
      * 每次调用本地发送成功确认后才进入下一阶段。
      */
     void testOtaTransferWaitsForLocalSendResultBeforeNextPacket();
+
+    /**
+     * @brief 裸流暂停和继续应使用统一 Running/Paused 状态
+     *
+     * 主要流程：启动裸流发送后检查 Running，暂停后检查 Paused，继续后
+     * 检查 Running，确保 UI 可以用统一状态控制按钮。
+     */
+    void testRawTransferUsesRunningPausedStates();
+
+    /**
+     * @brief 裸流取消应经过 Cancelling 并最终进入 Cancelled
+     *
+     * 主要流程：启动发送后取消，检查状态变化信号包含 Cancelling 和
+     * Cancelled，避免重复取消和资源释放状态不可见。
+     */
+    void testRawTransferCancelTransitionsThroughCancelling();
+
+    /**
+     * @brief 本地发送失败应进入统一 Failed 状态并保留错误
+     *
+     * 主要流程：发送第一块后模拟本地失败，检查状态为 Failed 且
+     * progress.errorMessage 保留失败原因。
+     */
+    void testRawTransferLocalFailureUsesFailedState();
 };
 
 #endif // COMASSISTANT_TESTFILETRANSFER_H

@@ -48,6 +48,7 @@ add_executable(ComAssistant_tests
     ${TEST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/ICommunication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidWorker.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.h
@@ -150,6 +151,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidWorker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.cpp

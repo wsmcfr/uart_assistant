@@ -9,6 +9,8 @@
 #include <QTest>
 #include <QDebug>
 
+#include "transfer/FileTransfer.h"
+
 // 包含测试头文件
 #include "unit/TestChecksumUtils.h"
 #include "unit/TestConversionUtils.h"
@@ -45,6 +47,15 @@ int main(int argc, char *argv[])
      */
     QApplication app(argc, argv);
     app.setApplicationName("ComAssistant_tests");
+
+    /*
+     * FileTransfer::stateChanged 使用命名空间内的枚举类型。这里在测试入口
+     * 注册元类型，保证 QSignalSpy 能稳定捕获并还原 TransferState 参数。
+     * Qt 5.12 的 moc 会把同命名空间信号参数规范化为短名 TransferState，
+     * 因此短名和全名都注册，避免不同编译器下 QSignalSpy 解析差异。
+     */
+    qRegisterMetaType<ComAssistant::TransferState>("ComAssistant::TransferState");
+    qRegisterMetaType<ComAssistant::TransferState>("TransferState");
 
     int status = 0;
 

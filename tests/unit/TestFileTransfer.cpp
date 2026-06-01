@@ -228,3 +228,93 @@ void TestFileTransfer::testOtaTransferWaitsForLocalSendResultBeforeNextPacket()
     QTRY_COMPARE(completedSpy.count(), 1);
     QCOMPARE(transfer.state(), TransferState::Completed);
 }
+
+void TestFileTransfer::testRawTransferUsesRunningPausedStates()
+{
+    /*
+     * 第三阶段把文件传输 UI 所需状态收敛为 Running/Paused。该测试确保
+     * 裸流发送不再只靠单独 bool 标记暂停，而是把暂停暴露到统一状态机。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCDEFGH")), static_cast<qint64>(8));
+    file.close();
+
+    RawFileTransfer transfer;
+    RawTransferOptions options;
+    options.blockSize = 4;
+    options.intervalMs = 50;
+    transfer.setOptions(options);
+
+    QSignalSpy sendSpy(&transfer, SIGNAL(sendData(QByteArray)));
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    QTRY_COMPARE(sendSpy.count(), 1);
+    QCOMPARE(transfer.state(), TransferState::Running);
+
+    transfer.pause();
+    QCOMPARE(transfer.state(), TransferState::Paused);
+
+    transfer.resume();
+    QCOMPARE(transfer.state(), TransferState::Running);
+
+    transfer.cancel();
+}
+
+void TestFileTransfer::testRawTransferCancelTransitionsThroughCancelling()
+{
+    /*
+     * Cancelling 是资源释放中的瞬时状态。即使最终会很快进入 Cancelled，
+     * 信号中也应能看到该状态，方便 UI 禁用重复按钮并记录诊断。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCDEFGH")), static_cast<qint64>(8));
+    file.close();
+
+    RawFileTransfer transfer;
+    RawTransferOptions options;
+    options.blockSize = 4;
+    transfer.setOptions(options);
+
+    QSignalSpy stateSpy(&transfer, &FileTransfer::stateChanged);
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    transfer.cancel();
+
+    QList<int> states;
+    for (const QList<QVariant>& arguments : stateSpy) {
+        states.append(static_cast<int>(arguments.at(0).value<TransferState>()));
+    }
+
+    QVERIFY(states.contains(static_cast<int>(TransferState::Cancelling)));
+    QVERIFY(states.contains(static_cast<int>(TransferState::Cancelled)));
+    QCOMPARE(transfer.state(), TransferState::Cancelled);
+}
+
+void TestFileTransfer::testRawTransferLocalFailureUsesFailedState()
+{
+    /*
+     * Failed 与 Cancelled 分开，能让 UI 和诊断日志区分“用户主动取消”和
+     * “本地发送失败”。错误文本必须保存在 progress 中供界面展示。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCDEFGH")), static_cast<qint64>(8));
+    file.close();
+
+    RawFileTransfer transfer;
+    RawTransferOptions options;
+    options.blockSize = 4;
+    transfer.setOptions(options);
+
+    QSignalSpy sendSpy(&transfer, SIGNAL(sendData(QByteArray)));
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    QTRY_COMPARE(sendSpy.count(), 1);
+
+    transfer.notifyLocalSendResult(false, QStringLiteral("local queue failed"));
+
+    QCOMPARE(transfer.state(), TransferState::Failed);
+    QVERIFY(transfer.progress().errorMessage.contains(QStringLiteral("local queue failed")));
+}

@@ -292,6 +292,9 @@
         Make sure the port or HID device is not occupied before connecting. HID requires hidapi support, and Report length / Report ID must match the device protocol.
     </div>
 
+    <p><strong>中文：</strong>HID 打开后，Input 轮询、Output 写入和 Feature Report 操作会进入后台 worker 线程，并按同一设备句柄串行执行；关闭 HID 时会先释放 worker 中的设备句柄。</p>
+    <p><strong>English:</strong> After HID is opened, Input polling, Output writes and Feature Report operations run in a background worker thread and are serialized on the same device handle. Closing HID releases the handle in the worker first.</p>
+
     <h2>2. 发送数据 / Send Data</h2>
     <p><strong>中文：</strong>在当前通信工作台的发送区输入数据并点击发送。TCP服务器可选择指定客户端或广播；UDP 可选择目标远端；HID 使用 Report 发送按钮。</p>
     <p><strong>English:</strong> Enter data in the current communication workspace and send. TCP Server can send to a selected client or broadcast; UDP can choose the remote target; HID uses report buttons.</p>
@@ -313,6 +316,7 @@
         <li><strong>XMODEM/YMODEM:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader。</li>
         <li><strong>自定义 OTA / Custom OTA:</strong> 发送文件头、分块数据和结束包，可选择等待 <code>ACK</code>、设置超时和重试。</li>
         <li><strong>流式发送 / Streaming:</strong> 裸流和自定义 OTA 会按块读取文件，并等待本地发送队列确认后再推进下一块，适合较大的固件文件。</li>
+        <li><strong>可靠状态 / Reliable State:</strong> 文件传输会区分传输中、已暂停、正在取消、已取消、已完成和失败状态；失败时保留本地发送、连接或 ACK 超时等错误原因。</li>
     </ul>
 
     <div class="warning">

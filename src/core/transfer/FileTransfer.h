@@ -15,6 +15,7 @@
 #include <QElapsedTimer>
 #include <QString>
 #include <QStringList>
+#include <QMetaType>
 #include <QVector>
 #include <functional>
 
@@ -45,13 +46,22 @@ enum class TransferDirection {
  * @brief 传输状态
  */
 enum class TransferState {
-    Idle,           ///< 空闲
-    WaitingStart,   ///< 等待开始
-    Transferring,   ///< 传输中
-    Completing,     ///< 完成中
+    Idle,           ///< 空闲，尚未启动任何传输
+    WaitingStart,   ///< 等待设备端起始握手，主要用于 X/YMODEM
+    Running,        ///< 正在传输，Raw/OTA/X/YMODEM 的统一运行态
+    Paused,         ///< 已暂停，文件句柄和当前位置保留，等待继续
+    Completing,     ///< 完成中，协议正在收尾或等待最后确认
     Completed,      ///< 已完成
+    Cancelling,     ///< 正在取消并释放资源，随后进入 Cancelled
     Cancelled,      ///< 已取消
-    Error           ///< 错误
+    Failed,         ///< 失败，progress.errorMessage 保存失败原因
+
+    /*
+     * 兼容旧代码和历史测试中的状态命名。枚举别名让 X/YMODEM 等旧路径
+     * 可以逐步迁移，同时对外已经暴露新的 Running/Failed 语义。
+     */
+    Transferring = Running, ///< 兼容旧名：传输中
+    Error = Failed          ///< 兼容旧名：错误
 };
 
 /**
@@ -587,5 +597,7 @@ public:
 };
 
 } // namespace ComAssistant
+
+Q_DECLARE_METATYPE(ComAssistant::TransferState)
 
 #endif // COMASSISTANT_FILETRANSFER_H
