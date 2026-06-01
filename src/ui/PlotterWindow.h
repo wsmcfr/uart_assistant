@@ -496,6 +496,7 @@ private:
     bool shouldDecimate();  ///< 检查是否应该抽稀当前数据点
     void applyRenderQualityMode();  ///< 应用渲染质量策略
     bool trySetOpenGLEnabled(bool enabled);  ///< 尝试切换 OpenGL，并在失败时安全回退
+    bool validateOpenGlRenderedFrame();  ///< 验证 OpenGL 后端是否真的绘出了有效画面
     int effectiveOpenGlMultisamples() const;  ///< 获取当前绘图窗口应使用的 OpenGL 多重采样级别
     void clearAll(bool releaseCapacity);  ///< 清空数据，并可选择是否同步释放历史容量
     void resetTransientPlotState(bool releaseCapacity);  ///< 重置附加缓存/视图状态

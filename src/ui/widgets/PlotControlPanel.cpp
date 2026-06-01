@@ -385,4 +385,17 @@ void PlotControlPanel::setOpenGLEnabled(bool enabled)
     m_openGLCheck->setChecked(enabled);
 }
 
+void PlotControlPanel::setOpenGLAvailable(bool available)
+{
+    if (!m_openGLCheck) {
+        return;
+    }
+
+    /*
+     * OpenGL 白屏检测失败后，窗口层会把当前后端标记为不可用。
+     * 这里同步禁用右侧控制面板开关，避免用户在同一窗口内反复触发失败检测。
+     */
+    m_openGLCheck->setEnabled(available);
+}
+
 } // namespace ComAssistant

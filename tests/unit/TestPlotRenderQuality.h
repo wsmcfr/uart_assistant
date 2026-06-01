@@ -23,6 +23,9 @@ private slots:
     void testHighPerformanceProfile();
     void testModeDifference();
     void testBackendProfileIndependentFromQualityMode();
+    void testBlankPlotFrameDetection();
+    void testPlotFrameDetectionKeepsVisibleInk();
+    void testPlotterWindowFallsBackWhenOpenGlFrameIsBlank();
     void testQCustomPlotFboDrawMakesContextCurrentBeforeReadback();
 };
 

@@ -6,6 +6,9 @@
 #ifndef PLOTRENDERQUALITY_H
 #define PLOTRENDERQUALITY_H
 
+#include <QColor>
+#include <QImage>
+
 namespace ComAssistant {
 
 /**
@@ -40,6 +43,21 @@ struct PlotBackendProfile {
 };
 
 /**
+ * @brief 绘图帧有效像素分析结果
+ *
+ * 该结构用于把 OpenGL 白屏检测做成可测试的纯逻辑：
+ * valid 表示输入图像是否可分析，inkRatio 表示非背景像素比例，
+ * likelyBlank 表示该帧是否很可能没有真正绘出坐标轴、网格或曲线。
+ */
+struct PlotFrameInkAnalysis {
+    bool valid = false;          ///< 输入图像尺寸和像素内容是否足够用于判断
+    bool likelyBlank = true;     ///< 是否接近纯背景帧
+    int sampledPixels = 0;       ///< 实际采样的有效像素数量
+    int inkPixels = 0;           ///< 采样中被判定为有效绘制内容的像素数量
+    double inkRatio = 0.0;       ///< 有效绘制内容占采样像素的比例
+};
+
+/**
  * @brief 根据模式生成渲染参数
  * @param mode 渲染模式
  * @return 渲染配置
@@ -51,6 +69,17 @@ RenderQualityProfile makeRenderQualityProfile(RenderQualityMode mode);
  * @return 绘图后端配置
  */
 PlotBackendProfile makeDefaultPlotBackendProfile();
+
+/**
+ * @brief 分析绘图截图中是否存在足够的非背景像素
+ * @param image 待分析的绘图帧截图
+ * @param backgroundColor 预期背景色，用于过滤纯背景或接近背景的像素
+ * @param minimumInkRatio 判定为“有内容”所需的最小非背景像素比例
+ * @return 绘图帧有效像素分析结果
+ */
+PlotFrameInkAnalysis analyzePlotFrameInk(const QImage& image,
+                                         const QColor& backgroundColor,
+                                         double minimumInkRatio);
 
 } // namespace ComAssistant
 

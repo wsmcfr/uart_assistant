@@ -1847,6 +1847,7 @@ void PlotterWindow::setOpenGLEnabled(bool enabled)
     }
     if (m_controlPanel) {
         m_controlPanel->setOpenGLEnabled(actualEnabled);
+        m_controlPanel->setOpenGLAvailable(m_openGLAvailable || !enabled);
     }
     m_openGLEnabled = actualEnabled;
     applyRenderQualityMode();
@@ -1900,6 +1901,20 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
         return false;
     }
 
+    if (!validateOpenGlRenderedFrame()) {
+        /*
+         * 部分 Windows/Qt 5.12/OpenGL 驱动组合会出现“后端开启成功但合成帧全白”。
+         * 这种情况下继续保持 OpenGL 只会让用户看到白屏，因此立即销毁 FBO 后端，
+         * 回到软件绘制，并把本次环境标记为不可用，避免菜单状态误导用户。
+         */
+        m_plot->setOpenGl(false);
+        m_plot->replot(QCustomPlot::rpImmediateRefresh);
+        m_openGLEnabled = false;
+        m_openGLAvailable = false;
+        trimProcessMemoryIfPossible();
+        return false;
+    }
+
     m_openGLEnabled = true;
     m_openGLAvailable = true;
     return true;
@@ -1909,6 +1924,71 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
     m_openGLAvailable = false;
     return false;
 #endif
+}
+
+bool PlotterWindow::validateOpenGlRenderedFrame()
+{
+    /*
+     * 这里验证的是“实际可见帧”，不是 OpenGL context 是否能创建。
+     * 用户反馈的问题正是 context/FBO 看似成功，但 QWidget 最终合成出来是白屏。
+     */
+    if (!m_plot || !m_plot->openGl()) {
+        return false;
+    }
+
+    const int frameWidth = m_plot->width();
+    const int frameHeight = m_plot->height();
+    if (frameWidth < 32 || frameHeight < 32) {
+        /*
+         * 窗口尚未完成布局时，过小截图没有足够像素判断是否白屏。
+         * 这类场景不应直接禁用 OpenGL，否则启动阶段可能被误判。
+         */
+        LOG_WARN(QString("OpenGL frame validation skipped for plot window '%1': widget size is %2x%3")
+                 .arg(m_windowId)
+                 .arg(frameWidth)
+                 .arg(frameHeight));
+        return true;
+    }
+
+    /*
+     * 强制同步绘制一帧，然后优先抓取 QWidget 当前可见画面。
+     * 用户看到的白屏发生在窗口合成结果上，grab() 比导出路径更贴近真实症状；
+     * 若当前平台暂时抓不到有效 backing store，再退回 toPixmap 做兜底诊断。
+     */
+    m_plot->replot(QCustomPlot::rpImmediateRefresh);
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+
+    QPixmap framePixmap = m_plot->grab();
+    if (framePixmap.isNull()) {
+        framePixmap = m_plot->toPixmap(frameWidth, frameHeight, 1.0);
+    }
+
+    const PlotFrameInkAnalysis analysis = analyzePlotFrameInk(
+        framePixmap.toImage(),
+        palette().color(QPalette::Base),
+        0.001);
+
+    if (!analysis.valid) {
+        /*
+         * 无效截图多发生在窗口还没拿到有效 backing store 时。
+         * 此时保守放行，避免把一次不可诊断的截图误认为硬件不兼容。
+         */
+        LOG_WARN(QString("OpenGL frame validation skipped for plot window '%1': captured frame is invalid")
+                 .arg(m_windowId));
+        return true;
+    }
+
+    if (analysis.likelyBlank) {
+        LOG_WARN(QString("OpenGL rendered a blank frame for plot window '%1' "
+                         "(sampled=%2, ink=%3, ratio=%4), fallback to software rendering")
+                 .arg(m_windowId)
+                 .arg(analysis.sampledPixels)
+                 .arg(analysis.inkPixels)
+                 .arg(analysis.inkRatio, 0, 'f', 6));
+        return false;
+    }
+
+    return true;
 }
 
 void PlotterWindow::resetTransientPlotState(bool releaseCapacity)
