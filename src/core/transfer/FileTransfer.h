@@ -1,6 +1,6 @@
 /**
  * @file FileTransfer.h
- * @brief 文件传输协议（XMODEM/YMODEM/ZMODEM）
+ * @brief 文件传输协议（裸流分块、XMODEM/YMODEM、自定义 OTA）
  * @author ComAssistant Team
  * @date 2026-01-20
  */

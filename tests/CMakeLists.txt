@@ -31,6 +31,7 @@ set(TEST_SOURCES
     unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
     unit/TestFileTransfer.cpp
+    unit/TestDocumentationLinks.cpp
 )
 
 # 创建测试可执行文件

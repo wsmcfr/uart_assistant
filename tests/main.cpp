@@ -26,6 +26,7 @@
 #include "unit/TestCommunicationWorkspaces.h"
 #include "unit/TestReleaseMetadata.h"
 #include "unit/TestFileTransfer.h"
+#include "unit/TestDocumentationLinks.h"
 
 int main(int argc, char *argv[])
 {
@@ -135,6 +136,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] FileTransfer";
         TestFileTransfer test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] DocumentationLinks";
+        TestDocumentationLinks test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

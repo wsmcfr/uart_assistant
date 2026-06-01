@@ -190,15 +190,20 @@
     </div>
 
     <h2>2. 文件传输 File Transfer</h2>
-    <p><strong>中文：</strong>支持 XMODEM/YMODEM 协议的文件传输功能。</p>
-    <p><strong>English:</strong> File transfer supporting XMODEM/YMODEM protocols.</p>
+    <p><strong>中文：</strong>工具栏 <strong>发送文件</strong> 按钮会打开统一文件发送中心，支持裸流分块、XMODEM/YMODEM 和自定义 OTA 三种路径。</p>
+    <p><strong>English:</strong> The toolbar <strong>Send File</strong> button opens a unified file transfer center with raw chunks, XMODEM/YMODEM and custom OTA modes.</p>
 
     <h3>支持的协议 / Supported Protocols</h3>
     <table>
         <tr>
-            <th>协议 / Protocol</th>
+            <th>模式 / Mode</th>
             <th>数据块大小 / Block Size</th>
             <th>特点 / Features</th>
+        </tr>
+        <tr>
+            <td>裸流分块 / Raw Chunks</td>
+            <td>1-4096 字节可配置</td>
+            <td>不增加协议头，按文件原始内容分块发送；第一版仅支持发送 / Sends original file bytes in chunks without protocol headers; send-only in this version</td>
         </tr>
         <tr>
             <td>XMODEM</td>
@@ -220,19 +225,28 @@
             <td>1024 字节</td>
             <td>支持文件名和批量传输 / Filename and batch support</td>
         </tr>
+        <tr>
+            <td>自定义 OTA / Custom OTA</td>
+            <td>1-4096 字节可配置</td>
+            <td>发送文件头、数据块和结束包，可选 ACK、超时与重试；第一版仅支持发送 / Sends header, data blocks and end packet with optional ACK, timeout and retry; send-only in this version</td>
+        </tr>
     </table>
 
     <h3>发送文件 / Send File</h3>
     <ol>
-        <li>打开 工具 → 文件传输 / Open Tools → File Transfer</li>
-        <li>选择"发送文件"模式 / Select "Send File" mode</li>
-        <li>选择传输协议 / Select protocol</li>
+        <li>点击工具栏"发送文件" / Click the toolbar "Send File" button</li>
+        <li>选择裸流分块、XMODEM/YMODEM 或自定义 OTA / Select Raw Chunks, XMODEM/YMODEM or Custom OTA</li>
+        <li>按模式设置块大小、包间隔、ACK 或标准协议 / Configure block size, interval, ACK or standard protocol by mode</li>
         <li>点击"浏览"选择文件 / Click "Browse" to select file</li>
-        <li>点击"开始传输"/ Click "Start Transfer"</li>
+        <li>确认文件大小、CRC32、分块数和预计耗时 / Confirm file size, CRC32, block count and estimated duration</li>
+        <li>点击"开始传输" / Click "Start Transfer"</li>
     </ol>
 
     <h3>接收文件 / Receive File</h3>
+    <p><strong>中文：</strong>接收模式当前仅用于 XMODEM/YMODEM 标准协议；裸流分块和自定义 OTA 第一版不实现 PC 侧接收。</p>
+    <p><strong>English:</strong> Receive mode currently applies only to XMODEM/YMODEM. Raw chunks and custom OTA are send-only in this version.</p>
     <ol>
+        <li>选择 XMODEM/YMODEM 模式 / Select XMODEM/YMODEM mode</li>
         <li>选择"接收文件"模式 / Select "Receive File" mode</li>
         <li>选择保存路径 / Select save location</li>
         <li>点击"开始传输"等待数据 / Click "Start" and wait</li>
