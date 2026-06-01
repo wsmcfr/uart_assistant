@@ -1,5 +1,6 @@
 # Build artifacts
 /build/
+/build_*/
 /release/
 /ComAssistant_Portable/
 /cmake-build-*/
@@ -39,4 +40,5 @@
 /.idea/
 /.serena/
 /.claude/
+/docs/plans/
 *.user
