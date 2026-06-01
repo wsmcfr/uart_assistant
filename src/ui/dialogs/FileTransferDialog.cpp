@@ -681,6 +681,18 @@ void FileTransferDialog::setIAPMode(bool iapMode)
     updateUI();
 }
 
+void FileTransferDialog::notifyLocalSendResult(bool success, const QString& errorMessage)
+{
+    /*
+     * 文件传输对象只知道自己发出了一个协议包，不知道主窗口发送队列是否
+     * 接受。该桥接函数由 MainWindow 在 onSendData() 后回调，保证 Raw/OTA
+     * 不会早于本地发送结果读取下一块。
+     */
+    if (m_transfer) {
+        m_transfer->notifyLocalSendResult(success, errorMessage);
+    }
+}
+
 void FileTransferDialog::changeEvent(QEvent* event)
 {
     if (event->type() == QEvent::LanguageChange) {

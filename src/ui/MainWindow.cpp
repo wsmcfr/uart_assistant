@@ -1065,10 +1065,24 @@ void MainWindow::onSendData(const QByteArray& data)
 {
     if (!m_commController || !m_commController->isConnected()) {
         statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
+        if (m_fileTransferDialog && sender() == m_fileTransferDialog) {
+            m_fileTransferDialog->notifyLocalSendResult(false, tr("当前连接未打开"));
+        }
         return;
     }
 
-    if (!m_commController->sendData(data)) {
+    const bool sent = m_commController->sendData(data);
+    const QString error = sent ? QString() : m_commController->lastError();
+
+    if (m_fileTransferDialog && sender() == m_fileTransferDialog) {
+        /*
+         * Raw/OTA 文件传输按块等待本地发送队列确认。只有发送请求来自当前
+         * 文件传输对话框时才回调，普通发送、快捷发送和脚本发送不需要该确认。
+         */
+        m_fileTransferDialog->notifyLocalSendResult(sent, error);
+    }
+
+    if (!sent) {
         LOG_ERROR(QString("Send failed: %1").arg(m_commController->lastError()));
     }
 }

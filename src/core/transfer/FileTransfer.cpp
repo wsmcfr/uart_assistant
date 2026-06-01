@@ -158,6 +158,16 @@ void FileTransfer::updateProgress()
     emit progressUpdated(m_progress);
 }
 
+void FileTransfer::notifyLocalSendResult(bool success, const QString& errorMessage)
+{
+    Q_UNUSED(success)
+    Q_UNUSED(errorMessage)
+    /*
+     * 基类默认不处理本地发送确认。XMODEM/YMODEM 目前仍由设备端 ACK/NAK
+     * 推动状态机；Raw/OTA 会覆盖该函数，等待主窗口发送队列确认后再推进。
+     */
+}
+
 // ============== RawFileTransfer 实现 ==============
 
 RawFileTransfer::RawFileTransfer(QObject* parent)
@@ -258,6 +268,8 @@ void RawFileTransfer::cancel()
     }
 
     m_paused = false;
+    m_waitingLocalSendResult = false;
+    m_pendingChunk.clear();
     setState(TransferState::Cancelled);
     emit transferCompleted(false, tr("传输已取消"));
 }
@@ -269,6 +281,22 @@ void RawFileTransfer::processReceivedData(const QByteArray& data)
      * 裸流模式没有 ACK/NAK 语义，下位机返回的数据仍会显示在主接收区，
      * 这里不消费它，避免误把普通日志当作传输控制字符。
      */
+}
+
+void RawFileTransfer::notifyLocalSendResult(bool success, const QString& errorMessage)
+{
+    if (!m_waitingLocalSendResult) {
+        return;
+    }
+
+    if (!success) {
+        failWithMessage(errorMessage.isEmpty()
+            ? tr("本地发送队列处理裸流数据失败")
+            : errorMessage);
+        return;
+    }
+
+    continueAfterCurrentChunkAccepted();
 }
 
 void RawFileTransfer::pause()
@@ -291,7 +319,7 @@ void RawFileTransfer::resume()
     }
 
     m_paused = false;
-    if (m_sendTimer) {
+    if (m_sendTimer && !m_waitingLocalSendResult) {
         m_sendTimer->start(0);
     }
 }
@@ -309,7 +337,7 @@ QVector<QByteArray> RawFileTransfer::splitForTest(const QByteArray& data, int bl
 
 void RawFileTransfer::sendNextChunk()
 {
-    if (!m_file || m_state != TransferState::Transferring || m_paused) {
+    if (!m_file || m_state != TransferState::Transferring || m_paused || m_waitingLocalSendResult) {
         return;
     }
 
@@ -323,9 +351,26 @@ void RawFileTransfer::sendNextChunk()
         return;
     }
 
+    m_pendingChunk = chunk;
+    m_waitingLocalSendResult = true;
     emit sendData(chunk);
+}
 
-    m_progress.bytesTransferred += chunk.size();
+void RawFileTransfer::continueAfterCurrentChunkAccepted()
+{
+    if (!m_file || m_state != TransferState::Transferring) {
+        return;
+    }
+
+    /*
+     * 只有主窗口发送队列确认当前块被本地发送管道接受后，才推进进度和
+     * 文件读取位置。这样连接断开或队列拒绝不会让 UI 提前显示已发送。
+     */
+    const int acceptedSize = m_pendingChunk.size();
+    m_pendingChunk.clear();
+    m_waitingLocalSendResult = false;
+
+    m_progress.bytesTransferred += acceptedSize;
     m_progress.currentPacket++;
     refreshSpeed();
     updateProgress();
@@ -335,7 +380,9 @@ void RawFileTransfer::sendNextChunk()
         return;
     }
 
-    m_sendTimer->start(m_options.intervalMs);
+    if (!m_paused) {
+        m_sendTimer->start(m_options.intervalMs);
+    }
 }
 
 void RawFileTransfer::finishSuccessfully()
@@ -348,6 +395,8 @@ void RawFileTransfer::finishSuccessfully()
         delete m_file;
         m_file = nullptr;
     }
+    m_pendingChunk.clear();
+    m_waitingLocalSendResult = false;
 
     refreshSpeed();
     setState(TransferState::Completed);
@@ -365,6 +414,8 @@ void RawFileTransfer::failWithMessage(const QString& message)
         delete m_file;
         m_file = nullptr;
     }
+    m_pendingChunk.clear();
+    m_waitingLocalSendResult = false;
 
     m_progress.errorMessage = message;
     setState(TransferState::Error);
@@ -464,7 +515,10 @@ bool OtaFileTransfer::startSend(const QString& filePath)
     m_retryCount = 0;
     m_receiveBuffer.clear();
     m_pendingPacket.clear();
+    m_pendingPayloadBytes = 0;
     m_paused = false;
+    m_waitingLocalSendResult = false;
+    m_pendingLocalSendStage = OtaStage::Idle;
     m_waitingAckFor = OtaStage::Idle;
     m_elapsedTimer.restart();
 
@@ -496,6 +550,9 @@ void OtaFileTransfer::cancel()
     }
 
     m_paused = false;
+    m_waitingLocalSendResult = false;
+    m_pendingLocalSendStage = OtaStage::Idle;
+    m_pendingPayloadBytes = 0;
     m_waitingAckFor = OtaStage::Idle;
     setState(TransferState::Cancelled);
     emit transferCompleted(false, tr("传输已取消"));
@@ -517,6 +574,22 @@ void OtaFileTransfer::processReceivedData(const QByteArray& data)
         m_receiveBuffer.clear();
         handleAck(ackStage);
     }
+}
+
+void OtaFileTransfer::notifyLocalSendResult(bool success, const QString& errorMessage)
+{
+    if (!m_waitingLocalSendResult) {
+        return;
+    }
+
+    if (!success) {
+        failWithMessage(errorMessage.isEmpty()
+            ? tr("本地发送队列处理 OTA 数据失败")
+            : errorMessage);
+        return;
+    }
+
+    continueAfterLocalSendAccepted();
 }
 
 void OtaFileTransfer::pause()
@@ -547,6 +620,10 @@ void OtaFileTransfer::resume()
      * 暂停时若正等待 ACK，恢复后继续等待同一包的 ACK；否则从当前文件
      * 偏移继续发送下一块。这样不会因为暂停/继续导致块序号跳变。
      */
+    if (m_waitingLocalSendResult) {
+        return;
+    }
+
     if (m_options.waitAck && m_waitingAckFor != OtaStage::Idle && !m_pendingPacket.isEmpty()) {
         m_timeoutTimer->start(m_options.timeoutMs);
     } else {
@@ -600,7 +677,7 @@ QByteArray OtaFileTransfer::buildEndPacketForTest(quint32 crc32)
 
 void OtaFileTransfer::sendHeaderPacket()
 {
-    if (!m_file || m_state != TransferState::Transferring || m_paused) {
+    if (!m_file || m_state != TransferState::Transferring || m_paused || m_waitingLocalSendResult) {
         return;
     }
 
@@ -610,18 +687,15 @@ void OtaFileTransfer::sendHeaderPacket()
         m_progress.fileSize,
         m_fileCrc32,
         m_options.blockSize);
+    m_pendingPayloadBytes = 0;
+    m_pendingLocalSendStage = OtaStage::Header;
+    m_waitingLocalSendResult = true;
     emit sendData(m_pendingPacket);
-
-    if (m_options.waitAck) {
-        waitForAck(OtaStage::Header);
-    } else {
-        scheduleNextDataPacket();
-    }
 }
 
 void OtaFileTransfer::sendNextDataPacket()
 {
-    if (!m_file || m_state != TransferState::Transferring || m_paused) {
+    if (!m_file || m_state != TransferState::Transferring || m_paused || m_waitingLocalSendResult) {
         return;
     }
 
@@ -636,35 +710,64 @@ void OtaFileTransfer::sendNextDataPacket()
     }
 
     m_pendingPacket = buildDataPacketForTest(m_currentBlock, payload);
+    m_pendingPayloadBytes = payload.size();
+    m_pendingLocalSendStage = OtaStage::Data;
+    m_waitingLocalSendResult = true;
     emit sendData(m_pendingPacket);
-
-    m_progress.bytesTransferred += payload.size();
-    m_progress.currentPacket = static_cast<int>(m_currentBlock + 1);
-    refreshSpeed();
-    updateProgress();
-
-    if (m_options.waitAck) {
-        waitForAck(OtaStage::Data);
-    } else {
-        m_currentBlock++;
-        scheduleNextDataPacket();
-    }
 }
 
 void OtaFileTransfer::sendEndPacket()
 {
-    if (m_state != TransferState::Transferring || m_paused) {
+    if (m_state != TransferState::Transferring || m_paused || m_waitingLocalSendResult) {
         return;
     }
 
     m_pendingPacket = buildEndPacketForTest(m_fileCrc32);
+    m_pendingPayloadBytes = 0;
+    m_pendingLocalSendStage = OtaStage::End;
+    m_waitingLocalSendResult = true;
     emit sendData(m_pendingPacket);
+}
+
+void OtaFileTransfer::continueAfterLocalSendAccepted()
+{
+    const OtaStage stage = m_pendingLocalSendStage;
+    m_waitingLocalSendResult = false;
+    m_pendingLocalSendStage = OtaStage::Idle;
+
+    /*
+     * 本地发送队列确认后再更新 OTA 阶段。对数据块而言，payload 已经从
+     * QFile 读取并缓存在 m_pendingPacket；如果后续等待设备 ACK 超时，
+     * 仍会重发同一个 pendingPacket，不会移动文件指针。
+     */
+    if (stage == OtaStage::Data) {
+        m_progress.bytesTransferred += m_pendingPayloadBytes;
+        m_progress.currentPacket = static_cast<int>(m_currentBlock + 1);
+        refreshSpeed();
+        updateProgress();
+    }
 
     if (m_options.waitAck) {
-        waitForAck(OtaStage::End);
-    } else {
-        finishSuccessfully();
+        waitForAck(stage);
+        return;
     }
+
+    switch (stage) {
+    case OtaStage::Header:
+        scheduleNextDataPacket();
+        break;
+    case OtaStage::Data:
+        m_currentBlock++;
+        scheduleNextDataPacket();
+        break;
+    case OtaStage::End:
+        finishSuccessfully();
+        break;
+    default:
+        break;
+    }
+
+    m_pendingPayloadBytes = 0;
 }
 
 void OtaFileTransfer::scheduleNextDataPacket()
@@ -746,6 +849,9 @@ void OtaFileTransfer::finishSuccessfully()
         delete m_file;
         m_file = nullptr;
     }
+    m_waitingLocalSendResult = false;
+    m_pendingLocalSendStage = OtaStage::Idle;
+    m_pendingPayloadBytes = 0;
 
     refreshSpeed();
     setState(TransferState::Completed);
@@ -766,6 +872,9 @@ void OtaFileTransfer::failWithMessage(const QString& message)
         delete m_file;
         m_file = nullptr;
     }
+    m_waitingLocalSendResult = false;
+    m_pendingLocalSendStage = OtaStage::Idle;
+    m_pendingPayloadBytes = 0;
 
     m_progress.errorMessage = message;
     setState(TransferState::Error);

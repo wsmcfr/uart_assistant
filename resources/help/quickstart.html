@@ -312,11 +312,12 @@
         <li><strong>裸流分块 / Raw Chunks:</strong> 按指定“每包字节”和“包间隔”直接发送文件内容，适合 MCU 程序自行顺序接收。</li>
         <li><strong>XMODEM/YMODEM:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader。</li>
         <li><strong>自定义 OTA / Custom OTA:</strong> 发送文件头、分块数据和结束包，可选择等待 <code>ACK</code>、设置超时和重试。</li>
+        <li><strong>流式发送 / Streaming:</strong> 裸流和自定义 OTA 会按块读取文件，并等待本地发送队列确认后再推进下一块，适合较大的固件文件。</li>
     </ul>
 
     <div class="warning">
-        <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；发送过程中不要断开连接或关闭程序。<br>
-        Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity, and do not disconnect during transfer.
+        <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；如果队列拒绝、写入失败或连接断开，当前文件传输会停止并显示失败原因。<br>
+        Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity. If the queue rejects data, writing fails or the connection drops, the transfer stops with the failure reason.
     </div>
 
     <h3>示例 / Examples:</h3>

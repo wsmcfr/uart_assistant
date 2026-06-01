@@ -8,6 +8,8 @@
 #include "TestFileTransfer.h"
 
 #include <QByteArray>
+#include <QSignalSpy>
+#include <QTemporaryFile>
 #include <QVector>
 #include <QtTest>
 
@@ -108,4 +110,121 @@ void TestFileTransfer::testOtaEndPacketCarriesDoneAndCrc32()
     QCOMPARE(packet.left(4), QByteArray("DONE"));
     QCOMPARE(readLe32(packet, 4), static_cast<quint32>(0x12345678));
     QCOMPARE(packet.size(), 8);
+}
+
+void TestFileTransfer::testRawTransferWaitsForLocalSendResultBeforeNextChunk()
+{
+    /*
+     * Raw 大文件发送不能在 emit sendData() 后立刻推进下一块，否则主窗口
+     * 发送队列尚未确认本地写入时，文件传输进度会提前跳动甚至丢块。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCDEFGH")), static_cast<qint64>(8));
+    file.close();
+
+    RawFileTransfer transfer;
+    RawTransferOptions options;
+    options.blockSize = 4;
+    options.intervalMs = 0;
+    transfer.setOptions(options);
+
+    QSignalSpy sendSpy(&transfer, SIGNAL(sendData(QByteArray)));
+    QSignalSpy completedSpy(&transfer, SIGNAL(transferCompleted(bool,QString)));
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    QTRY_COMPARE(sendSpy.count(), 1);
+    QCOMPARE(sendSpy.at(0).at(0).toByteArray(), QByteArray("ABCD"));
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(0));
+    QCOMPARE(completedSpy.count(), 0);
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(sendSpy.count(), 2);
+    QCOMPARE(sendSpy.at(1).at(0).toByteArray(), QByteArray("EFGH"));
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(4));
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(completedSpy.count(), 1);
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(8));
+    QCOMPARE(transfer.state(), TransferState::Completed);
+}
+
+void TestFileTransfer::testRawTransferFailsWhenLocalSendFails()
+{
+    /*
+     * 主窗口发送队列拒绝或底层 write() 失败时，Raw 传输必须停止在当前块，
+     * 不继续读取文件。这样用户恢复连接后能明确看到失败原因，而不是误以为
+     * 大文件已经继续发送。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCDEFGH")), static_cast<qint64>(8));
+    file.close();
+
+    RawFileTransfer transfer;
+    RawTransferOptions options;
+    options.blockSize = 4;
+    options.intervalMs = 0;
+    transfer.setOptions(options);
+
+    QSignalSpy sendSpy(&transfer, SIGNAL(sendData(QByteArray)));
+    QSignalSpy completedSpy(&transfer, SIGNAL(transferCompleted(bool,QString)));
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    QTRY_COMPARE(sendSpy.count(), 1);
+
+    transfer.notifyLocalSendResult(false, QStringLiteral("queue rejected"));
+
+    QTRY_COMPARE(completedSpy.count(), 1);
+    QCOMPARE(sendSpy.count(), 1);
+    QCOMPARE(transfer.state(), TransferState::Error);
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(0));
+    QVERIFY(transfer.progress().errorMessage.contains(QStringLiteral("queue rejected")));
+}
+
+void TestFileTransfer::testOtaTransferWaitsForLocalSendResultBeforeNextPacket()
+{
+    /*
+     * OTA 无 ACK 模式虽然不等设备 ACK，但仍必须等待本地发送队列确认。
+     * 该测试用 4 字节文件和 2 字节块大小验证 header/data/data/end 都由
+     * notifyLocalSendResult() 一步步推进。
+     */
+    QTemporaryFile file;
+    QVERIFY(file.open());
+    QCOMPARE(file.write(QByteArray("ABCD")), static_cast<qint64>(4));
+    file.close();
+
+    OtaFileTransfer transfer;
+    OtaTransferOptions options;
+    options.blockSize = 2;
+    options.intervalMs = 0;
+    options.waitAck = false;
+    transfer.setOptions(options);
+
+    QSignalSpy sendSpy(&transfer, SIGNAL(sendData(QByteArray)));
+    QSignalSpy completedSpy(&transfer, SIGNAL(transferCompleted(bool,QString)));
+
+    QVERIFY(transfer.startSend(file.fileName()));
+    QTRY_COMPARE(sendSpy.count(), 1);
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(0));
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(sendSpy.count(), 2);
+    QCOMPARE(readLe32(sendSpy.at(1).at(0).toByteArray(), 0), static_cast<quint32>(0));
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(0));
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(sendSpy.count(), 3);
+    QCOMPARE(readLe32(sendSpy.at(2).at(0).toByteArray(), 0), static_cast<quint32>(1));
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(2));
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(sendSpy.count(), 4);
+    QCOMPARE(sendSpy.at(3).at(0).toByteArray().left(4), QByteArray("DONE"));
+    QCOMPARE(transfer.progress().bytesTransferred, static_cast<qint64>(4));
+    QCOMPARE(completedSpy.count(), 0);
+
+    transfer.notifyLocalSendResult(true, QString());
+    QTRY_COMPARE(completedSpy.count(), 1);
+    QCOMPARE(transfer.state(), TransferState::Completed);
 }

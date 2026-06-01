@@ -105,6 +105,17 @@ public:
     virtual void processReceivedData(const QByteArray& data) = 0;
 
     /**
+     * @brief 通知本地发送队列处理结果。
+     * @param success true 表示主窗口发送队列已接受/写出当前包。
+     * @param errorMessage success 为 false 时携带本地发送失败原因。
+     *
+     * Raw/OTA 流式发送会在发出当前包后等待该通知，再决定是否读取和发送
+     * 下一块。默认实现为空，供 X/YMODEM 等仍由对端 ACK 驱动的协议保持
+     * 兼容。
+     */
+    virtual void notifyLocalSendResult(bool success, const QString& errorMessage);
+
+    /**
      * @brief 获取当前状态
      */
     TransferState state() const { return m_state; }
@@ -246,6 +257,13 @@ public:
     void processReceivedData(const QByteArray& data) override;
 
     /**
+     * @brief 接收主窗口发送队列对当前块的本地处理结果
+     * @param success 当前块是否已被本地发送管道接受。
+     * @param errorMessage 失败原因。
+     */
+    void notifyLocalSendResult(bool success, const QString& errorMessage) override;
+
+    /**
      * @brief 获取协议类型
      * @return TransferProtocol::RawStream。
      */
@@ -277,6 +295,7 @@ public:
 
 private:
     void sendNextChunk();
+    void continueAfterCurrentChunkAccepted();
     void finishSuccessfully();
     void failWithMessage(const QString& message);
     void refreshSpeed();
@@ -286,7 +305,9 @@ private:
     QFile* m_file = nullptr;
     QTimer* m_sendTimer = nullptr;
     QElapsedTimer m_elapsedTimer;
+    QByteArray m_pendingChunk;
     bool m_paused = false;
+    bool m_waitingLocalSendResult = false;
 };
 
 /**
@@ -333,6 +354,13 @@ public:
      * @param data 串口接收到的数据。
      */
     void processReceivedData(const QByteArray& data) override;
+
+    /**
+     * @brief 接收主窗口发送队列对当前 OTA 包的本地处理结果
+     * @param success 当前包是否已被本地发送管道接受。
+     * @param errorMessage 失败原因。
+     */
+    void notifyLocalSendResult(bool success, const QString& errorMessage) override;
 
     /**
      * @brief 获取协议类型
@@ -397,6 +425,7 @@ private:
     void sendHeaderPacket();
     void sendNextDataPacket();
     void sendEndPacket();
+    void continueAfterLocalSendAccepted();
     void scheduleNextDataPacket();
     void waitForAck(OtaStage stage);
     void handleAck(OtaStage stage);
@@ -414,8 +443,11 @@ private:
     QByteArray m_pendingPacket;
     quint32 m_fileCrc32 = 0;
     quint32 m_currentBlock = 0;
+    qint64 m_pendingPayloadBytes = 0;
     int m_retryCount = 0;
     bool m_paused = false;
+    bool m_waitingLocalSendResult = false;
+    OtaStage m_pendingLocalSendStage = OtaStage::Idle;
     OtaStage m_waitingAckFor = OtaStage::Idle;
 };
 

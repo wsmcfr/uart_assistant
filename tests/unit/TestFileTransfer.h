@@ -52,6 +52,30 @@ private slots:
      * 格式携带整文件 CRC32，供下位机最终确认。
      */
     void testOtaEndPacketCarriesDoneAndCrc32();
+
+    /**
+     * @brief 裸流发送应等待本地发送确认后再读取下一块
+     *
+     * 主要流程：启动两块裸流文件发送，检查第一块发出后不会自动读取
+     * 第二块；调用发送成功确认后才继续推进。
+     */
+    void testRawTransferWaitsForLocalSendResultBeforeNextChunk();
+
+    /**
+     * @brief 裸流本地发送失败时应停止传输并保留错误
+     *
+     * 主要流程：第一块发出后模拟主窗口发送失败，验证传输进入错误状态，
+     * 不继续读取后续文件块。
+     */
+    void testRawTransferFailsWhenLocalSendFails();
+
+    /**
+     * @brief OTA 发送应等待本地发送确认后再推进数据包
+     *
+     * 主要流程：启动无 ACK OTA 发送，确认文件头发出后不会自动读取数据块；
+     * 每次调用本地发送成功确认后才进入下一阶段。
+     */
+    void testOtaTransferWaitsForLocalSendResultBeforeNextPacket();
 };
 
 #endif // COMASSISTANT_TESTFILETRANSFER_H
