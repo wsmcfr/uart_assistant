@@ -89,6 +89,10 @@ MainWindow::MainWindow(QWidget* parent)
     m_commController = new MainWindowCommunicationController(this);
 
     setupUi();
+    m_workspaceCoordinator.setWorkspaces(m_tcpClientWorkspace,
+                                         m_tcpServerWorkspace,
+                                         m_udpWorkspace,
+                                         m_hidWorkspace);
     setupToolBar();
     setupStatusBar();
     setupConnections();
@@ -2139,38 +2143,9 @@ void MainWindow::updateCommunicationWorkspaceForType()
  */
 void MainWindow::syncCurrentWorkspaceToConfig()
 {
-    switch (m_currentCommType) {
-        case CommType::TcpClient:
-            if (m_tcpClientWorkspace) {
-                m_networkConfig = m_tcpClientWorkspace->config();
-            }
-            break;
-        case CommType::TcpServer:
-            if (m_tcpServerWorkspace) {
-                m_networkConfig = m_tcpServerWorkspace->config();
-            }
-            break;
-        case CommType::Udp:
-            if (m_udpWorkspace) {
-                m_networkConfig = m_udpWorkspace->config();
-            }
-            break;
-        case CommType::Hid:
-            if (m_hidWorkspace) {
-                const HidConfig reportConfig = m_hidWorkspace->config();
-                m_hidConfig.inputReportLength = reportConfig.inputReportLength;
-                m_hidConfig.outputReportLength = reportConfig.outputReportLength;
-                m_hidConfig.featureReportLength = reportConfig.featureReportLength;
-                m_hidConfig.firstDataIsLength = reportConfig.firstDataIsLength;
-                m_hidConfig.outReportId = reportConfig.outReportId;
-                m_hidConfig.featureReportId = reportConfig.featureReportId;
-                m_hidConfig.removeInReportId = reportConfig.removeInReportId;
-            }
-            break;
-        case CommType::Serial:
-        default:
-            break;
-    }
+    m_workspaceCoordinator.syncWorkspaceToConfig(m_currentCommType,
+                                                m_networkConfig,
+                                                m_hidConfig);
 }
 
 /**
@@ -2179,19 +2154,7 @@ void MainWindow::syncCurrentWorkspaceToConfig()
  */
 CommunicationWorkspaceWidget* MainWindow::currentCommunicationWorkspace() const
 {
-    switch (m_currentCommType) {
-        case CommType::TcpClient:
-            return m_tcpClientWorkspace;
-        case CommType::TcpServer:
-            return m_tcpServerWorkspace;
-        case CommType::Udp:
-            return m_udpWorkspace;
-        case CommType::Hid:
-            return m_hidWorkspace;
-        case CommType::Serial:
-        default:
-            return nullptr;
-    }
+    return m_workspaceCoordinator.currentWorkspace(m_currentCommType);
 }
 
 /**

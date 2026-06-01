@@ -30,6 +30,7 @@
 #include "communication/ICommunication.h"
 #include "protocol/IProtocol.h"
 #include "config/AppConfig.h"
+#include "ui/MainWindowCommunicationWorkspaceCoordinator.h"
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
@@ -214,6 +215,7 @@ private:
 private:
     // 通信相关
     MainWindowCommunicationController* m_commController = nullptr; ///< 通信生命周期控制器，负责创建、打开、关闭和发送
+    MainWindowCommunicationWorkspaceCoordinator m_workspaceCoordinator; ///< 通信工作台配置协调器
     CommType m_currentCommType = CommType::Serial;
     bool m_connected = false;
 

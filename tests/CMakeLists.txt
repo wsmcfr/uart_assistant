@@ -33,6 +33,7 @@ set(TEST_SOURCES
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
     unit/TestMainWindowCommunicationController.cpp
+    unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
 )
 
 # 创建测试可执行文件
@@ -55,6 +56,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.h
 )
 
 # 包含目录
@@ -122,6 +124,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp
