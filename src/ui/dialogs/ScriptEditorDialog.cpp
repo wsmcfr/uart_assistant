@@ -6,6 +6,7 @@
  */
 
 #include "ScriptEditorDialog.h"
+#include "ScriptExecutionWorker.h"
 #include "../syntax/LuaSyntaxHighlighter.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -18,13 +19,54 @@
 #include <QStandardPaths>
 #include <QScrollBar>
 #include <QTextBlock>
-#include <QRegularExpression>
+#include <QThread>
+#include <QMetaObject>
+#include <QPointer>
+
+#include <utility>
 
 namespace ComAssistant {
+namespace {
+
+/**
+ * @brief 生成发送数据的输出预览文本。
+ * @param data 即将发送的原始字节。
+ * @return 适合显示在脚本输出区域的简短文本。
+ *
+ * 对可打印 ASCII 文本优先显示简化后的内容，便于用户确认 AT 指令等常见脚本；
+ * 对二进制数据只显示字节数，避免控制字符破坏输出区域的可读性。
+ */
+QString sentPayloadPreview(const QByteArray& data)
+{
+    bool printable = true;
+    for (char byte : data) {
+        const uchar value = static_cast<uchar>(byte);
+        if (value == '\r' || value == '\n' || value == '\t') {
+            continue;
+        }
+        if (value < 32 || value > 126) {
+            printable = false;
+            break;
+        }
+    }
+
+    if (printable) {
+        const QString text = QString::fromUtf8(data).simplified();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    return QStringLiteral("%1 bytes").arg(data.size());
+}
+
+} // namespace
 
 ScriptEditorDialog::ScriptEditorDialog(QWidget* parent)
     : QDialog(parent)
 {
+    qRegisterMetaType<ComAssistant::LuaSandboxResult>("ComAssistant::LuaSandboxResult");
+
     setWindowTitle(tr("脚本编辑器"));
     setMinimumSize(900, 600);
     resize(1000, 700);
@@ -33,37 +75,51 @@ ScriptEditorDialog::ScriptEditorDialog(QWidget* parent)
     loadScriptList();
 
     // 示例脚本
-    QString defaultScript = R"(-- 串口助手Lua脚本示例
--- 可用API:
---   serial.send(data)     - 发送字符串
---   serial.sendHex(hex)   - 发送十六进制
---   utils.crc16(data)     - 计算CRC16
---   utils.sleep(ms)       - 延时毫秒
---   ui.log(msg)           - 输出日志
+    QString defaultScript = R"(-- 串口助手 Lua 沙箱示例
+-- 可用 API:
+--   print(...)            - 输出日志
+--   serial.isOpen()       - 查询当前脚本发送通道是否可用
+--   serial.send(data)     - 发送字符串或原始字节
+--   serial.sendHex(hex)   - 发送十六进制文本
+--   hexToBytes(hex)       - 十六进制转字节
+--   bytesToHex(data)      - 字节转十六进制文本
+--   crc16(data) / crc32(data)
 
--- 示例: 发送AT指令
-function sendAT()
+print("脚本加载完成")
+
+if serial.isOpen() then
     serial.send("AT\r\n")
-    utils.sleep(100)
+    serial.sendHex("AA 55 01 02 03")
 end
 
--- 示例: 循环发送
-function loopSend(count, interval)
-    for i = 1, count do
-        serial.send("Hello " .. i .. "\r\n")
-        utils.sleep(interval)
-        ui.log("发送第 " .. i .. " 次")
-    end
-end
-
--- 运行示例
-ui.log("脚本加载完成")
+local request = hexToBytes("01 03 00 00 00 02")
+print("CRC16:", crc16(request))
 )";
     m_codeEditor->setPlainText(defaultScript);
 }
 
 ScriptEditorDialog::~ScriptEditorDialog()
 {
+    /*
+     * 对话框关闭时不能直接销毁仍在运行的 QThread。这里先请求 Lua hook 取消，
+     * 再等待一个短窗口；绝大多数 Lua 循环会立即退出。若极端脚本仍未结束，
+     * 则解除线程父对象并让既有 finished 连接完成自清理，避免 UI 对象被跨线程访问。
+     */
+    if (m_scriptThread) {
+        requestWorkerCancellation();
+        m_scriptThread->quit();
+        if (m_scriptThread->wait(1000)) {
+            cleanupWorkerThread();
+        } else {
+            if (m_scriptWorker) {
+                m_scriptWorker->disconnect(this);
+            }
+            m_scriptThread->disconnect(this);
+            m_scriptThread->setParent(nullptr);
+            connect(m_scriptThread, &QThread::finished,
+                    m_scriptThread, &QObject::deleteLater);
+        }
+    }
 }
 
 void ScriptEditorDialog::setupUi()
@@ -199,6 +255,24 @@ void ScriptEditorDialog::setScript(const QString& script)
     m_codeEditor->setPlainText(script);
 }
 
+void ScriptEditorDialog::setConnectionStateProvider(ConnectionStateProvider provider)
+{
+    /*
+     * provider 通常捕获 MainWindow 或通信控制器，只能在 UI 线程调用。
+     * 这里仅保存函数对象，实际跨线程调度由 isScriptConnectionOpenOnUiThread() 负责。
+     */
+    m_connectionStateProvider = std::move(provider);
+}
+
+void ScriptEditorDialog::setSendDataHandler(SendDataHandler handler)
+{
+    /*
+     * handler 只表示“本地发送入口是否接受 payload”，不等待设备响应。
+     * 对话框负责在 UI 线程调用它，worker 只拿到同步结果。
+     */
+    m_sendDataHandler = std::move(handler);
+}
+
 void ScriptEditorDialog::onNewScript()
 {
     if (m_modified) {
@@ -284,31 +358,31 @@ void ScriptEditorDialog::onSaveAsScript()
 
 void ScriptEditorDialog::onRunScript()
 {
-    if (m_isRunning) return;
-
-    m_isRunning = true;
-    m_runBtn->setEnabled(false);
-    m_stopBtn->setEnabled(true);
+    /*
+     * 运行按钮只在空闲状态响应，避免用户重复启动多个 worker。
+     * 真正的脚本执行会由 startWorkerExecution() 投递到后台线程。
+     */
+    if (m_runState != ScriptRunState::Idle) {
+        return;
+    }
 
     appendOutput(tr("[系统] 开始执行脚本..."), QColor(100, 149, 237));
-
-    // 执行脚本
-    QString script = m_codeEditor->toPlainText();
-    executeSimpleScript(script);
-
-    m_isRunning = false;
-    m_runBtn->setEnabled(true);
-    m_stopBtn->setEnabled(false);
-
-    appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
+    startWorkerExecution(m_codeEditor->toPlainText());
 }
 
 void ScriptEditorDialog::onStopScript()
 {
-    m_isRunning = false;
-    m_runBtn->setEnabled(true);
-    m_stopBtn->setEnabled(false);
-    appendOutput(tr("[系统] 脚本已停止"), QColor(255, 165, 0));
+    /*
+     * 停止按钮只在 Running 状态有效。进入 Cancelling 后禁用按钮，
+     * 防止重复写取消标记和重复追加“正在请求停止”提示。
+     */
+    if (m_runState != ScriptRunState::Running) {
+        return;
+    }
+
+    requestWorkerCancellation();
+    appendOutput(tr("[系统] 正在请求停止脚本..."), QColor(255, 165, 0));
+    setRunState(ScriptRunState::Cancelling);
 }
 
 void ScriptEditorDialog::onScriptSelected(QListWidgetItem* item)
@@ -393,62 +467,232 @@ QString ScriptEditorDialog::scriptsDirectory() const
     return appData + "/scripts";
 }
 
-void ScriptEditorDialog::executeSimpleScript(const QString& script)
+void ScriptEditorDialog::startWorkerExecution(const QString& script)
 {
-    // 简单的脚本解释器（不依赖Lua库）
-    // 仅支持基本的 ui.log() 调用演示
+    /*
+     * 启动前清掉已结束的旧任务指针。若旧线程仍在运行，cleanupWorkerThread()
+     * 会保守返回；正常 UI 状态下这里不会发生并发启动。
+     */
+    cleanupWorkerThread();
 
-    QStringList lines = script.split('\n');
+    m_cancelRequested = std::make_shared<std::atomic_bool>(false);
+    const std::weak_ptr<std::atomic_bool> cancelFlag = m_cancelRequested;
 
-    for (const QString& line : lines) {
-        QString trimmed = line.trimmed();
+    /*
+     * worker 持有的是 weak_ptr：如果对话框先析构，回调不会延长取消标记生命周期，
+     * 只会把脚本视为已请求取消，避免悬空访问 UI 对象。
+     */
+    auto interruptCallback = [cancelFlag]() {
+        const std::shared_ptr<std::atomic_bool> flag = cancelFlag.lock();
+        return !flag || flag->load();
+    };
 
-        // 跳过注释和空行
-        if (trimmed.isEmpty() || trimmed.startsWith("--")) {
-            continue;
+    const QPointer<ScriptEditorDialog> dialogGuard(this);
+    auto sendCallback = [dialogGuard](const QByteArray& bytes) {
+        if (!dialogGuard) {
+            ScriptSendResult result;
+            result.accepted = false;
+            result.error = QStringLiteral("脚本编辑器已关闭");
+            return result;
         }
+        return dialogGuard->sendScriptDataOnUiThread(bytes);
+    };
+    auto connectionStateCallback = [dialogGuard]() {
+        return dialogGuard ? dialogGuard->isScriptConnectionOpenOnUiThread() : false;
+    };
 
-        // 解析 ui.log("message")
-        QRegularExpression logPattern(R"(ui\.log\s*\(\s*["'](.*)["']\s*\))");
-        QRegularExpressionMatch match = logPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString msg = match.captured(1);
-            appendOutput(msg, QColor(0, 255, 0));
-        }
+    m_scriptThread = new QThread(this);
+    m_scriptWorker = new ScriptExecutionWorker(script,
+                                               interruptCallback,
+                                               sendCallback,
+                                               connectionStateCallback);
+    m_scriptWorker->moveToThread(m_scriptThread);
+    QThread* thread = m_scriptThread;
+    ScriptExecutionWorker* worker = m_scriptWorker;
 
-        // 解析 serial.send("data")
-        QRegularExpression sendPattern(R"(serial\.send\s*\(\s*["'](.*)["']\s*\))");
-        match = sendPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString data = match.captured(1);
-            // 处理转义字符
-            data.replace("\\r", "\r");
-            data.replace("\\n", "\n");
-            data.replace("\\t", "\t");
-            emit sendData(data.toUtf8());
-            appendOutput(tr("[发送] %1").arg(data.simplified()), QColor(33, 150, 243));
-        }
-
-        // 解析 serial.sendHex("AA BB CC")
-        QRegularExpression sendHexPattern(R"(serial\.sendHex\s*\(\s*["'](.*)["']\s*\))");
-        match = sendHexPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString hexStr = match.captured(1);
-            QByteArray data;
-            QStringList hexParts = hexStr.split(QRegularExpression("[\\s,]+"), QString::SkipEmptyParts);
-            for (const QString& hex : hexParts) {
-                bool ok;
-                int value = hex.toInt(&ok, 16);
-                if (ok && value >= 0 && value <= 255) {
-                    data.append(static_cast<char>(value));
+    connect(m_scriptThread, &QThread::started,
+            m_scriptWorker, &ScriptExecutionWorker::run);
+    connect(m_scriptWorker, &ScriptExecutionWorker::finished,
+            this, &ScriptEditorDialog::handleWorkerFinished,
+            Qt::QueuedConnection);
+    connect(m_scriptWorker, &ScriptExecutionWorker::finished,
+            m_scriptThread, &QThread::quit);
+    connect(m_scriptThread, &QThread::finished,
+            this, [this, thread, worker]() {
+                /*
+                 * 线程真正退出后再清空成员指针。这里校验捕获的 thread/worker 是否仍是当前任务，
+                 * 避免用户快速再次运行脚本时，旧线程收尾误清理新任务状态。
+                 */
+                if (m_scriptThread == thread) {
+                    m_scriptThread = nullptr;
                 }
-            }
-            if (!data.isEmpty()) {
-                emit sendData(data);
-                appendOutput(tr("[发送HEX] %1").arg(hexStr), QColor(33, 150, 243));
-            }
-        }
+                if (m_scriptWorker == worker) {
+                    m_scriptWorker = nullptr;
+                }
+                if (!m_scriptThread) {
+                    m_cancelRequested.reset();
+                }
+            });
+    connect(m_scriptThread, &QThread::finished,
+            m_scriptWorker, &QObject::deleteLater);
+    connect(m_scriptThread, &QThread::finished,
+            m_scriptThread, &QObject::deleteLater);
+
+    setRunState(ScriptRunState::Running);
+    m_scriptThread->start();
+}
+
+void ScriptEditorDialog::requestWorkerCancellation()
+{
+    /*
+     * 原子标记是 UI 线程和 Lua worker 线程之间唯一共享状态。
+     * store(true) 后 Lua hook 会在下一次指令计数检查时返回 interrupted。
+     */
+    if (m_cancelRequested) {
+        m_cancelRequested->store(true);
     }
+}
+
+void ScriptEditorDialog::handleWorkerFinished(const LuaSandboxResult& result)
+{
+    /*
+     * worker 的结构化结果统一在这里转成用户可见输出。
+     * 取消、成功、普通错误互斥展示，避免停止脚本时再显示 Lua 错误文本。
+     */
+    for (const QString& line : result.outputLines) {
+        appendOutput(line, QColor(0, 180, 0));
+    }
+
+    if (result.interrupted) {
+        appendOutput(tr("[系统] 脚本已取消"), QColor(255, 165, 0));
+    } else if (result.success) {
+        appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
+    } else {
+        appendOutput(tr("[错误] %1").arg(result.errorMessage), QColor(220, 20, 60));
+    }
+
+    setRunState(ScriptRunState::Idle);
+}
+
+void ScriptEditorDialog::cleanupWorkerThread()
+{
+    /*
+     * 正在运行的线程不能被 UI 线程直接清空指针或销毁；等待线程 finished
+     * 连接负责最终清理。这里只处理已结束或未创建线程的空闲情况。
+     */
+    if (m_scriptThread && m_scriptThread->isRunning()) {
+        return;
+    }
+
+    m_scriptThread = nullptr;
+    m_scriptWorker = nullptr;
+    m_cancelRequested.reset();
+}
+
+void ScriptEditorDialog::setRunState(ScriptRunState state)
+{
+    /*
+     * 按状态集中控制按钮可用性，避免 onRunScript/onStopScript/finished
+     * 分散修改 UI 后出现运行按钮和停止按钮不同步。
+     */
+    m_runState = state;
+    m_isRunning = state != ScriptRunState::Idle;
+
+    if (m_runBtn) {
+        m_runBtn->setEnabled(state == ScriptRunState::Idle);
+    }
+
+    if (m_stopBtn) {
+        m_stopBtn->setEnabled(state == ScriptRunState::Running);
+    }
+}
+
+bool ScriptEditorDialog::isScriptConnectionOpenOnUiThread()
+{
+    /*
+     * Lua 的 serial.isOpen() 可能在 worker 线程触发。主窗口连接状态属于 UI
+     * 对象图，因此跨线程时必须同步切回对话框线程读取。
+     */
+    if (QThread::currentThread() == thread()) {
+        return isScriptConnectionOpenDirect();
+    }
+
+    bool open = false;
+    QMetaObject::invokeMethod(this,
+                              [this, &open]() {
+                                  open = isScriptConnectionOpenDirect();
+                              },
+                              Qt::BlockingQueuedConnection);
+    return open;
+}
+
+ScriptSendResult ScriptEditorDialog::sendScriptDataOnUiThread(const QByteArray& data)
+{
+    /*
+     * Lua 的 serial.send()/sendHex() 必须等待本地发送入口给出接受或拒绝
+     * 结果，才能把失败转成 Lua 错误。这里同步切回 UI 线程，但只执行
+     * 本地发送入口，不等待远端设备响应。
+     */
+    if (QThread::currentThread() == thread()) {
+        return performScriptSend(data);
+    }
+
+    ScriptSendResult result;
+    QMetaObject::invokeMethod(this,
+                              [this, &data, &result]() {
+                                  result = performScriptSend(data);
+                              },
+                              Qt::BlockingQueuedConnection);
+    return result;
+}
+
+bool ScriptEditorDialog::isScriptConnectionOpenDirect() const
+{
+    /*
+     * 未注入 provider 时保守视为未连接。这样测试、独立对话框或错误绑定
+     * 不会让 serial.isOpen() 误报 true。
+     */
+    return m_connectionStateProvider ? m_connectionStateProvider() : false;
+}
+
+ScriptSendResult ScriptEditorDialog::performScriptSend(const QByteArray& data)
+{
+    ScriptSendResult result;
+
+    if (!isScriptConnectionOpenDirect()) {
+        result.error = tr("当前连接未打开");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    if (data.isEmpty()) {
+        result.error = tr("脚本发送数据不能为空");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    if (!m_sendDataHandler) {
+        result.error = tr("脚本发送通道未连接到主窗口");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    result = m_sendDataHandler(data);
+    if (result.accepted) {
+        /*
+         * sendData 信号现在是“脚本发送成功通知”，保留给测试和未来观察者。
+         * MainWindow 的真实发送由 m_sendDataHandler 完成，避免重复发送。
+         */
+        emit sendData(data);
+        appendOutput(tr("[发送] %1").arg(sentPayloadPreview(data)), QColor(33, 150, 243));
+        return result;
+    }
+
+    if (result.error.trimmed().isEmpty()) {
+        result.error = tr("发送失败");
+    }
+    appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+    return result;
 }
 
 } // namespace ComAssistant

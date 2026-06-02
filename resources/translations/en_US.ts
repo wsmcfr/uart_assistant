@@ -2609,6 +2609,18 @@ Time spent: % 4</translation>
         <translation>Script Editor...</translation>
     </message>
     <message>
+        <source>请先打开当前连接后再发送。</source>
+        <translation>Please open the current connection before sending.</translation>
+    </message>
+    <message>
+        <source>当前连接未打开</source>
+        <translation>The current connection is not open</translation>
+    </message>
+    <message>
+        <source>发送失败</source>
+        <translation>Send failed</translation>
+    </message>
+    <message>
         <source>文件传输...</source>
         <translation>File Transfer...</translation>
     </message>
@@ -2631,6 +2643,18 @@ Time spent: % 4</translation>
     <message>
         <source>数据分窗...</source>
         <translation>Data Window Layout...</translation>
+    </message>
+    <message>
+        <source>接收协议</source>
+        <translation>Receive Protocol</translation>
+    </message>
+    <message>
+        <source>协议配置...</source>
+        <translation>Protocol Config...</translation>
+    </message>
+    <message>
+        <source>协议诊断...</source>
+        <translation>Protocol Diagnostics...</translation>
     </message>
     <message>
         <source>控件面板...</source>
@@ -3297,6 +3321,18 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/MainWindow.cpp" line="1869" />
         <source>Modbus协议分析</source>
         <translation>Modbus Protocol Analyzer</translation>
+    </message>
+    <message>
+        <source>协议配置已应用</source>
+        <translation>Protocol config applied</translation>
+    </message>
+    <message>
+        <source>接收协议已切换: %1</source>
+        <translation>Receive protocol switched: %1</translation>
+    </message>
+    <message>
+        <source>协议解析错误: %1</source>
+        <translation>Protocol parse error: %1</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="1896" />
@@ -6729,9 +6765,42 @@ Alarm with Temperature Range</translation>
         <translation>[System] Script execution complete</translation>
     </message>
     <message>
-        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="326" />
-        <source>[系统] 脚本已停止</source>
-        <translation>[System] Script stopped</translation>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="364" />
+        <source>[系统] 正在请求停止脚本...</source>
+        <translation>[System] Requesting script stop...</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="543" />
+        <source>[系统] 脚本已取消</source>
+        <translation>[System] Script cancelled</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="664" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="670" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="676" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="694" />
+        <source>[发送失败] %1</source>
+        <translation>[Send Failed] %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="663" />
+        <source>当前连接未打开</source>
+        <translation>The current connection is not open</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="669" />
+        <source>脚本发送数据不能为空</source>
+        <translation>Script send data cannot be empty</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="675" />
+        <source>脚本发送通道未连接到主窗口</source>
+        <translation>The script send channel is not connected to the main window</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="692" />
+        <source>发送失败</source>
+        <translation>Send failed</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="444" />
@@ -7754,6 +7823,26 @@ Alarm with Temperature Range</translation>
 <context>
     <name>ComAssistant::TabbedReceiveWidget</name>
     <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>全选</source>
+        <translation>Select All</translation>
+    </message>
+    <message>
+        <source>清屏</source>
+        <translation>Clear Screen</translation>
+    </message>
+    <message>
+        <source>暂停显示</source>
+        <translation>Pause Display</translation>
+    </message>
+    <message>
+        <source>继续显示</source>
+        <translation>Resume Display</translation>
+    </message>
+    <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="384" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1612" />
         <source>时间戳</source>
@@ -8673,6 +8762,121 @@ Please check application permissions.</translation>
         <location filename="../../src/core/macro/MacroRecorder.cpp" line="97" />
         <source>无法打开文件</source>
         <translation>Cannot open file</translation>
+    </message>
+</context>
+<context>
+    <name>ComAssistant::ProtocolConfigDialog</name>
+    <message>
+        <source>协议配置</source>
+        <translation>Protocol Config</translation>
+    </message>
+    <message>
+        <source>恢复默认</source>
+        <translation>Reset Defaults</translation>
+    </message>
+</context>
+<context>
+    <name>ComAssistant::ProtocolConfigEditor</name>
+    <message>
+        <source>当前协议没有可配置项，可直接使用默认行为。</source>
+        <translation>The current protocol has no configurable items. The default behavior can be used directly.</translation>
+    </message>
+</context>
+<context>
+    <name>ComAssistant::ProtocolDiagnosticsDialog</name>
+    <message>
+        <source>剪贴板不可用，请手动复制 JSON。</source>
+        <translation>Clipboard is unavailable. Please copy the JSON manually.</translation>
+    </message>
+    <message>
+        <source>诊断 JSON 已复制。</source>
+        <translation>Diagnostics JSON copied.</translation>
+    </message>
+    <message>
+        <source>保存协议诊断 JSON</source>
+        <translation>Save Protocol Diagnostics JSON</translation>
+    </message>
+    <message>
+        <source>JSON 文件 (*.json);;所有文件 (*.*)</source>
+        <translation>JSON Files (*.json);;All Files (*.*)</translation>
+    </message>
+    <message>
+        <source>保存失败</source>
+        <translation>Save Failed</translation>
+    </message>
+    <message>
+        <source>无法写入诊断文件：%1</source>
+        <translation>Cannot write diagnostics file: %1</translation>
+    </message>
+    <message>
+        <source>诊断文件未完整写入：%1</source>
+        <translation>Diagnostics file was not fully written: %1</translation>
+    </message>
+    <message>
+        <source>诊断 JSON 已保存。</source>
+        <translation>Diagnostics JSON saved.</translation>
+    </message>
+    <message>
+        <source>协议诊断</source>
+        <translation>Protocol Diagnostics</translation>
+    </message>
+    <message>
+        <source>当前协议诊断</source>
+        <translation>Current Protocol Diagnostics</translation>
+    </message>
+    <message>
+        <source>复制 JSON</source>
+        <translation>Copy JSON</translation>
+    </message>
+    <message>
+        <source>保存 JSON...</source>
+        <translation>Save JSON...</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>未知协议</source>
+        <translation>Unknown Protocol</translation>
+    </message>
+    <message>
+        <source>协议：%1（ID: %2，分类: %3）%4</source>
+        <translation>Protocol: %1 (ID: %2, Category: %3)%4</translation>
+    </message>
+    <message>
+        <source>
+说明：%1</source>
+        <translation>
+Description: %1</translation>
+    </message>
+    <message>
+        <source>能力：内置=%1，绘图=%2，构帧=%3，脚本=%4，可创建=%5</source>
+        <translation>Capabilities: Built-in=%1, Plot=%2, Frame Builder=%3, Script=%4, Creatable=%5</translation>
+    </message>
+    <message>
+        <source>配置：configVersion=%1，schemaVersion=%2，字段数=%3</source>
+        <translation>Configuration: configVersion=%1, schemaVersion=%2, Fields=%3</translation>
+    </message>
+    <message>
+        <source>校验：通过</source>
+        <translation>Validation: Passed</translation>
+    </message>
+    <message>
+        <source>校验：失败</source>
+        <translation>Validation: Failed</translation>
+    </message>
+    <message>
+        <source>
+错误：%1</source>
+        <translation>
+Errors: %1</translation>
+    </message>
+    <message>
+        <source>
+警告：%1</source>
+        <translation>
+Warnings: %1</translation>
     </message>
 </context>
 </TS>

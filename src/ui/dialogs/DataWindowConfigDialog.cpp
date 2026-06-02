@@ -32,6 +32,8 @@ DataWindowConfigDialog::DataWindowConfigDialog(DataWindowManager* manager, QWidg
 void DataWindowConfigDialog::setupUi()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 14);
+    mainLayout->setSpacing(10);
 
     // 说明标签
     QLabel* descLabel = new QLabel(tr(
@@ -39,6 +41,7 @@ void DataWindowConfigDialog::setupUi()
         "规则按顺序匹配，一条数据可以匹配多个规则。"
     ));
     descLabel->setWordWrap(true);
+    descLabel->setProperty("role", "muted");
     mainLayout->addWidget(descLabel);
 
     // 规则表格
@@ -75,6 +78,7 @@ void DataWindowConfigDialog::setupUi()
     btnLayout->addWidget(m_editBtn);
 
     m_removeBtn = new QPushButton(tr("删除"));
+    m_removeBtn->setProperty("danger", true);
     m_removeBtn->setEnabled(false);
     connect(m_removeBtn, &QPushButton::clicked, this, &DataWindowConfigDialog::onRemoveRuleClicked);
     btnLayout->addWidget(m_removeBtn);
@@ -96,6 +100,7 @@ void DataWindowConfigDialog::setupUi()
     // 对话框按钮
     QDialogButtonBox* buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &DataWindowConfigDialog::onAccepted);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     mainLayout->addWidget(buttonBox);
@@ -245,6 +250,8 @@ RuleEditDialog::RuleEditDialog(QWidget* parent)
 void RuleEditDialog::setupUi()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 14);
+    mainLayout->setSpacing(10);
     QFormLayout* formLayout = new QFormLayout;
 
     m_windowNameLabel = new QLabel(tr("窗口名称:"));
@@ -271,6 +278,7 @@ void RuleEditDialog::setupUi()
 
     QDialogButtonBox* buttonBox = new QDialogButtonBox(
         QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    buttonBox->button(QDialogButtonBox::Ok)->setDefault(true);
     connect(buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     mainLayout->addWidget(buttonBox);

@@ -237,6 +237,11 @@
         <p><strong>English:</strong> Via menu <code>Plot → New Plot Window</code> to create manually.</p>
     </div>
 
+    <div class="tip">
+        <strong>提示 / Tip:</strong> Lua Script 是 <code>工具 → 接收协议</code> 下的通用接收解析器，不属于旧版绘图协议菜单；需要自定义接收解析时，请在协议配置中编辑 <code>scriptSource</code>。<br>
+        Lua Script is a general receive parser under <code>Tools → Receive Protocol</code>, not part of the legacy plotting protocol menu. For custom receive parsing, edit <code>scriptSource</code> in Protocol Config.
+    </div>
+
     <h2>2. 窗口控制 / Window Controls</h2>
 
     <table>
@@ -354,6 +359,11 @@
         <p><strong>启用方法 / Enable Method:</strong></p>
         <p>菜单: <code>绘图 → 绘图设置 → 启用OpenGL加速</code></p>
         <p>Menu: <code>Plot → Plot Settings → Enable OpenGL Acceleration</code></p>
+
+        <div class="tip">
+            <strong>提示 / Tip:</strong> 如果当前显卡驱动或远程桌面环境导致 OpenGL 画面为空白，程序会自动切回软件绘制并保持曲线可见。<br>
+            If the current graphics driver or remote desktop environment renders a blank OpenGL frame, the app automatically falls back to software rendering and keeps plots visible.
+        </div>
     </div>
 
     <div class="feature-box">

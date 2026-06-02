@@ -23,6 +23,8 @@
 #include <QFont>
 #include <QTimer>
 
+class QMenu;
+
 namespace ComAssistant {
 
 class ReceiveHighlightHighlighter;
@@ -66,11 +68,24 @@ public:
     void clear();
     void exportToFile(const QString& fileName);
 
+    /**
+     * @brief 创建接收区右键菜单。
+     *
+     * 主要流程：先加入文本编辑常用动作，再加入清屏、暂停/继续显示、
+     * 自动滚动、HEX 显示、时间戳和高亮等接收区业务动作。
+     * @param contextWidget 触发右键菜单的具体视图控件；为空时使用接收区主文本视图。
+     * @return 新创建的菜单对象，调用方负责释放。
+     */
+    QMenu* createReceiveContextMenu(QWidget* contextWidget = nullptr);
+
     void setTimestampEnabled(bool enabled);
     bool isTimestampEnabled() const;
 
     void setAutoScrollEnabled(bool enabled);
     bool isAutoScrollEnabled() const;
+
+    void setDisplayPaused(bool paused);
+    bool isDisplayPaused() const;
 
     void setHexDisplayEnabled(bool enabled);
     bool isHexDisplayEnabled() const;
@@ -111,6 +126,7 @@ private slots:
     void onHighlightToggled(bool checked);
     void onHighlightSettingsClicked();
     void onScrollBarValueChanged(int value);
+    void showReceiveContextMenu(QWidget* contextWidget, const QPoint& localPos);
 
 private:
     void setupUi();
@@ -139,6 +155,9 @@ private:
     void applyHighlight();
     void scheduleHighlightUpdate();
     void scheduleTerminalDisplayUpdate();
+    void copyReceiveContextSelection(QWidget* contextWidget) const;   ///< 复制右键来源视图中的选中内容
+    void selectAllReceiveContext(QWidget* contextWidget) const;       ///< 全选右键来源视图中的内容
+    QString selectedHexText() const;                                  ///< 将 HEX 表格选区整理为可复制文本
     void trimRawDataBuffer();
     void trimMainTextDocument();                    ///< 以字符数裁剪主文本区，覆盖“长数据无换行”场景
     void updatePerformanceStats();
@@ -185,6 +204,8 @@ private:
     // 状态
     bool m_timestampEnabled = false;
     bool m_autoScrollEnabled = true;
+    bool m_displayPaused = false;                   ///< 暂停显示刷新；数据仍进入缓存和协议链路
+    bool m_rebuildMainViewAfterResume = false;      ///< 暂停期间显示格式变化时，继续后需按缓存重建文本区
     bool m_hexDisplayEnabled = false;
     bool m_needTimestamp = true;
     int m_maxLines = 10000;

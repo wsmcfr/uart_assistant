@@ -22,6 +22,13 @@
 #include <QListWidget>
 #include <QColorDialog>
 #include <QMessageBox>
+#include <QMenu>
+#include <QAction>
+#include <QApplication>
+#include <QClipboard>
+#include <QItemSelectionModel>
+#include <QScopedPointer>
+#include <QAbstractScrollArea>
 #include <QEvent>
 #include <QAbstractTableModel>
 #include <QSyntaxHighlighter>
@@ -29,6 +36,8 @@
 #include <QElapsedTimer>
 #include <QGridLayout>
 #include <QSizePolicy>
+
+#include <algorithm>
 
 namespace ComAssistant {
 
@@ -467,6 +476,15 @@ void TabbedReceiveWidget::setupMainTab()
     m_mainTextEdit->document()->setMaximumBlockCount(m_maxLines);
     m_mainTextEdit->document()->setUndoRedoEnabled(false);
     m_mainTextEdit->setPlaceholderText(tr("接收到的数据将在这里显示..."));
+    m_mainTextEdit->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_mainTextEdit, &QPlainTextEdit::customContextMenuRequested,
+            this, [this](const QPoint& pos) {
+                /*
+                 * 主文本区是用户最常右键的位置。这里不再使用 Qt 默认菜单，
+                 * 而是弹出接收区统一菜单，让清屏、暂停显示等业务动作随手可达。
+                 */
+                showReceiveContextMenu(m_mainTextEdit, pos);
+            });
 
     if (!m_highlighter) {
         m_highlighter = new ReceiveHighlightHighlighter(m_mainTextEdit->document());
@@ -511,6 +529,12 @@ void TabbedReceiveWidget::setupHexTab()
     m_hexTable->horizontalHeader()->setStretchLastSection(true);
     m_hexTable->verticalHeader()->setDefaultSectionSize(22);
     m_hexTable->setFont(QFont("Consolas", 9));
+    m_hexTable->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_hexTable, &QTableView::customContextMenuRequested,
+            this, [this](const QPoint& pos) {
+                // HEX 表格和文本区共享同一套接收控制菜单，避免操作入口不一致。
+                showReceiveContextMenu(m_hexTable, pos);
+            });
 
     m_tabWidget->addTab(m_hexTable, tr("十六进制"));
 }
@@ -536,6 +560,12 @@ void TabbedReceiveWidget::setupFilterTab()
     m_filterResult->setReadOnly(true);
     m_filterResult->setFont(QFont("Consolas", 10));
     m_filterResult->document()->setUndoRedoEnabled(false);
+    m_filterResult->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_filterResult, &QTextEdit::customContextMenuRequested,
+            this, [this](const QPoint& pos) {
+                // 过滤结果仍属于接收显示区，因此右键也提供同样的清屏和显示控制。
+                showReceiveContextMenu(m_filterResult, pos);
+            });
     filterLayout->addWidget(m_filterResult);
 
     m_tabWidget->addTab(filterWidget, tr("过滤"));
@@ -601,6 +631,9 @@ void TabbedReceiveWidget::appendTerminalMode(const QByteArray& data)
 void TabbedReceiveWidget::updateTerminalDisplay()
 {
     if (!m_terminalBuffer) return;
+    if (m_displayPaused) {
+        return;
+    }
 
     // 使用 blockSignals 防止中间信号，减少 UI 更新开销
     m_mainTextEdit->setUpdatesEnabled(false);
@@ -885,6 +918,17 @@ void TabbedReceiveWidget::scheduleReceiveFlush()
      * 正常情况下按 16ms 合并刷新，接近 60fps；突发数据很大时立即刷新，
      * 防止待显示缓存无限增长，同时仍避免每个小包触发一次 UI 重绘。
      */
+    if (m_displayPaused) {
+        /*
+         * 暂停显示只暂停控件刷新，不暂停数据接收。这里保留待刷新缓存，
+         * 用户点“继续显示”后会一次性 flush，避免暂停期间的数据丢失。
+         */
+        if (m_receiveFlushTimer) {
+            m_receiveFlushTimer->stop();
+        }
+        return;
+    }
+
     const bool overTextThreshold = m_pendingMainText.size() >= m_pendingTextFlushThreshold;
     const bool overHexThreshold = m_pendingHexData.size() >= m_pendingHexFlushThreshold;
     if (overTextThreshold || overHexThreshold) {
@@ -905,6 +949,9 @@ void TabbedReceiveWidget::flushPendingReceiveViews()
      */
     if (m_receiveFlushTimer) {
         m_receiveFlushTimer->stop();
+    }
+    if (m_displayPaused) {
+        return;
     }
 
     if (m_mainTextEdit && !m_pendingMainText.isEmpty()) {
@@ -1005,6 +1052,7 @@ void TabbedReceiveWidget::refreshMainView()
 
 void TabbedReceiveWidget::clear()
 {
+    m_displayPaused = false;
     if (m_receiveFlushTimer) {
         m_receiveFlushTimer->stop();
     }
@@ -1069,6 +1117,80 @@ void TabbedReceiveWidget::exportToFile(const QString& fileName)
     }
 }
 
+QMenu* TabbedReceiveWidget::createReceiveContextMenu(QWidget* contextWidget)
+{
+    /*
+     * 该菜单是接收区各视图的统一右键入口。菜单动作直接调用当前控件状态接口，
+     * 让顶部勾选框、按钮和右键菜单始终共享同一份状态。
+     */
+    QWidget* sourceWidget = contextWidget ? contextWidget : static_cast<QWidget*>(m_mainTextEdit);
+    QMenu* menu = new QMenu(this);
+
+    QAction* copyAction = menu->addAction(tr("复制"));
+    copyAction->setObjectName("receiveContextCopyAction");
+    copyAction->setEnabled(sourceWidget != nullptr);
+    connect(copyAction, &QAction::triggered, this, [this, sourceWidget]() {
+        copyReceiveContextSelection(sourceWidget);
+    });
+
+    QAction* selectAllAction = menu->addAction(tr("全选"));
+    selectAllAction->setObjectName("receiveContextSelectAllAction");
+    selectAllAction->setEnabled(sourceWidget != nullptr);
+    connect(selectAllAction, &QAction::triggered, this, [this, sourceWidget]() {
+        selectAllReceiveContext(sourceWidget);
+    });
+
+    menu->addSeparator();
+
+    QAction* clearAction = menu->addAction(tr("清屏"));
+    clearAction->setObjectName("receiveContextClearAction");
+    connect(clearAction, &QAction::triggered, this, &TabbedReceiveWidget::clear);
+
+    QAction* pauseAction = menu->addAction(m_displayPaused ? tr("继续显示") : tr("暂停显示"));
+    pauseAction->setObjectName("receiveContextPauseAction");
+    pauseAction->setCheckable(true);
+    pauseAction->setChecked(m_displayPaused);
+    connect(pauseAction, &QAction::triggered, this, [this]() {
+        setDisplayPaused(!m_displayPaused);
+    });
+
+    menu->addSeparator();
+
+    QAction* autoScrollAction = menu->addAction(tr("自动滚动"));
+    autoScrollAction->setObjectName("receiveContextAutoScrollAction");
+    autoScrollAction->setCheckable(true);
+    autoScrollAction->setChecked(m_autoScrollEnabled);
+    connect(autoScrollAction, &QAction::triggered, this, [this](bool checked) {
+        setAutoScrollEnabled(checked);
+    });
+
+    QAction* hexDisplayAction = menu->addAction(tr("HEX显示"));
+    hexDisplayAction->setObjectName("receiveContextHexDisplayAction");
+    hexDisplayAction->setCheckable(true);
+    hexDisplayAction->setChecked(m_hexDisplayEnabled);
+    connect(hexDisplayAction, &QAction::triggered, this, [this](bool checked) {
+        setHexDisplayEnabled(checked);
+    });
+
+    QAction* timestampAction = menu->addAction(tr("时间戳"));
+    timestampAction->setObjectName("receiveContextTimestampAction");
+    timestampAction->setCheckable(true);
+    timestampAction->setChecked(m_timestampEnabled);
+    connect(timestampAction, &QAction::triggered, this, [this](bool checked) {
+        setTimestampEnabled(checked);
+    });
+
+    QAction* highlightAction = menu->addAction(tr("高亮"));
+    highlightAction->setObjectName("receiveContextHighlightAction");
+    highlightAction->setCheckable(true);
+    highlightAction->setChecked(m_highlightEnabled);
+    connect(highlightAction, &QAction::triggered, this, [this](bool checked) {
+        setHighlightEnabled(checked);
+    });
+
+    return menu;
+}
+
 void TabbedReceiveWidget::showSearchBar()
 {
     // 切换到过滤标签页，该标签页已有搜索功能
@@ -1117,10 +1239,60 @@ bool TabbedReceiveWidget::isAutoScrollEnabled() const
     return m_autoScrollEnabled;
 }
 
+void TabbedReceiveWidget::setDisplayPaused(bool paused)
+{
+    if (m_displayPaused == paused) {
+        return;
+    }
+
+    m_displayPaused = paused;
+    if (m_displayPaused) {
+        /*
+         * 暂停显示时立即停止已有刷新定时器。待刷新文本和 HEX 数据不清空，
+         * 保证继续显示后能完整补刷暂停期间收到的内容。
+         */
+        if (m_receiveFlushTimer) {
+            m_receiveFlushTimer->stop();
+        }
+        if (m_terminalRefreshTimer) {
+            m_terminalRefreshTimer->stop();
+        }
+        return;
+    }
+
+    /*
+     * 继续显示后同步刷新积压内容。终端模式的数据已经进入 TerminalBuffer，
+     * 需要单独重新渲染当前屏幕；其他模式则刷新 pending 队列。
+     */
+    if (m_rebuildMainViewAfterResume) {
+        m_pendingMainText.clear();
+        m_utf8Buffer.clear();
+        m_needTimestamp = true;
+        m_rebuildMainViewAfterResume = false;
+        refreshMainView();
+    }
+    flushPendingReceiveViews();
+    if (m_displayMode == ReceiveDisplayMode::Terminal) {
+        updateTerminalDisplay();
+    }
+}
+
+bool TabbedReceiveWidget::isDisplayPaused() const
+{
+    return m_displayPaused;
+}
+
 void TabbedReceiveWidget::setHexDisplayEnabled(bool enabled)
 {
     m_hexDisplayEnabled = enabled;
     m_hexDisplayCheck->setChecked(enabled);
+    if (m_displayPaused) {
+        /*
+         * 暂停显示时允许用户预先切换显示格式，但不能立刻重建文本区，
+         * 否则会把暂停期间收到的数据提前显示出来。继续显示时再按缓存重建。
+         */
+        m_rebuildMainViewAfterResume = true;
+    }
 }
 
 bool TabbedReceiveWidget::isHexDisplayEnabled() const
@@ -1315,6 +1487,33 @@ void TabbedReceiveWidget::onScrollBarValueChanged(int value)
     }
 }
 
+void TabbedReceiveWidget::showReceiveContextMenu(QWidget* contextWidget, const QPoint& localPos)
+{
+    /*
+     * 右键来源可能是文本区、HEX 表格或过滤结果。菜单统一生成，
+     * 但弹出位置要按来源控件坐标映射，保证菜单出现在鼠标附近。
+     */
+    QWidget* sourceWidget = contextWidget ? contextWidget : static_cast<QWidget*>(m_mainTextEdit);
+    QScopedPointer<QMenu> menu(createReceiveContextMenu(sourceWidget));
+    if (!menu) {
+        return;
+    }
+
+    QWidget* positionWidget = sourceWidget;
+    if (auto* scrollArea = qobject_cast<QAbstractScrollArea*>(sourceWidget)) {
+        /*
+         * QAbstractScrollArea 的 customContextMenuRequested 坐标来自 viewport。
+         * 用 viewport 映射可避免文本区边框、表格表头导致菜单偏移。
+         */
+        positionWidget = scrollArea->viewport();
+    }
+
+    const QPoint globalPos = positionWidget
+        ? positionWidget->mapToGlobal(localPos)
+        : mapToGlobal(localPos);
+    menu->exec(globalPos);
+}
+
 void TabbedReceiveWidget::showSmartScrollIndicator(const QString& message)
 {
     if (m_smartScrollIndicator) {
@@ -1350,6 +1549,14 @@ void TabbedReceiveWidget::checkScrollPosition()
 void TabbedReceiveWidget::onHexDisplayToggled(bool checked)
 {
     m_hexDisplayEnabled = checked;
+    if (m_displayPaused) {
+        /*
+         * 顶部复选框和右键菜单共享该槽。暂停期间只记录显示格式变化，
+         * 避免复选框信号绕过暂停状态直接刷新文本区。
+         */
+        m_rebuildMainViewAfterResume = true;
+        return;
+    }
     flushPendingReceiveViews();
     refreshMainView();
 }
@@ -1558,6 +1765,10 @@ void TabbedReceiveWidget::scheduleHighlightUpdate()
 
 void TabbedReceiveWidget::scheduleTerminalDisplayUpdate()
 {
+    if (m_displayPaused) {
+        return;
+    }
+
     if (!m_terminalRefreshTimer) {
         updateTerminalDisplay();
         return;
@@ -1566,6 +1777,116 @@ void TabbedReceiveWidget::scheduleTerminalDisplayUpdate()
     if (!m_terminalRefreshTimer->isActive()) {
         m_terminalRefreshTimer->start(40);
     }
+}
+
+void TabbedReceiveWidget::copyReceiveContextSelection(QWidget* contextWidget) const
+{
+    /*
+     * 不同接收视图的复制方式不同：文本控件优先复制选区，HEX 表格则把
+     * 单元格选区整理成按行分组的字符串；没有选区时复制该视图全部内容。
+     */
+    QClipboard* clipboard = QApplication::clipboard();
+    if (!clipboard) {
+        return;
+    }
+
+    if (auto* plainText = qobject_cast<QPlainTextEdit*>(contextWidget)) {
+        QString text = plainText->textCursor().selectedText();
+        text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+        if (text.isEmpty()) {
+            text = plainText->toPlainText();
+        }
+        clipboard->setText(text);
+        return;
+    }
+
+    if (auto* textEdit = qobject_cast<QTextEdit*>(contextWidget)) {
+        QString text = textEdit->textCursor().selectedText();
+        text.replace(QChar::ParagraphSeparator, QLatin1Char('\n'));
+        if (text.isEmpty()) {
+            text = textEdit->toPlainText();
+        }
+        clipboard->setText(text);
+        return;
+    }
+
+    if (qobject_cast<QTableView*>(contextWidget)) {
+        clipboard->setText(selectedHexText());
+        return;
+    }
+
+    if (m_mainTextEdit) {
+        clipboard->setText(m_mainTextEdit->toPlainText());
+    }
+}
+
+void TabbedReceiveWidget::selectAllReceiveContext(QWidget* contextWidget) const
+{
+    /*
+     * 全选操作按来源控件执行。HEX 表格使用选择模型，确保用户右键表格时
+     * 复制动作能覆盖全部单元格，而不是只选中当前可见格。
+     */
+    if (auto* plainText = qobject_cast<QPlainTextEdit*>(contextWidget)) {
+        plainText->selectAll();
+        return;
+    }
+
+    if (auto* textEdit = qobject_cast<QTextEdit*>(contextWidget)) {
+        textEdit->selectAll();
+        return;
+    }
+
+    if (auto* table = qobject_cast<QTableView*>(contextWidget)) {
+        table->selectAll();
+    }
+}
+
+QString TabbedReceiveWidget::selectedHexText() const
+{
+    if (!m_hexTable || !m_hexModel) {
+        return {};
+    }
+
+    QModelIndexList indexes;
+    if (m_hexTable->selectionModel()) {
+        indexes = m_hexTable->selectionModel()->selectedIndexes();
+    }
+
+    if (indexes.isEmpty()) {
+        for (int row = 0; row < m_hexModel->rowCount(); ++row) {
+            for (int col = 0; col < m_hexModel->columnCount(); ++col) {
+                indexes.append(m_hexModel->index(row, col));
+            }
+        }
+    }
+
+    std::sort(indexes.begin(), indexes.end(), [](const QModelIndex& left, const QModelIndex& right) {
+        if (left.row() == right.row()) {
+            return left.column() < right.column();
+        }
+        return left.row() < right.row();
+    });
+
+    QString result;
+    int lastRow = -1;
+    for (const QModelIndex& index : indexes) {
+        const QVariant value = m_hexModel->data(index, Qt::DisplayRole);
+        const QString cellText = value.toString();
+        if (cellText.isEmpty()) {
+            continue;
+        }
+
+        if (lastRow >= 0 && index.row() != lastRow) {
+            result += QLatin1Char('\n');
+        } else if (!result.isEmpty()) {
+            result += QLatin1Char(' ');
+        }
+
+        result += cellText;
+        lastRow = index.row();
+    }
+
+    return result;
 }
 
 void TabbedReceiveWidget::trimRawDataBuffer()

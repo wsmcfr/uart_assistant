@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.6.0
+    VERSION 1.8.0
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
@@ -146,6 +146,7 @@ set(CORE_SOURCES
     src/core/utils/EncodingUtils.cpp
     src/core/utils/MemoryUtils.cpp
     src/core/script/LuaEngine.cpp
+    src/core/script/LuaSandbox.cpp
     src/core/theme/ThemeManager.cpp
     src/core/session/SessionSerializer.cpp
     src/core/session/SessionManager.cpp
@@ -171,6 +172,7 @@ set(CORE_HEADERS
     src/core/utils/EncodingUtils.h
     src/core/utils/MemoryUtils.h
     src/core/script/LuaEngine.h
+    src/core/script/LuaSandbox.h
     src/core/theme/ThemeManager.h
     src/core/session/SessionData.h
     src/core/session/SessionSerializer.h
@@ -189,7 +191,10 @@ set(COMMUNICATION_SOURCES
     src/core/communication/TcpServer.cpp
     src/core/communication/UdpSocket.cpp
     src/core/communication/HidDevice.cpp
+    src/core/communication/HidWorker.cpp
     src/core/communication/HidReportCodec.cpp
+    src/core/communication/SendQueue.cpp
+    src/core/communication/SendDispatcher.cpp
     src/core/communication/CommunicationFactory.cpp
     src/core/communication/SerialPortMonitor.cpp
     src/core/communication/MultiPortManager.cpp
@@ -202,7 +207,10 @@ set(COMMUNICATION_HEADERS
     src/core/communication/TcpServer.h
     src/core/communication/UdpSocket.h
     src/core/communication/HidDevice.h
+    src/core/communication/HidWorker.h
     src/core/communication/HidReportCodec.h
+    src/core/communication/SendQueue.h
+    src/core/communication/SendDispatcher.h
     src/core/communication/CommunicationFactory.h
     src/core/communication/SerialPortMonitor.h
     src/core/communication/MultiPortManager.h
@@ -218,6 +226,10 @@ set(PROTOCOL_SOURCES
     src/core/protocol/TextProtocol.cpp
     src/core/protocol/StampProtocol.cpp
     src/core/protocol/CsvProtocol.cpp
+    src/core/protocol/LuaScriptProtocol.cpp
+    src/core/protocol/ProtocolConfigSchema.cpp
+    src/core/protocol/ProtocolDiagnostics.cpp
+    src/core/protocol/ProtocolRegistry.cpp
     src/core/protocol/ProtocolFactory.cpp
     src/core/protocol/EasyHexProtocol.cpp
     src/core/protocol/JustFloatProtocol.cpp
@@ -234,6 +246,11 @@ set(PROTOCOL_HEADERS
     src/core/protocol/TextProtocol.h
     src/core/protocol/StampProtocol.h
     src/core/protocol/CsvProtocol.h
+    src/core/protocol/LuaScriptProtocol.h
+    src/core/protocol/ProtocolConfigSchema.h
+    src/core/protocol/ProtocolDiagnostics.h
+    src/core/protocol/ProtocolDescriptor.h
+    src/core/protocol/ProtocolRegistry.h
     src/core/protocol/ProtocolFactory.h
     src/core/protocol/EasyHexProtocol.h
     src/core/protocol/JustFloatProtocol.h
@@ -243,20 +260,32 @@ set(PROTOCOL_HEADERS
 # UI模块源文件
 set(UI_SOURCES
     src/ui/MainWindow.cpp
+    src/ui/MainWindowCommunicationController.cpp
+    src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
+    src/ui/MainWindowProtocolState.cpp
+    src/ui/MainWindowPlotDataRouter.cpp
+    src/ui/MainWindowSessionCoordinator.cpp
     src/ui/HelpDialog.cpp
+    src/ui/PlotterDataPolicy.cpp
     src/ui/PlotRenderQuality.cpp
+    src/ui/PlotterRenderCoordinator.cpp
+    src/ui/PlotterAnalysisService.cpp
+    src/ui/PlotterStatisticsCalculator.cpp
     src/ui/PlotterWindow.cpp
     src/ui/PlotterManager.cpp
     src/ui/SpectrumWindow.cpp
     src/ui/RealTimeFFTWindow.cpp
     src/ui/dialogs/ToolboxDialog.cpp
     src/ui/dialogs/ScriptEditorDialog.cpp
+    src/ui/dialogs/ScriptExecutionWorker.cpp
     src/ui/dialogs/ExportDialog.cpp
     src/ui/dialogs/RecoveryDialog.cpp
     src/ui/dialogs/SettingsDialog.cpp
     src/ui/dialogs/FFTSettingsDialog.cpp
     src/ui/dialogs/FileTransferDialog.cpp
     src/ui/dialogs/DataWindowConfigDialog.cpp
+    src/ui/dialogs/ProtocolConfigDialog.cpp
+    src/ui/dialogs/ProtocolDiagnosticsDialog.cpp
     src/ui/syntax/LuaSyntaxHighlighter.cpp
     src/ui/widgets/SerialSettingsWidget.cpp
     src/ui/widgets/NetworkSettingsWidget.cpp
@@ -267,6 +296,7 @@ set(UI_SOURCES
     src/ui/widgets/HidReportWorkspaceWidget.cpp
     src/ui/widgets/SendWidget.cpp
     src/ui/widgets/TabbedReceiveWidget.cpp
+    src/ui/widgets/ProtocolConfigEditor.cpp
     src/ui/widgets/DataStatistics.cpp
     src/ui/widgets/QuickSendWidget.cpp
     src/ui/widgets/WaterfallWidget.cpp
@@ -294,20 +324,32 @@ set(UI_SOURCES
 
 set(UI_HEADERS
     src/ui/MainWindow.h
+    src/ui/MainWindowCommunicationController.h
+    src/ui/MainWindowCommunicationWorkspaceCoordinator.h
+    src/ui/MainWindowProtocolState.h
+    src/ui/MainWindowPlotDataRouter.h
+    src/ui/MainWindowSessionCoordinator.h
     src/ui/HelpDialog.h
+    src/ui/PlotterDataPolicy.h
     src/ui/PlotRenderQuality.h
+    src/ui/PlotterRenderCoordinator.h
+    src/ui/PlotterAnalysisService.h
+    src/ui/PlotterStatisticsCalculator.h
     src/ui/PlotterWindow.h
     src/ui/PlotterManager.h
     src/ui/SpectrumWindow.h
     src/ui/RealTimeFFTWindow.h
     src/ui/dialogs/ToolboxDialog.h
     src/ui/dialogs/ScriptEditorDialog.h
+    src/ui/dialogs/ScriptExecutionWorker.h
     src/ui/dialogs/ExportDialog.h
     src/ui/dialogs/RecoveryDialog.h
     src/ui/dialogs/SettingsDialog.h
     src/ui/dialogs/FFTSettingsDialog.h
     src/ui/dialogs/FileTransferDialog.h
     src/ui/dialogs/DataWindowConfigDialog.h
+    src/ui/dialogs/ProtocolConfigDialog.h
+    src/ui/dialogs/ProtocolDiagnosticsDialog.h
     src/ui/syntax/LuaSyntaxHighlighter.h
     src/ui/widgets/SerialSettingsWidget.h
     src/ui/widgets/NetworkSettingsWidget.h
@@ -318,6 +360,7 @@ set(UI_HEADERS
     src/ui/widgets/HidReportWorkspaceWidget.h
     src/ui/widgets/SendWidget.h
     src/ui/widgets/TabbedReceiveWidget.h
+    src/ui/widgets/ProtocolConfigEditor.h
     src/ui/widgets/DataStatistics.h
     src/ui/widgets/QuickSendWidget.h
     src/ui/widgets/WaterfallWidget.h

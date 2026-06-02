@@ -24,6 +24,34 @@ void AsciiProtocol::setLineEnding(LineEnding ending)
     m_asciiConfig.lineEnding = ending;
 }
 
+void AsciiProtocol::setConfig(const QVariantMap& config)
+{
+    /*
+     * Factory 会先通过 Schema 完成类型校验、默认值补全和枚举约束。
+     * 这里仍保留温和的字符串分支，是为了让直接调用 setConfig() 的旧代码
+     * 也能得到可预期的内部状态；未知值保持当前默认值，不主动制造无效状态。
+     */
+    m_config = config;
+
+    const QString lineEnding = config.value(QStringLiteral("lineEnding"), QStringLiteral("CRLF")).toString();
+    if (lineEnding == QStringLiteral("None")) {
+        m_asciiConfig.lineEnding = LineEnding::None;
+    } else if (lineEnding == QStringLiteral("CR")) {
+        m_asciiConfig.lineEnding = LineEnding::CR;
+    } else if (lineEnding == QStringLiteral("LF")) {
+        m_asciiConfig.lineEnding = LineEnding::LF;
+    } else if (lineEnding == QStringLiteral("CRLF")) {
+        m_asciiConfig.lineEnding = LineEnding::CRLF;
+    }
+
+    m_asciiConfig.appendLineEnding =
+        config.value(QStringLiteral("appendLineEnding"), m_asciiConfig.appendLineEnding).toBool();
+    m_asciiConfig.timeoutMs =
+        config.value(QStringLiteral("timeoutMs"), m_asciiConfig.timeoutMs).toInt();
+    m_asciiConfig.encoding =
+        config.value(QStringLiteral("encoding"), m_asciiConfig.encoding).toString();
+}
+
 QByteArray AsciiProtocol::lineEndingString(LineEnding ending)
 {
     switch (ending) {

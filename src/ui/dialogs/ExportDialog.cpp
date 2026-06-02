@@ -42,6 +42,8 @@ ExportDialog::ExportDialog(QWidget* parent)
 void ExportDialog::setupUi()
 {
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 14);
+    mainLayout->setSpacing(10);
 
     // 标签页
     m_tabWidget = new QTabWidget(this);
@@ -65,6 +67,9 @@ void ExportDialog::setupUi()
     m_totalRecordsLabel = new QLabel(tr("总记录: 0"), this);
     m_filteredRecordsLabel = new QLabel(tr("过滤后: 0"), this);
     m_totalBytesLabel = new QLabel(tr("数据量: 0 bytes"), this);
+    m_totalRecordsLabel->setProperty("role", "muted");
+    m_filteredRecordsLabel->setProperty("role", "muted");
+    m_totalBytesLabel->setProperty("role", "muted");
     statsLayout->addWidget(m_totalRecordsLabel);
     statsLayout->addWidget(m_filteredRecordsLabel);
     statsLayout->addWidget(m_totalBytesLabel);
@@ -79,7 +84,11 @@ void ExportDialog::setupUi()
     mainLayout->addWidget(m_progressBar);
 
     // 按钮
-    auto* buttonLayout = new QHBoxLayout();
+    QWidget* footerWidget = new QWidget(this);
+    footerWidget->setObjectName(QStringLiteral("dialogFooter"));
+    auto* buttonLayout = new QHBoxLayout(footerWidget);
+    buttonLayout->setContentsMargins(0, 10, 0, 0);
+    buttonLayout->setSpacing(8);
     m_previewBtn = new QPushButton(tr("更新预览"), this);
     connect(m_previewBtn, &QPushButton::clicked, this, &ExportDialog::onPreviewClicked);
     buttonLayout->addWidget(m_previewBtn);
@@ -95,7 +104,7 @@ void ExportDialog::setupUi()
     connect(m_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     buttonLayout->addWidget(m_cancelBtn);
 
-    mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(footerWidget);
 }
 
 void ExportDialog::setupFormatTab()

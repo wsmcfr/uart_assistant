@@ -28,6 +28,45 @@ void EasyHexProtocol::setConfig(const EasyHexConfig& config)
     m_easyConfig = config;
 }
 
+void EasyHexProtocol::setConfig(const QVariantMap& config)
+{
+    /*
+     * 配置表一般由 ProtocolFactory 通过 Schema 规范化后传入：
+     * - frameHeader/frameTail 已经是大写空格分隔十六进制文本；
+     * - checksumType 已经是允许枚举值；
+     * - lengthFieldOffset/lengthFieldSize 已经在允许范围内。
+     *
+     * 这里负责把文本形式转换成协议运行时需要的 QByteArray 和枚举，
+     * 并保存规范化配置，供会话持久化或后续配置 UI 回读。
+     */
+    m_config = config;
+
+    if (config.contains(QStringLiteral("frameHeader"))) {
+        m_easyConfig.frameHeader = fromHexString(config.value(QStringLiteral("frameHeader")).toString());
+    }
+    if (config.contains(QStringLiteral("frameTail"))) {
+        m_easyConfig.frameTail = fromHexString(config.value(QStringLiteral("frameTail")).toString());
+    }
+
+    m_easyConfig.useChecksum =
+        config.value(QStringLiteral("useChecksum"), m_easyConfig.useChecksum).toBool();
+
+    const QString checksumType =
+        config.value(QStringLiteral("checksumType"), QStringLiteral("SUM8")).toString();
+    if (checksumType == QStringLiteral("SUM8")) {
+        m_easyConfig.checksumType = EasyHexConfig::SUM8;
+    } else if (checksumType == QStringLiteral("XOR8")) {
+        m_easyConfig.checksumType = EasyHexConfig::XOR8;
+    } else if (checksumType == QStringLiteral("CRC8")) {
+        m_easyConfig.checksumType = EasyHexConfig::CRC8;
+    }
+
+    m_easyConfig.lengthFieldOffset =
+        config.value(QStringLiteral("lengthFieldOffset"), m_easyConfig.lengthFieldOffset).toInt();
+    m_easyConfig.lengthFieldSize =
+        config.value(QStringLiteral("lengthFieldSize"), m_easyConfig.lengthFieldSize).toInt();
+}
+
 void EasyHexProtocol::setFrameHeader(const QByteArray& header)
 {
     m_easyConfig.frameHeader = header;
