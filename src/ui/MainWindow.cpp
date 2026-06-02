@@ -1348,6 +1348,7 @@ void MainWindow::switchCurrentProtocolById(const QString& protocolId,
 
     if (syncPlotAction) {
         syncProtocolActionCheckedState();
+        syncReceiveProtocolActionCheckedState();
     }
 
     LOG_INFO(QString("Protocol changed to: %1 (%2)")
@@ -1387,6 +1388,26 @@ void MainWindow::syncProtocolActionCheckedState()
         : ProtocolType::Raw;
     for (QAction* action : m_protocolActionGroup->actions()) {
         if (action->data().toInt() == static_cast<int>(checkedType)) {
+            action->setChecked(true);
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 同步接收协议菜单选中状态。
+ *
+ * 该菜单以稳定协议 ID 为事实源，因此 Lua、未来插件协议和旧版绘图协议都
+ * 可以准确恢复选中状态。
+ */
+void MainWindow::syncReceiveProtocolActionCheckedState()
+{
+    if (!m_receiveProtocolActionGroup) {
+        return;
+    }
+
+    for (QAction* action : m_receiveProtocolActionGroup->actions()) {
+        if (action->data().toString() == m_protocolState.protocolId()) {
             action->setChecked(true);
             break;
         }
@@ -1956,6 +1977,30 @@ void MainWindow::populateHamburgerMenu()
     toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
     toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
     toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
+    QMenu* receiveProtocolMenu = toolsMenu->addMenu(tr("接收协议"));
+    QActionGroup* receiveProtocolGroup = new QActionGroup(this);
+    receiveProtocolGroup->setExclusive(true);
+    const QList<ProtocolDescriptor> receiveProtocols =
+        MainWindowProtocolState::receiveProtocolChoices();
+    for (const ProtocolDescriptor& descriptor : receiveProtocols) {
+        QAction* act = receiveProtocolMenu->addAction(
+            descriptor.displayName.isEmpty() ? descriptor.id : descriptor.displayName);
+        act->setCheckable(true);
+        act->setData(descriptor.id);
+        receiveProtocolGroup->addAction(act);
+        if (descriptor.id == m_protocolState.protocolId()) {
+            act->setChecked(true);
+        }
+    }
+    connect(receiveProtocolGroup, &QActionGroup::triggered, this, [this](QAction* action) {
+        switchCurrentProtocolById(action->data().toString());
+        statusBar()->showMessage(
+            tr("接收协议已切换: %1").arg(currentProtocolDisplayName().isEmpty()
+                ? tr("无")
+                : currentProtocolDisplayName()),
+            3000);
+    });
+    m_receiveProtocolActionGroup = receiveProtocolGroup;
     toolsMenu->addAction(tr("协议配置..."), this, &MainWindow::onProtocolConfig);
     toolsMenu->addAction(tr("协议诊断..."), this, &MainWindow::onProtocolDiagnostics);
     toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);

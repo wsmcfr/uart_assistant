@@ -13,6 +13,7 @@
 #include "protocol/ProtocolDiagnostics.h"
 
 #include <QString>
+#include <QList>
 #include <QVariantMap>
 #include <memory>
 
@@ -110,6 +111,15 @@ public:
      * @return 只有稳定协议 ID 为 raw 时返回 true。
      */
     bool isRawProtocol() const { return m_protocolId == QStringLiteral("raw"); }
+
+    /**
+     * @brief 返回主窗口“接收协议”菜单可选协议。
+     * @return 按注册顺序排列的协议描述，包含 Raw、旧版绘图协议和 Lua 等可创建协议。
+     *
+     * 该列表用于稳定协议 ID 驱动的用户选择入口。不可创建且非 Raw 的协议
+     * 不应暴露给用户，避免菜单项切换后没有实际接收解析器。
+     */
+    static QList<ProtocolDescriptor> receiveProtocolChoices();
 
 private:
     /**

@@ -109,6 +109,23 @@ ProtocolDiagnosticsContext MainWindowProtocolState::diagnosticsContext() const
     return context;
 }
 
+QList<ProtocolDescriptor> MainWindowProtocolState::receiveProtocolChoices()
+{
+    QList<ProtocolDescriptor> choices;
+    const QList<ProtocolDescriptor> descriptors =
+        ProtocolFactory::registry().descriptors();
+    for (const ProtocolDescriptor& descriptor : descriptors) {
+        /*
+         * Raw 是明确的“无接收协议”选项；其他协议必须能通过注册中心创建
+         * IProtocol 实例，否则用户选择后 MainWindow 没有可执行接收链路。
+         */
+        if (descriptor.id == QStringLiteral("raw") || descriptor.creatable) {
+            choices.append(descriptor);
+        }
+    }
+    return choices;
+}
+
 QVariantMap MainWindowProtocolState::normalizedConfigFor(
     const ProtocolDescriptor& descriptor,
     const QVariantMap& config)

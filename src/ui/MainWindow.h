@@ -211,6 +211,7 @@ private:
                                            const QVariantMap& config = QVariantMap(),
                                            bool syncPlotAction = true); ///< 按旧版枚举切换绘图协议
     void syncProtocolActionCheckedState(); ///< 同步绘图协议菜单的选中状态
+    void syncReceiveProtocolActionCheckedState(); ///< 同步接收协议菜单的选中状态
     QString currentProtocolDisplayName() const; ///< 当前协议用于表格和日志显示的名称
 
     // 应用更新
@@ -317,6 +318,7 @@ private:
     MainWindowProtocolState m_protocolState; ///< 稳定协议 ID 与旧版绘图枚举的当前事实源
     MainWindowPlotDataRouter m_plotDataRouter; ///< 绘图协议接收路由器，维护按行解析缓冲和路由结果。
     PlotProtocolDetector* m_plotDetector = nullptr;  ///< 绘图协议自动检测器
+    QActionGroup* m_receiveProtocolActionGroup = nullptr; ///< 稳定 ID 接收协议菜单项组
     QActionGroup* m_protocolActionGroup = nullptr;   ///< 协议菜单项组（用于同步选中状态）
 
     // 显示模式
