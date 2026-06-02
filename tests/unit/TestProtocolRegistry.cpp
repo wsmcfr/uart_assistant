@@ -6,7 +6,10 @@
 #include "TestProtocolRegistry.h"
 
 #include "core/protocol/AsciiProtocol.h"
+#include "core/protocol/ProtocolFactory.h"
 #include "core/protocol/ProtocolRegistry.h"
+
+#include <memory>
 
 using namespace ComAssistant;
 
@@ -92,4 +95,60 @@ void TestProtocolRegistry::keepsRawCompatibility()
 
     IProtocol* protocol = registry.create(QStringLiteral("raw"));
     QVERIFY(protocol == nullptr);
+}
+
+void TestProtocolRegistry::createsProtocolById()
+{
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    /*
+     * 稳定 ID 是平台化后的创建入口，不能依赖旧枚举 switch。
+     * 这里用基础协议和绘图协议各取样，覆盖普通构帧与绘图能力。
+     */
+    std::unique_ptr<IProtocol> ascii(registry.create(QStringLiteral("ascii")));
+    QVERIFY(ascii != nullptr);
+    QCOMPARE(ascii->type(), ProtocolType::Ascii);
+
+    std::unique_ptr<IProtocol> hex(registry.create(QStringLiteral("hex")));
+    QVERIFY(hex != nullptr);
+    QCOMPARE(hex->type(), ProtocolType::Hex);
+
+    std::unique_ptr<IProtocol> text(registry.create(QStringLiteral("plot.text")));
+    QVERIFY(text != nullptr);
+    QVERIFY(text->isPlotProtocol());
+}
+
+void TestProtocolRegistry::marksPlotProtocols()
+{
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    QVERIFY(registry.descriptor(QStringLiteral("plot.text")).plotProtocol);
+    QVERIFY(registry.descriptor(QStringLiteral("plot.stamp")).plotProtocol);
+    QVERIFY(registry.descriptor(QStringLiteral("plot.csv")).plotProtocol);
+    QVERIFY(registry.descriptor(QStringLiteral("plot.justfloat")).plotProtocol);
+    QVERIFY(!registry.descriptor(QStringLiteral("ascii")).plotProtocol);
+}
+
+void TestProtocolRegistry::keepsFactoryCompatibility()
+{
+    const QList<ProtocolType> types = ProtocolFactory::supportedTypes();
+    QCOMPARE(types.size(), 10);
+    QVERIFY(types.contains(ProtocolType::Raw));
+    QVERIFY(types.contains(ProtocolType::JustFloat));
+
+    QCOMPARE(ProtocolFactory::typeId(ProtocolType::Ascii), QStringLiteral("ascii"));
+    QCOMPARE(ProtocolFactory::typeId(ProtocolType::TextPlot), QStringLiteral("plot.text"));
+    QCOMPARE(ProtocolFactory::descriptor(ProtocolType::Ascii).displayName, QStringLiteral("ASCII"));
+
+    QCOMPARE(ProtocolFactory::typeName(ProtocolType::Ascii), QStringLiteral("ASCII"));
+    QCOMPARE(ProtocolFactory::typeName(ProtocolType::TextPlot), QStringLiteral("TEXT绘图"));
+
+    std::unique_ptr<IProtocol> ascii(ProtocolFactory::create(ProtocolType::Ascii));
+    QVERIFY(ascii != nullptr);
+    QCOMPARE(ascii->type(), ProtocolType::Ascii);
+
+    std::unique_ptr<IProtocol> raw(ProtocolFactory::create(ProtocolType::Raw));
+    QVERIFY(raw == nullptr);
 }

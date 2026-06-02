@@ -8,6 +8,7 @@
 #ifndef COMASSISTANT_PROTOCOLFACTORY_H
 #define COMASSISTANT_PROTOCOLFACTORY_H
 
+#include "ProtocolRegistry.h"
 #include "IProtocol.h"
 #include "AsciiProtocol.h"
 #include "HexProtocol.h"
@@ -105,6 +106,26 @@ public:
      * @brief 获取协议类型名称
      */
     static QString typeName(ProtocolType type);
+
+    /**
+     * @brief 获取旧版协议类型对应的稳定协议 ID
+     * @param type 旧版协议枚举
+     * @return 稳定协议 ID；未知类型返回空字符串
+     */
+    static QString typeId(ProtocolType type);
+
+    /**
+     * @brief 获取旧版协议类型对应的协议描述
+     * @param type 旧版协议枚举
+     * @return 协议描述；未知类型返回空描述
+     */
+    static ProtocolDescriptor descriptor(ProtocolType type);
+
+    /**
+     * @brief 获取共享协议注册中心
+     * @return 已注册内置协议的只读注册中心
+     */
+    static const ProtocolRegistry& registry();
 
     /**
      * @brief 获取支持的协议类型列表

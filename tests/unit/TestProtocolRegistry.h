@@ -40,6 +40,27 @@ private slots:
      * Raw 可以作为能力被描述，但它表示无协议，创建实例时必须继续返回空指针。
      */
     void keepsRawCompatibility();
+
+    /**
+     * @brief 验证可按稳定协议 ID 创建协议实例
+     *
+     * 该测试保护后续配置 schema、脚本协议和插件协议共用的创建入口。
+     */
+    void createsProtocolById();
+
+    /**
+     * @brief 验证绘图协议元数据
+     *
+     * 绘图能力标志是后续 UI 分组、诊断包和协议自动化的重要依据。
+     */
+    void marksPlotProtocols();
+
+    /**
+     * @brief 验证旧版协议工厂 API 保持兼容
+     *
+     * 旧调用方仍通过 ProtocolType 使用工厂，迁移到注册中心后不能改变行为。
+     */
+    void keepsFactoryCompatibility();
 };
 
 #endif // TESTPROTOCOLREGISTRY_H
