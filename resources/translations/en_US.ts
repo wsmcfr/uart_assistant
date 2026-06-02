@@ -2633,6 +2633,10 @@ Time spent: % 4</translation>
         <translation>Data Window Layout...</translation>
     </message>
     <message>
+        <source>协议配置...</source>
+        <translation>Protocol Config...</translation>
+    </message>
+    <message>
         <source>控件面板...</source>
         <translation>Control Panel...</translation>
     </message>
@@ -3297,6 +3301,10 @@ Time spent: % 4</translation>
         <location filename="../../src/ui/MainWindow.cpp" line="1869" />
         <source>Modbus协议分析</source>
         <translation>Modbus Protocol Analyzer</translation>
+    </message>
+    <message>
+        <source>协议配置已应用</source>
+        <translation>Protocol config applied</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="1896" />

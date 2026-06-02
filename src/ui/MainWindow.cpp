@@ -32,6 +32,7 @@
 #include "widgets/ModbusAnalyzerWidget.h"
 #include "widgets/DataWindowManager.h"
 #include "dialogs/DataWindowConfigDialog.h"
+#include "dialogs/ProtocolConfigDialog.h"
 #include "controls/ControlPanel.h"
 #include "widgets/DataTableWidget.h"
 #include "widgets/SideNavigationBar.h"
@@ -1842,6 +1843,7 @@ void MainWindow::populateHamburgerMenu()
     toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
     toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
     toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
+    toolsMenu->addAction(tr("协议配置..."), this, &MainWindow::onProtocolConfig);
     toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
     toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
     toolsMenu->addSeparator();
@@ -2559,6 +2561,39 @@ void MainWindow::onDataWindowConfig()
         m_dataWindowManager->setRules(dialog.rules());
         LOG_INFO(QString("Data window rules updated, count: %1").arg(dialog.rules().size()));
     }
+}
+
+void MainWindow::onProtocolConfig()
+{
+    /*
+     * 当前 MainWindow 的协议状态仍然服务于绘图协议接收路由。
+     * 这里只打开当前协议的 Schema 配置，不改变“绘图协议”菜单语义，
+     * 也不强行创建 Raw 协议实例。
+     */
+    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(m_currentProtocolType);
+    QVariantMap currentConfig = m_currentProtocol
+        ? m_currentProtocol->config()
+        : descriptor.defaultConfig;
+    if (currentConfig.isEmpty()) {
+        currentConfig = descriptor.defaultConfig;
+    }
+
+    ProtocolConfigDialog dialog(descriptor, currentConfig, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    /*
+     * 对话框只会在 Schema 校验通过后返回 Accepted，因此这里可直接
+     * 应用 normalizedConfig。Raw/空 Schema 没有协议实例时只关闭对话框。
+     */
+    const QVariantMap normalizedConfig = dialog.normalizedConfig();
+    if (m_currentProtocol) {
+        m_currentProtocol->setConfig(normalizedConfig);
+    }
+
+    statusBar()->showMessage(tr("协议配置已应用"), 3000);
+    LOG_INFO(QString("Protocol config applied for: %1").arg(descriptor.id));
 }
 
 void MainWindow::onControlPanelToggled()

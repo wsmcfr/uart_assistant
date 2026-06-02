@@ -141,6 +141,7 @@ private slots:
     void onModbusAnalyzer();
     void onDataSearch();
     void onDataWindowConfig();  ///< 数据分窗配置
+    void onProtocolConfig();  ///< 打开当前协议的 Schema 配置对话框
     void onControlPanelToggled();  ///< 控件面板显示切换
     void onDataTableToggled();  ///< 数据表格视图切换
 
