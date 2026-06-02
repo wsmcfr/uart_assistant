@@ -1007,15 +1007,29 @@ void MainWindow::onDataReceived(const QByteArray& data)
     if (m_dataTableWidget) {
         QVector<double> parsedValues;
         // 如果有绘图协议，尝试解析数值
-        if (m_currentProtocol && m_currentProtocol->isPlotProtocol()) {
-            PlotData plotData = m_currentProtocol->parsePlotData(data);
+        IProtocol* currentProtocol = m_protocolState.protocol();
+        if (currentProtocol && currentProtocol->isPlotProtocol()) {
+            PlotData plotData = currentProtocol->parsePlotData(data);
             if (plotData.valid) {
                 parsedValues = plotData.yValues;
             }
         }
-        QString protocolName = m_currentProtocol ?
-            ProtocolFactory::typeName(m_currentProtocolType) : QString();
-        m_dataTableWidget->addReceivedData(data, protocolName, parsedValues);
+        m_dataTableWidget->addReceivedData(data, currentProtocolDisplayName(), parsedValues);
+    }
+
+    /*
+     * 非绘图协议（例如 lua.script）在这里执行通用帧解析。Raw 不会进入该
+     * 分支，绘图协议仍由 MainWindowPlotDataRouter 处理，避免三条链路
+     * 互相吞数据。
+     */
+    if (!m_protocolState.isRawProtocol() &&
+        !m_protocolState.descriptor().plotProtocol) {
+        const FrameResult frameResult = m_protocolState.parseNonPlotData(data);
+        if (!frameResult.errorMessage.trimmed().isEmpty()) {
+            statusBar()->showMessage(
+                tr("协议解析错误: %1").arg(frameResult.errorMessage.trimmed()),
+                5000);
+        }
     }
 
     /*
@@ -1024,9 +1038,9 @@ void MainWindow::onDataReceived(const QByteArray& data)
      */
     const MainWindowPlotDataRouter::ProcessResult plotResult =
         m_plotDataRouter.processReceivedData(data,
-                                             m_currentProtocolType,
-                                             m_currentProtocol.get());
-    if (plotResult.shouldFeedDetector) {
+                                             m_protocolState.protocolType(),
+                                             m_protocolState.protocol());
+    if (plotResult.shouldFeedDetector && m_protocolState.isRawProtocol()) {
         if (m_plotDetector) {
             m_plotDetector->feedData(data);
         }
@@ -1058,9 +1072,7 @@ void MainWindow::onDataSent(const QByteArray& data)
 
     // 数据表格视图更新
     if (m_dataTableWidget) {
-        QString protocolName = m_currentProtocol ?
-            ProtocolFactory::typeName(m_currentProtocolType) : QString();
-        m_dataTableWidget->addSentData(data, protocolName);
+        m_dataTableWidget->addSentData(data, currentProtocolDisplayName());
     }
 }
 
@@ -1202,12 +1214,11 @@ void MainWindow::onSaveSession()
     session.hidConfig = m_hidConfig;
 
     // 协议和显示模式
-    session.protocolType = static_cast<int>(m_currentProtocolType);
-    session.protocolId = ProtocolFactory::typeId(m_currentProtocolType);
-    session.protocolConfigVersion = ProtocolFactory::descriptor(m_currentProtocolType).configVersion;
-    session.protocolConfig = m_currentProtocol
-        ? m_currentProtocol->config()
-        : ProtocolFactory::descriptor(m_currentProtocolType).defaultConfig;
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    session.protocolType = static_cast<int>(m_protocolState.protocolType());
+    session.protocolId = m_protocolState.protocolId();
+    session.protocolConfigVersion = descriptor.configVersion;
+    session.protocolConfig = m_protocolState.config();
     session.displayMode = static_cast<int>(m_displayMode);
 
     // 快捷发送项
@@ -1292,22 +1303,8 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     }
     m_sessionCoordinator.selectRestoredPort(m_currentCommType, m_serialConfig, m_hidConfig);
 
-    onProtocolTypeChanged(applyResult.restoredProtocolType);
-    if (m_currentProtocol) {
-        /*
-         * SessionData::fromJson() 已经根据协议 Schema 完成迁移、默认值补全和校验。
-         * 这里在协议实例创建后应用配置，确保加载会话能恢复协议内部状态。
-         */
-        m_currentProtocol->setConfig(session.protocolConfig);
-    }
-    if (m_protocolActionGroup) {
-        for (QAction* action : m_protocolActionGroup->actions()) {
-            if (action->data().toInt() == static_cast<int>(m_currentProtocolType)) {
-                action->setChecked(true);
-                break;
-            }
-        }
-    }
+    switchCurrentProtocolById(applyResult.restoredProtocolId,
+                              applyResult.restoredProtocolConfig);
 
     if (!session.windowGeometry.isEmpty()) {
         restoreGeometry(session.windowGeometry);
@@ -1320,6 +1317,98 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     updateCommunicationWidgetsForType();
     updateCommunicationWorkspaceForType();
     updateConnectionButtonText();
+}
+
+/**
+ * @brief 按稳定协议 ID 切换当前接收协议。
+ *
+ * 主要流程：委托 MainWindowProtocolState 创建协议实例并规范化配置；清空绘图
+ * 路由残留；按需重置自动检测器；最后同步旧绘图菜单选中状态。
+ *
+ * @param protocolId 稳定协议 ID，例如 raw、plot.text、lua.script。
+ * @param config 待应用配置。
+ * @param syncPlotAction 是否同步绘图协议菜单选中状态。
+ */
+void MainWindow::switchCurrentProtocolById(const QString& protocolId,
+                                           const QVariantMap& config,
+                                           bool syncPlotAction)
+{
+    m_protocolState.switchById(protocolId, config);
+
+    // 协议切换后清空绘图半行缓冲，避免上一协议的残留污染新协议。
+    m_plotDataRouter.reset();
+
+    /*
+     * 手动切换协议后重置自动检测器。自动检测回调本身也会走到这里，重置只
+     * 清理历史样本，不会改变已经切好的绘图协议。
+     */
+    if (m_plotDetector) {
+        m_plotDetector->reset();
+    }
+
+    if (syncPlotAction) {
+        syncProtocolActionCheckedState();
+    }
+
+    LOG_INFO(QString("Protocol changed to: %1 (%2)")
+             .arg(currentProtocolDisplayName(), m_protocolState.protocolId()));
+}
+
+/**
+ * @brief 按旧版 ProtocolType 切换当前接收协议。
+ * @param type 旧版协议枚举。
+ * @param config 待应用配置。
+ * @param syncPlotAction 是否同步绘图协议菜单选中状态。
+ */
+void MainWindow::switchCurrentProtocolByLegacyType(ProtocolType type,
+                                                   const QVariantMap& config,
+                                                   bool syncPlotAction)
+{
+    const QString protocolId = ProtocolFactory::typeId(type);
+    switchCurrentProtocolById(protocolId.isEmpty() ? QStringLiteral("raw") : protocolId,
+                              config,
+                              syncPlotAction);
+}
+
+/**
+ * @brief 同步绘图协议菜单选中状态。
+ *
+ * Lua 等非旧版协议的 legacyType 是 Raw，但稳定 ID 不是 raw；此时绘图菜单
+ * 选中“无”，表示当前没有绘图协议，而不是覆盖真实接收协议 ID。
+ */
+void MainWindow::syncProtocolActionCheckedState()
+{
+    if (!m_protocolActionGroup) {
+        return;
+    }
+
+    const ProtocolType checkedType = m_protocolState.descriptor().plotProtocol
+        ? m_protocolState.protocolType()
+        : ProtocolType::Raw;
+    for (QAction* action : m_protocolActionGroup->actions()) {
+        if (action->data().toInt() == static_cast<int>(checkedType)) {
+            action->setChecked(true);
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 返回当前协议显示名称。
+ * @return 数据表格、日志和状态栏使用的协议名称；Raw 返回空字符串。
+ */
+QString MainWindow::currentProtocolDisplayName() const
+{
+    if (m_protocolState.isRawProtocol()) {
+        return QString();
+    }
+
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    if (!descriptor.displayName.isEmpty()) {
+        return descriptor.displayName;
+    }
+
+    return m_protocolState.protocol() ? m_protocolState.protocol()->name() : QString();
 }
 
 void MainWindow::onExportData()
@@ -1893,7 +1982,7 @@ void MainWindow::populateHamburgerMenu()
         act->setCheckable(true);
         act->setData(static_cast<int>(p.type));
         protocolGroup->addAction(act);
-        if (p.type == m_currentProtocolType) {
+        if (p.type == m_protocolState.protocolType()) {
             act->setChecked(true);
         }
     }
@@ -2324,24 +2413,7 @@ void MainWindow::onCloseAllPlotWindows()
 
 void MainWindow::onProtocolTypeChanged(ProtocolType type)
 {
-    m_currentProtocolType = type;
-
-    // 创建对应的协议解析器
-    m_currentProtocol.reset();
-    if (m_currentProtocolType != ProtocolType::Raw) {
-        m_currentProtocol = ProtocolFactory::create(m_currentProtocolType);
-    }
-
-    // 清空绘图路由器缓冲，避免旧协议残留的半行影响新协议解析。
-    m_plotDataRouter.reset();
-
-    // 重置自动检测器（手动切换协议后停止自动检测）
-    if (m_plotDetector) {
-        m_plotDetector->reset();
-    }
-
-    LOG_INFO(QString("Protocol changed to: %1").arg(
-        ProtocolFactory::typeName(m_currentProtocolType)));
+    switchCurrentProtocolByLegacyType(type);
 }
 
 /**
@@ -2352,20 +2424,8 @@ void MainWindow::onProtocolTypeChanged(ProtocolType type)
  */
 void MainWindow::onPlotProtocolAutoDetected(ProtocolType type)
 {
-    // 更新协议状态
-    m_currentProtocolType = type;
-    m_currentProtocol = ProtocolFactory::create(type);
-    m_plotDataRouter.reset();
-
-    // 同步菜单选中状态
-    if (m_protocolActionGroup) {
-        for (QAction* action : m_protocolActionGroup->actions()) {
-            if (action->data().toInt() == static_cast<int>(type)) {
-                action->setChecked(true);
-                break;
-            }
-        }
-    }
+    // 自动检测只会产生旧版绘图协议，仍通过统一协议状态协调器同步稳定 ID。
+    switchCurrentProtocolByLegacyType(type, QVariantMap(), true);
 
     // 状态栏通知
     statusBar()->showMessage(
@@ -2591,14 +2651,11 @@ void MainWindow::onDataWindowConfig()
 void MainWindow::onProtocolConfig()
 {
     /*
-     * 当前 MainWindow 的协议状态仍然服务于绘图协议接收路由。
-     * 这里只打开当前协议的 Schema 配置，不改变“绘图协议”菜单语义，
-     * 也不强行创建 Raw 协议实例。
+     * 协议配置以稳定协议 ID 为事实源。Lua 等非旧版协议可以在这里恢复
+     * 多行脚本源码，旧绘图菜单仍只负责绘图协议选择。
      */
-    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(m_currentProtocolType);
-    QVariantMap currentConfig = m_currentProtocol
-        ? m_currentProtocol->config()
-        : descriptor.defaultConfig;
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    QVariantMap currentConfig = m_protocolState.config();
     if (currentConfig.isEmpty()) {
         currentConfig = descriptor.defaultConfig;
     }
@@ -2610,12 +2667,11 @@ void MainWindow::onProtocolConfig()
 
     /*
      * 对话框只会在 Schema 校验通过后返回 Accepted，因此这里可直接
-     * 应用 normalizedConfig。Raw/空 Schema 没有协议实例时只关闭对话框。
+     * 应用 normalizedConfig。通过稳定 ID 重新切换一次协议，可以让 Lua
+     * 脚本源码、沙箱限制和后续插件协议状态立即生效。
      */
     const QVariantMap normalizedConfig = dialog.normalizedConfig();
-    if (m_currentProtocol) {
-        m_currentProtocol->setConfig(normalizedConfig);
-    }
+    switchCurrentProtocolById(m_protocolState.protocolId(), normalizedConfig);
 
     statusBar()->showMessage(tr("协议配置已应用"), 3000);
     LOG_INFO(QString("Protocol config applied for: %1").arg(descriptor.id));
@@ -2627,16 +2683,17 @@ void MainWindow::onProtocolDiagnostics()
      * 诊断入口只读取当前协议状态，不修改配置，也不强行创建 Raw 协议实例。
      * 这样用户可以安全导出当前事实源，用于 Issue 或后续 Lua/插件排障。
      */
-    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(m_currentProtocolType);
-    QVariantMap currentConfig = m_currentProtocol
-        ? m_currentProtocol->config()
-        : descriptor.defaultConfig;
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    QVariantMap currentConfig = m_protocolState.config();
     if (currentConfig.isEmpty()) {
         currentConfig = descriptor.defaultConfig;
     }
 
     ProtocolDiagnosticsDialog dialog(
-        ProtocolDiagnosticsBuilder::build(descriptor, currentConfig),
+        ProtocolDiagnosticsBuilder::build(descriptor,
+                                          currentConfig,
+                                          QString(),
+                                          m_protocolState.diagnosticsContext()),
         this);
     dialog.exec();
 }

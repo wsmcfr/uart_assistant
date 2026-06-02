@@ -31,6 +31,7 @@
 #include "protocol/IProtocol.h"
 #include "config/AppConfig.h"
 #include "ui/MainWindowCommunicationWorkspaceCoordinator.h"
+#include "ui/MainWindowProtocolState.h"
 #include "ui/MainWindowPlotDataRouter.h"
 #include "ui/MainWindowSessionCoordinator.h"
 #include "modes/IModeWidget.h"
@@ -203,6 +204,14 @@ private:
     void syncCurrentWorkspaceToConfig();        ///< 打开连接前从当前工作台同步配置
     CommunicationWorkspaceWidget* currentCommunicationWorkspace() const; ///< 当前非串口工作台
     void applySessionDataToUi(const SessionData& session);  ///< 将会话数据应用到主窗口和子控件
+    void switchCurrentProtocolById(const QString& protocolId,
+                                   const QVariantMap& config = QVariantMap(),
+                                   bool syncPlotAction = true); ///< 按稳定协议 ID 切换当前接收协议
+    void switchCurrentProtocolByLegacyType(ProtocolType type,
+                                           const QVariantMap& config = QVariantMap(),
+                                           bool syncPlotAction = true); ///< 按旧版枚举切换绘图协议
+    void syncProtocolActionCheckedState(); ///< 同步绘图协议菜单的选中状态
+    QString currentProtocolDisplayName() const; ///< 当前协议用于表格和日志显示的名称
 
     // 应用更新
     void scheduleAutoUpdateCheck();
@@ -304,9 +313,8 @@ private:
     ControlPanel* m_controlPanel = nullptr;  ///< 控件面板
     DataTableWidget* m_dataTableWidget = nullptr;  ///< 数据表格视图
 
-    // 绘图协议相关
-    std::unique_ptr<IProtocol> m_currentProtocol;
-    ProtocolType m_currentProtocolType = ProtocolType::Raw;
+    // 接收协议相关
+    MainWindowProtocolState m_protocolState; ///< 稳定协议 ID 与旧版绘图枚举的当前事实源
     MainWindowPlotDataRouter m_plotDataRouter; ///< 绘图协议接收路由器，维护按行解析缓冲和路由结果。
     PlotProtocolDetector* m_plotDetector = nullptr;  ///< 绘图协议自动检测器
     QActionGroup* m_protocolActionGroup = nullptr;   ///< 协议菜单项组（用于同步选中状态）
