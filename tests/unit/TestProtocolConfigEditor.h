@@ -24,6 +24,9 @@ private slots:
     void loadsAndReadsConfig();
     void restoresDefaults();
     void reportsValidationErrors();
+    void usesMultilineEditorForLuaScriptSource();
+    void showsFieldLevelValidationErrors();
+    void showsHelpfulEmptySchemaText();
     void dialogAcceptsNormalizedConfig();
 };
 

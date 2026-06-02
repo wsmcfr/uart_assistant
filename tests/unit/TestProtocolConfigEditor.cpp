@@ -13,7 +13,9 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QSpinBox>
 
 using namespace ComAssistant;
@@ -149,6 +151,75 @@ void TestProtocolConfigEditor::reportsValidationErrors()
     QVERIFY(!result.valid);
     QVERIFY(result.errors.join(QStringLiteral("\n")).contains(QStringLiteral("frameHeader")));
     QVERIFY(!editor.errorText().isEmpty());
+}
+
+void TestProtocolConfigEditor::usesMultilineEditorForLuaScriptSource()
+{
+    /*
+     * Lua 协议的 scriptSource 是完整脚本文本，必须使用多行编辑器。
+     * 这样用户才能直接编辑函数、缩进和多行返回逻辑，而不是被单行输入框限制。
+     */
+    ProtocolConfigSchema schema;
+    schema.fields.append(ProtocolConfigField::string(
+        QStringLiteral("scriptSource"),
+        QStringLiteral("脚本源码"),
+        QString(),
+        QStringLiteral("内联 Lua 脚本文本")));
+
+    const QString script = QStringLiteral(
+        "function process(data, context)\n"
+        "  return { valid = false, consumedBytes = 0 }\n"
+        "end");
+
+    ProtocolConfigEditor editor;
+    editor.setSchema(schema);
+    editor.setConfig({{QStringLiteral("scriptSource"), script}});
+
+    QPlainTextEdit* sourceEdit = editor.findChild<QPlainTextEdit*>(
+        QStringLiteral("protocolConfig_scriptSource"));
+    QVERIFY(sourceEdit != nullptr);
+    QCOMPARE(sourceEdit->toPlainText(), script);
+    QCOMPARE(editor.config().value(QStringLiteral("scriptSource")).toString(), script);
+}
+
+void TestProtocolConfigEditor::showsFieldLevelValidationErrors()
+{
+    /*
+     * 配置错误除了底部总提示，还应贴近具体字段显示。字段级错误 label
+     * 使用稳定 objectName，方便 UI 自动化和后续插件配置页复用。
+     */
+    ProtocolConfigEditor editor;
+    editor.setSchema(makeEditorTestSchema());
+
+    QLineEdit* hexEdit = editor.findChild<QLineEdit*>(QStringLiteral("protocolConfig_frameHeader"));
+    QVERIFY(hexEdit != nullptr);
+    hexEdit->setText(QStringLiteral("AA Z1"));
+
+    const ProtocolConfigValidationResult result = editor.validateConfig();
+
+    QVERIFY(!result.valid);
+    QLabel* fieldError = editor.findChild<QLabel*>(
+        QStringLiteral("protocolConfigError_frameHeader"));
+    QVERIFY(fieldError != nullptr);
+    QVERIFY(fieldError->isVisible());
+    QVERIFY(fieldError->text().contains(QStringLiteral("frameHeader")));
+}
+
+void TestProtocolConfigEditor::showsHelpfulEmptySchemaText()
+{
+    /*
+     * 空 Schema 表示当前协议没有可调参数，不是异常状态。提示文案应明确
+     * 用户可以直接使用默认行为，避免配置对话框看起来像加载失败。
+     */
+    ProtocolConfigEditor editor;
+    ProtocolConfigSchema schema;
+    editor.setSchema(schema);
+
+    QLabel* emptyLabel = editor.findChild<QLabel*>(
+        QStringLiteral("protocolConfigEmptyLabel"));
+    QVERIFY(emptyLabel != nullptr);
+    QVERIFY(emptyLabel->isVisible());
+    QVERIFY(emptyLabel->text().contains(QStringLiteral("默认行为")));
 }
 
 void TestProtocolConfigEditor::dialogAcceptsNormalizedConfig()
