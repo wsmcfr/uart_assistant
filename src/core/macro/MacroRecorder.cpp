@@ -127,6 +127,8 @@ void MacroRecorder::startRecording(const QString& macroName)
     m_macroName = macroName.isEmpty() ?
         tr("宏_%1").arg(m_startTime.toString("yyyyMMdd_hhmmss")) : macroName;
     m_events.clear();
+    m_events.squeeze();
+    m_recordedPayloadBytes = 0;
 
     LOG_INFO(QString("Macro recording started: %1").arg(m_macroName));
     emit recordingStateChanged(true);
@@ -150,6 +152,8 @@ MacroData MacroRecorder::stopRecording()
         .arg(m_macroName).arg(m_events.size()));
 
     m_events.clear();
+    m_events.squeeze();
+    m_recordedPayloadBytes = 0;
     emit recordingStateChanged(false);
 
     return macro;
@@ -167,8 +171,7 @@ void MacroRecorder::recordSend(const QByteArray& data, bool isHex)
     event.isHex = isHex;
     event.timestamp = m_startTime.msecsTo(QDateTime::currentDateTime());
 
-    m_events.append(event);
-    emit eventRecorded(event);
+    appendBoundedEvent(event);
 }
 
 void MacroRecorder::recordReceive(const QByteArray& data)
@@ -182,8 +185,7 @@ void MacroRecorder::recordReceive(const QByteArray& data)
     event.data = data;
     event.timestamp = m_startTime.msecsTo(QDateTime::currentDateTime());
 
-    m_events.append(event);
-    emit eventRecorded(event);
+    appendBoundedEvent(event);
 }
 
 void MacroRecorder::addDelay(qint64 delayMs)
@@ -197,8 +199,7 @@ void MacroRecorder::addDelay(qint64 delayMs)
     event.delayMs = delayMs;
     event.timestamp = m_startTime.msecsTo(QDateTime::currentDateTime());
 
-    m_events.append(event);
-    emit eventRecorded(event);
+    appendBoundedEvent(event);
 }
 
 void MacroRecorder::addComment(const QString& comment)
@@ -212,8 +213,73 @@ void MacroRecorder::addComment(const QString& comment)
     event.comment = comment;
     event.timestamp = m_startTime.msecsTo(QDateTime::currentDateTime());
 
+    appendBoundedEvent(event);
+}
+
+void MacroRecorder::appendBoundedEvent(const MacroEvent& event)
+{
+    /*
+     * 宏录制通常只录少量人工操作，但如果用户勾选“录制接收数据”并长时间
+     * 跑串口流，事件数组会像接收历史一样无限增长。这里所有事件统一走
+     * 有界追加，超过数量或数据字节上限时删除最早事件，只保留最近操作。
+     */
     m_events.append(event);
-    emit eventRecorded(event);
+    m_recordedPayloadBytes += eventPayloadBytes(event);
+    trimRecordedEvents();
+
+    /*
+     * 单条接收数据如果已经超过字节上限，裁剪会把它直接删除。只有事件仍在
+     * 录制列表中时才通知 UI，避免列表显示了一个最终不会被保存的幽灵事件。
+     */
+    if (!m_events.isEmpty() && m_events.last().timestamp == event.timestamp
+            && m_events.last().type == event.type
+            && m_events.last().data == event.data
+            && m_events.last().comment == event.comment) {
+        emit eventRecorded(event);
+    }
+}
+
+qint64 MacroRecorder::recordedPayloadBytes() const
+{
+    return m_recordedPayloadBytes;
+}
+
+qint64 MacroRecorder::eventPayloadBytes(const MacroEvent& event)
+{
+    /*
+     * 这里只统计会随着用户输入或接收数据显著增长的字段；枚举、时间戳等固定
+     * 元数据按事件数量上限控制。注释按 UTF-16 QChar 估算，贴近 QString 内存。
+     */
+    return static_cast<qint64>(event.data.size())
+        + event.comment.size() * static_cast<qint64>(sizeof(QChar));
+}
+
+void MacroRecorder::trimRecordedEvents()
+{
+    bool trimmed = false;
+    while (m_events.size() > kMaxRecordedEvents) {
+        m_recordedPayloadBytes -= eventPayloadBytes(m_events.first());
+        m_events.remove(0);
+        trimmed = true;
+    }
+
+    while (!m_events.isEmpty() && recordedPayloadBytes() > kMaxRecordedBytes) {
+        m_recordedPayloadBytes -= eventPayloadBytes(m_events.first());
+        m_events.remove(0);
+        trimmed = true;
+    }
+
+    if (m_recordedPayloadBytes < 0) {
+        /*
+         * 理论上不会小于 0；这里作为防御性兜底，避免未来事件字段调整后出现
+         * 负值并导致后续字节上限判断失真。
+         */
+        m_recordedPayloadBytes = 0;
+    }
+
+    if (trimmed) {
+        m_events.squeeze();
+    }
 }
 
 qint64 MacroRecorder::recordingDuration() const

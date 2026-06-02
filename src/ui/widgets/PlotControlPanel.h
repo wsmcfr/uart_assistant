@@ -23,6 +23,7 @@
 #include <QListWidget>
 #include <QColorDialog>
 #include <QEvent>
+#include <QInputDialog>
 
 namespace ComAssistant {
 
@@ -114,6 +115,13 @@ signals:
      */
     void differenceCurveRequested();
 
+    /**
+     * @brief 请求重命名曲线
+     * @param index 曲线索引
+     * @param name 用户输入的新名称
+     */
+    void curveRenameRequested(int index, const QString& name);
+
 protected:
     void changeEvent(QEvent* event) override;
 
@@ -124,11 +132,14 @@ private:
     QGroupBox* createAxisSettings();
     QGroupBox* createDisplaySettings();
     QGroupBox* createDataSettings();
+    void updateCurveActionStates(); ///< 根据当前曲线选择刷新曲线管理按钮状态
 
     PlotterWindow* m_plotterWindow;
 
     // 曲线管理
     QListWidget* m_curveList;
+    QPushButton* m_renameCurveBtn = nullptr;
+    QPushButton* m_colorCurveBtn = nullptr;
 
     // 坐标轴设置
     QDoubleSpinBox* m_xMinSpin;

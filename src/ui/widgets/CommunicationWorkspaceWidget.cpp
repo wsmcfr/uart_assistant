@@ -39,6 +39,22 @@ void CommunicationWorkspaceWidget::clear()
 {
 }
 
+void CommunicationWorkspaceWidget::configureLogEdit(QPlainTextEdit* logEdit,
+                                                    int blockLimit) const
+{
+    if (!logEdit || !logEdit->document()) {
+        return;
+    }
+
+    /*
+     * 日志区域只用于阅读和复制历史，不需要撤销栈。关闭撤销栈可以避免
+     * QTextDocument 额外保存旧文本片段，最大块数则保证长期运行不会无限增长。
+     */
+    const int safeBlockLimit = qMax(1, blockLimit);
+    logEdit->document()->setUndoRedoEnabled(false);
+    logEdit->document()->setMaximumBlockCount(safeBlockLimit);
+}
+
 QString CommunicationWorkspaceWidget::bytesToHex(const QByteArray& data) const
 {
     return QString::fromLatin1(data.toHex(' ').toUpper());
@@ -110,6 +126,14 @@ void CommunicationWorkspaceWidget::appendLogLine(QPlainTextEdit* logEdit,
 {
     if (!logEdit) {
         return;
+    }
+
+    /*
+     * 追加时再做一次兜底配置，避免未来新增工作台只复用 appendLogLine()
+     * 却忘记在 setupUi() 中显式调用 configureLogEdit()。
+     */
+    if (logEdit->document() && logEdit->document()->maximumBlockCount() <= 0) {
+        configureLogEdit(logEdit);
     }
 
     /*

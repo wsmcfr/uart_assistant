@@ -62,6 +62,26 @@ signals:
 
 protected:
     /**
+     * @brief 通信工作台日志默认保留块数。
+     *
+     * TCP/UDP/HID 专用工作台的日志只是辅助历史，不能像主接收区那样长期
+     * 保留大量内容；设置较小上限可以避免 QTextDocument 随运行时间持续增长。
+     */
+    static constexpr int kDefaultLogBlockLimit = 2000;
+
+    /**
+     * @brief 配置日志控件的轻量历史策略。
+     *
+     * 主要流程：关闭撤销栈，设置最大 block 数；Qt 会在追加新行时自动移除
+     * 最早的 block，从而让网络/HID 历史保持有界。
+     *
+     * @param logEdit 待配置的日志控件。
+     * @param blockLimit 最大保留块数，必须为正数。
+     */
+    void configureLogEdit(QPlainTextEdit* logEdit,
+                          int blockLimit = kDefaultLogBlockLimit) const;
+
+    /**
      * @brief 把字节转换成紧凑 HEX 文本。
      * @param data 原始字节。
      * @return 大写 HEX 字符串。

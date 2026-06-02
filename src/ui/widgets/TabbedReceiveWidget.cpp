@@ -159,10 +159,12 @@ public:
     void clear()
     {
         beginResetModel();
-        if (m_buffer.size() != m_maxBytes) {
-            m_buffer.resize(m_maxBytes);
-        }
-        m_buffer.fill(0);
+        /*
+         * 清屏/关闭窗口时用户期望内存从峰值回落。这里释放环形缓存的
+         * 实际存储，下一次 appendData() 再按需分配，符合“用到才加载”。
+         */
+        m_buffer.clear();
+        m_buffer.squeeze();
         m_start = 0;
         m_size = 0;
         m_totalBytes = 0;
@@ -895,6 +897,9 @@ void TabbedReceiveWidget::appendToHexView(const QByteArray& data)
     }
 
     m_pendingHexData.append(data);
+    if (m_displayPaused) {
+        trimPendingReceiveBuffers();
+    }
     scheduleReceiveFlush();
 }
 
@@ -910,6 +915,9 @@ void TabbedReceiveWidget::queueMainText(const QString& text)
     }
 
     m_pendingMainText += text;
+    if (m_displayPaused) {
+        trimPendingReceiveBuffers();
+    }
 }
 
 void TabbedReceiveWidget::scheduleReceiveFlush()
@@ -920,9 +928,11 @@ void TabbedReceiveWidget::scheduleReceiveFlush()
      */
     if (m_displayPaused) {
         /*
-         * 暂停显示只暂停控件刷新，不暂停数据接收。这里保留待刷新缓存，
-         * 用户点“继续显示”后会一次性 flush，避免暂停期间的数据丢失。
+         * 暂停显示只暂停控件刷新，不暂停数据接收。这里保留最近一段待刷新
+         * 缓存，用户点“继续显示”后补刷近期内容，同时避免长时间暂停导致
+         * pending QString/QByteArray 自身无限膨胀。
          */
+        trimPendingReceiveBuffers();
         if (m_receiveFlushTimer) {
             m_receiveFlushTimer->stop();
         }
@@ -979,6 +989,26 @@ void TabbedReceiveWidget::flushPendingReceiveViews()
             m_hexTable->scrollToBottom();
         }
         m_hexTable->setUpdatesEnabled(true);
+    }
+}
+
+void TabbedReceiveWidget::trimPendingReceiveBuffers()
+{
+    /*
+     * pending 队列只服务于“下一次落屏”。暂停显示时如果完全保留所有积压，
+     * 继续显示前就可能已经把内存吃满。这里按主文本区/HEX 缓冲区的真实上限
+     * 保留尾部最近数据，与主接收区“保留最近历史”的策略保持一致。
+     */
+    const int pendingTextLimit = qMax(64 * 1024, m_maxMainTextChars);
+    if (m_pendingMainText.size() > pendingTextLimit) {
+        m_pendingMainText = m_pendingMainText.right(pendingTextLimit);
+        m_pendingMainText.squeeze();
+    }
+
+    const int pendingHexLimit = qMax(256 * 1024, m_maxRawDataBytes);
+    if (m_pendingHexData.size() > pendingHexLimit) {
+        m_pendingHexData = m_pendingHexData.right(pendingHexLimit);
+        m_pendingHexData.squeeze();
     }
 }
 
@@ -1058,9 +1088,13 @@ void TabbedReceiveWidget::clear()
     }
     m_pendingMainText.clear();
     m_pendingHexData.clear();
+    m_pendingMainText.squeeze();
+    m_pendingHexData.squeeze();
 
     m_rawData.clear();
+    m_rawData.squeeze();
     m_utf8Buffer.clear();  // 清空 UTF-8 缓冲区
+    m_utf8Buffer.squeeze();
     m_needTimestamp = true;  // 重置时间戳状态
 
     m_mainTextEdit->clear();
@@ -1080,9 +1114,12 @@ void TabbedReceiveWidget::clear()
     // 清空调试模式缓冲区
     m_debugRxBuffer.clear();
     m_debugTxBuffer.clear();
+    m_debugRxBuffer.squeeze();
+    m_debugTxBuffer.squeeze();
 
     // 清空帧模式缓冲区
     m_frameBuffer.clear();
+    m_frameBuffer.squeeze();
     m_frameCounter = 0;
 
     // 重置智能滚屏状态
@@ -1925,6 +1962,11 @@ void TabbedReceiveWidget::trimMainTextDocument()
     cursor.setPosition(removeChars, QTextCursor::KeepAnchor);
     cursor.removeSelectedText();
     cursor.endEditBlock();
+    /*
+     * 接收显示没有撤销需求。裁剪掉最早文本后立即清理 undo 栈，
+     * 防止 QTextDocument 为已经删除的历史继续保留撤销缓存。
+     */
+    document->clearUndoRedoStacks();
 }
 
 void TabbedReceiveWidget::updatePerformanceStats()

@@ -4077,6 +4077,21 @@ Time spent: % 4</translation>
         <translation>Curve Management</translation>
     </message>
     <message>
+        <location filename="../../src/ui/widgets/PlotControlPanel.cpp" line="67" />
+        <source>重命名</source>
+        <translation>Rename</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/widgets/PlotControlPanel.cpp" line="85" />
+        <source>重命名曲线</source>
+        <translation>Rename Curve</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/widgets/PlotControlPanel.cpp" line="86" />
+        <source>曲线名称:</source>
+        <translation>Curve Name:</translation>
+    </message>
+    <message>
         <location filename="../../src/ui/widgets/PlotControlPanel.cpp" line="58" />
         <source>修改颜色</source>
         <translation>Change Color</translation>

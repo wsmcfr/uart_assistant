@@ -211,6 +211,12 @@
         English: Light and dark themes now cover the main window, tool windows, popup dialogs, context menus and message boxes. The dark theme keeps the original Apple-style dark background; default, destructive and disabled states use distinct styling, and settings/toolbox encoding controls reserve enough space or scroll in compact windows to avoid clipped units, long option text or bottom buttons.
     </div>
 
+    <div class="tip">
+        <strong>内存与长时间运行 / Memory and Long Runs:</strong><br>
+        中文：终端、帧模式、调试模式以及 TCP/UDP/HID 工作台会在首次使用时按需加载，切换离开后会释放不用的高级模式或工作台；串口接收区、HEX 缓存、网络/HID/文件传输/脚本输出日志和宏录制事件只保留最近历史，超过上限会删除最早数据，清屏会释放可重建缓存。暂停显示期间仍会接收数据，但只保留最近一段待显示内容，继续显示后补刷近期数据，避免长时间暂停造成内存持续增长。<br>
+        English: Terminal, frame, debug, TCP/UDP and HID workspaces are loaded only when first used, then released after switching away. The serial receive area, HEX cache, network/HID/file-transfer/script logs and macro recording events keep bounded recent history; oldest data is removed after the limit, and clearing releases rebuildable caches. Paused display still receives data, but only keeps the latest pending content and flushes that recent content after resume to avoid unbounded memory growth.
+    </div>
+
     <h3>串口连接 / Serial Connection</h3>
     <p><strong>中文：</strong></p>
     <ol>
@@ -445,9 +451,9 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.8.0（发布于 2026-06-02 / released on 2026-06-02）</p>
-    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.0/ComAssistant_v1.8.0_Windows_x64_Portable.zip">ComAssistant_v1.8.0_Windows_x64_Portable.zip</a><br>
-    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
+    <p><strong>当前版本 / Current Version:</strong> v1.8.1（发布于 2026-06-02 / released on 2026-06-02）</p>
+    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.1/ComAssistant_v1.8.1_Windows_x64_Portable.zip">ComAssistant_v1.8.1_Windows_x64_Portable.zip</a><br>
+    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.1/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">

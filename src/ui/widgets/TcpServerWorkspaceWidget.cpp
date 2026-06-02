@@ -94,6 +94,7 @@ void TcpServerWorkspaceWidget::setupUi()
     m_logEdit->setReadOnly(true);
     m_logEdit->setObjectName(QStringLiteral("tcpServerLogEdit"));
     m_logEdit->setPlaceholderText(tr("客户端连接、断开和收发记录会显示在这里..."));
+    configureLogEdit(m_logEdit);
     mainLayout->addWidget(m_logEdit, 1);
 
     QWidget* sendPanel = new QWidget;
@@ -201,6 +202,7 @@ void TcpServerWorkspaceWidget::addClient(const QString& clientId)
     if (m_clientCombo->findData(clientId) < 0) {
         m_clientCombo->addItem(clientId, clientId);
     }
+    configureLogEdit(m_logEdit);
     m_logEdit->appendPlainText(tr("[客户端连接] %1").arg(clientId));
     updateClientState();
 }
@@ -211,6 +213,7 @@ void TcpServerWorkspaceWidget::removeClient(const QString& clientId)
     if (index >= 0) {
         m_clientCombo->removeItem(index);
     }
+    configureLogEdit(m_logEdit);
     m_logEdit->appendPlainText(tr("[客户端断开] %1").arg(clientId));
     updateClientState();
 }

@@ -121,6 +121,12 @@ MainWindowSessionCoordinator::ApplyResult MainWindowSessionCoordinator::applySes
     if (m_displayModeCombo) {
         const int displayIndex = m_displayModeCombo->findData(session.displayMode);
         if (displayIndex >= 0) {
+            /*
+             * 会话恢复只负责恢复下拉框状态，不直接触发模式页创建。
+             * MainWindow 会根据当前通信类型决定是否真的显示串口模式页；
+             * 这样恢复 TCP/UDP/HID 会话时不会顺带加载终端/帧/调试组件。
+             */
+            QSignalBlocker blocker(m_displayModeCombo);
             m_displayModeCombo->setCurrentIndex(displayIndex);
         }
     }

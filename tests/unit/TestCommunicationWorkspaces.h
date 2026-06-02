@@ -60,6 +60,11 @@ private slots:
      * @brief 验证 HID Report 预览、截断提示、HEX 格式化和历史工具。
      */
     void testHidReportWorkspacePreviewAndHistoryTools();
+
+    /**
+     * @brief 验证 TCP/UDP/HID 历史日志都有最大块数限制，避免长时间运行无限增长。
+     */
+    void testCommunicationWorkspaceLogsHaveBoundedHistory();
 };
 
 #endif // TESTCOMMUNICATIONWORKSPACES_H

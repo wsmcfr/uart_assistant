@@ -203,6 +203,17 @@ private:
     void updateCommunicationWorkspaceForType();///< 根据通信类型切换主体工作台
     void syncCurrentWorkspaceToConfig();        ///< 打开连接前从当前工作台同步配置
     CommunicationWorkspaceWidget* currentCommunicationWorkspace() const; ///< 当前非串口工作台
+    IModeWidget* ensureModeWidget(DisplayMode mode); ///< 按需创建并返回指定显示模式组件
+    CommunicationWorkspaceWidget* ensureCommunicationWorkspace(CommType type); ///< 按需创建并返回当前通信类型工作台
+    void connectModeWidget(IModeWidget* widget); ///< 为按需创建的显示模式组件接入主窗口发送/状态信号
+    void connectCommunicationWorkspace(CommunicationWorkspaceWidget* widget,
+                                       CommType type); ///< 为按需创建的通信工作台接入主窗口发送信号
+    void releaseModeWidget(DisplayMode mode); ///< 释放不再使用的高级显示模式组件
+    void releaseUnusedModeWidgets(DisplayMode keepMode); ///< 释放除当前模式外的高级模式组件
+    void releaseCommunicationWorkspace(CommType type); ///< 释放指定非串口通信工作台
+    void releaseUnusedCommunicationWorkspaces(CommType keepType); ///< 释放除当前类型外的通信工作台
+    void releaseTransientUiResources(); ///< 关闭或切换时主动释放可重建的临时 UI 资源
+    void updateLazyWorkspaceBindings(); ///< 把当前已创建的工作台重新绑定到配置/会话协调器
     void applySessionDataToUi(const SessionData& session);  ///< 将会话数据应用到主窗口和子控件
     void switchCurrentProtocolById(const QString& protocolId,
                                    const QVariantMap& config = QVariantMap(),

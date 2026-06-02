@@ -127,6 +127,8 @@ private:
     QPlainTextEdit* m_logEdit = nullptr;    ///< 收发日志
     QPlainTextEdit* m_sendEdit = nullptr;   ///< 发送输入框
     QCheckBox* m_hexSendCheck = nullptr;    ///< HEX 发送开关
+
+    static constexpr int kMaxRecentRemotes = 30; ///< 最近远端列表上限，避免自动记录无限增长
 };
 
 } // namespace ComAssistant

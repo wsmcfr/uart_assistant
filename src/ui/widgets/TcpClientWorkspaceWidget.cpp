@@ -95,6 +95,7 @@ void TcpClientWorkspaceWidget::setupUi()
     m_logEdit->setReadOnly(true);
     m_logEdit->setObjectName(QStringLiteral("tcpClientLogEdit"));
     m_logEdit->setPlaceholderText(tr("网络流收发日志会显示在这里..."));
+    configureLogEdit(m_logEdit);
     mainLayout->addWidget(m_logEdit, 1);
 
     QWidget* sendPanel = new QWidget;

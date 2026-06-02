@@ -52,6 +52,9 @@ void TestTranslationCompleteness::testPlotControlPanelTranslations()
         {
             {QStringLiteral("控制面板"), QStringLiteral("Control Panel")},
             {QStringLiteral("曲线管理"), QStringLiteral("Curve Management")},
+            {QStringLiteral("重命名"), QStringLiteral("Rename")},
+            {QStringLiteral("重命名曲线"), QStringLiteral("Rename Curve")},
+            {QStringLiteral("曲线名称:"), QStringLiteral("Curve Name:")},
             {QStringLiteral("修改颜色"), QStringLiteral("Change Color")},
             {QStringLiteral("选择曲线颜色"), QStringLiteral("Select Curve Color")},
             {QStringLiteral("坐标轴"), QStringLiteral("Axes")},

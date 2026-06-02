@@ -150,6 +150,7 @@ private:
     void queueMainText(const QString& text);          ///< 将文本追加到待刷新队列，避免高频接收时每包都重绘
     void scheduleReceiveFlush();                      ///< 安排一次批量刷新
     void flushPendingReceiveViews();                  ///< 批量刷新文本区和HEX表格
+    void trimPendingReceiveBuffers();                 ///< 暂停显示时裁剪待刷新队列，避免暂停期间积压无限增长
     void updateFilterView();
     void refreshMainView();
     void applyHighlight();

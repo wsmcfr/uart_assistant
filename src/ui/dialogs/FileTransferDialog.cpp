@@ -18,6 +18,17 @@
 #include <QtGlobal>
 
 namespace ComAssistant {
+namespace {
+
+/**
+ * @brief 文件传输日志最大保留块数。
+ *
+ * 文件传输对话框可能在重试、分块发送或长时间 OTA 时持续写日志。这里保留
+ * 最近 1000 个 block，既方便排查最近问题，也避免 QTextDocument 长期增长。
+ */
+constexpr int kTransferLogBlockLimit = 1000;
+
+} // namespace
 
 FileTransferDialog::FileTransferDialog(QWidget* parent)
     : QDialog(parent)
@@ -209,6 +220,8 @@ void FileTransferDialog::setupUi()
     m_logEdit = new QTextEdit(this);
     m_logEdit->setReadOnly(true);
     m_logEdit->setMaximumHeight(120);
+    m_logEdit->document()->setUndoRedoEnabled(false);
+    m_logEdit->document()->setMaximumBlockCount(kTransferLogBlockLimit);
     logLayout->addWidget(m_logEdit);
     mainLayout->addWidget(logGroup);
 
@@ -674,6 +687,15 @@ void FileTransferDialog::setTransferControlsEnabled(bool enabled)
 
 void FileTransferDialog::appendLog(const QString& message)
 {
+    /*
+     * appendLog 可能被传输重试、进度回调和用户操作反复调用。这里再次确保
+     * 日志有上限，防止未来改 UI 时漏掉 setupUi() 中的文档配置。
+     */
+    if (m_logEdit && m_logEdit->document()->maximumBlockCount() <= 0) {
+        m_logEdit->document()->setUndoRedoEnabled(false);
+        m_logEdit->document()->setMaximumBlockCount(kTransferLogBlockLimit);
+    }
+
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
     m_logEdit->append(QString("[%1] %2").arg(timestamp, message));
 }

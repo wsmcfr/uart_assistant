@@ -57,6 +57,21 @@ private slots:
      * 避免菜单只显示动作却没有绑定真实逻辑。
      */
     void testReceiveContextMenuActionsOperateOnDisplayState();
+
+    /**
+     * @brief 暂停显示期间的待刷新缓存应保持有界，避免长时间暂停造成内存持续增长。
+     */
+    void testPausedReceiveBuffersStayBounded();
+
+    /**
+     * @brief 接收区达到上限后应删除最早内容并保留最新内容。
+     */
+    void testMainViewDropsOldestTextWhenLimitReached();
+
+    /**
+     * @brief 清空接收区时应释放可见缓存容量，避免清屏后内存仍保持峰值。
+     */
+    void testClearReleasesReceiveBuffers();
 };
 
 #endif // TESTTABBEDRECEIVEWIDGET_H

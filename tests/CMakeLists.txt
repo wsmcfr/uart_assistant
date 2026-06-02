@@ -22,6 +22,9 @@ set(TEST_SOURCES
     unit/TestFFTUtils.cpp
     unit/TestFilterUtils.cpp
     unit/TestDisplaySettingsPolicy.cpp
+    unit/TestMemoryUtils.cpp
+    unit/TestMemoryAwareUiBehavior.cpp
+    unit/TestMacroRecorderMemoryPolicy.cpp
     unit/TestPlotterDataPolicy.cpp
     unit/TestPlotRenderQuality.cpp
     unit/TestPlotterRenderCoordinator.cpp
@@ -52,6 +55,7 @@ set(TEST_SOURCES
     unit/TestMainWindowProtocolState.cpp
     unit/TestMainWindowPlotDataRouter.cpp
     unit/TestMainWindowSessionCoordinator.cpp
+    unit/TestMainWindowLazyLoading.cpp
 )
 
 # 创建测试可执行文件
@@ -78,6 +82,9 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/SerialModeWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/FrameModeWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/DebugModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.h
@@ -94,8 +101,10 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindow.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterAnalysisService.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/controls/IInteractiveControl.h
 )
 
 # 包含目录
@@ -133,6 +142,7 @@ if(WIN32)
     target_link_libraries(ComAssistant_tests PRIVATE
         opengl32
         psapi
+        dbghelp
     )
 endif()
 
@@ -141,11 +151,17 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/ChecksumUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/ConversionUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/EncodingUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/CrashHandler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/AutoSaveManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/DisplaySettingsPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/theme/ThemeManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaEngine.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/export/DataExporter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/macro/MacroRecorder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.cpp
@@ -162,6 +178,9 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/AnsiParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/SerialModeWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/FrameModeWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/DebugModeWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.cpp
@@ -174,6 +193,10 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/QuickSendWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/SettingsDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ToolboxDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ExportDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/RecoveryDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/FileTransferDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/DataWindowConfigDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.cpp
@@ -184,6 +207,8 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/HelpDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/ConfigManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/session/SessionManager.cpp
@@ -195,9 +220,11 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPortMonitor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/MultiPortManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/FrameParser.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/AsciiProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/HexProtocol.cpp
@@ -213,7 +240,25 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolFactory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/PlotProtocolDetector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/upgrade/IAPUpgrader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/upgrade/AppUpdateChecker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SendWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/DataStatistics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SearchWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/MultiGroupSendWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ModbusAnalyzerWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/MacroWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/MultiPortWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/DataWindowManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/DataWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/DataTableWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SideNavigationBar.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ThemeButton.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/controls/ControlPanel.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/controls/controls/SliderControl.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/controls/controls/Attitude3DControl.cpp
 )
 
 if(COMASSISTANT_HIDAPI_TARGET)

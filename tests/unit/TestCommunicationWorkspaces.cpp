@@ -21,6 +21,7 @@
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QTest>
+#include <QTextDocument>
 
 using namespace ComAssistant;
 
@@ -331,4 +332,31 @@ void TestCommunicationWorkspaces::testHidReportWorkspacePreviewAndHistoryTools()
     QVERIFY(historyEdit->toPlainText().contains(QStringLiteral("Input")));
     requireChild<QPushButton>(widget, "hidClearHistoryButton")->click();
     QVERIFY(historyEdit->toPlainText().isEmpty());
+}
+
+void TestCommunicationWorkspaces::testCommunicationWorkspaceLogsHaveBoundedHistory()
+{
+    /*
+     * 通信工作台日志属于常驻运行链路。如果这里没有 maximumBlockCount，
+     * TCP/UDP/HID 长时间收发时 QTextDocument 会持续增长，表现得像内存泄露。
+     */
+    TcpClientWorkspaceWidget tcpClient;
+    TcpServerWorkspaceWidget tcpServer;
+    UdpWorkspaceWidget udp;
+    HidReportWorkspaceWidget hid;
+
+    QPlainTextEdit* tcpClientLog = requireChild<QPlainTextEdit>(tcpClient, "tcpClientLogEdit");
+    QPlainTextEdit* tcpServerLog = requireChild<QPlainTextEdit>(tcpServer, "tcpServerLogEdit");
+    QPlainTextEdit* udpLog = requireChild<QPlainTextEdit>(udp, "udpLogEdit");
+    QPlainTextEdit* hidLog = requireChild<QPlainTextEdit>(hid, "hidHistoryEdit");
+
+    const QList<QPlainTextEdit*> logs = {tcpClientLog, tcpServerLog, udpLog, hidLog};
+    for (QPlainTextEdit* logEdit : logs) {
+        QVERIFY(logEdit != nullptr);
+        QVERIFY(logEdit->document() != nullptr);
+        QVERIFY2(logEdit->document()->maximumBlockCount() > 0,
+                 "通信日志必须设置最大块数，不能无限保留历史。");
+        QVERIFY2(logEdit->document()->maximumBlockCount() <= 5000,
+                 "通信日志上限应保持轻量，避免专用工作台复制主接收区的大历史。");
+    }
 }

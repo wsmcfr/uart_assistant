@@ -19,6 +19,9 @@
 #include "unit/TestFFTUtils.h"
 #include "unit/TestFilterUtils.h"
 #include "unit/TestDisplaySettingsPolicy.h"
+#include "unit/TestMemoryUtils.h"
+#include "unit/TestMemoryAwareUiBehavior.h"
+#include "unit/TestMacroRecorderMemoryPolicy.h"
 #include "unit/TestPlotterDataPolicy.h"
 #include "unit/TestPlotRenderQuality.h"
 #include "unit/TestPlotterRenderCoordinator.h"
@@ -49,6 +52,7 @@
 #include "unit/TestMainWindowProtocolState.h"
 #include "unit/TestMainWindowPlotDataRouter.h"
 #include "unit/TestMainWindowSessionCoordinator.h"
+#include "unit/TestMainWindowLazyLoading.h"
 
 int main(int argc, char *argv[])
 {
@@ -122,6 +126,21 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] DisplaySettingsPolicy";
         TestDisplaySettingsPolicy test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MemoryUtils";
+        TestMemoryUtils test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MemoryAwareUiBehavior";
+        TestMemoryAwareUiBehavior test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MacroRecorderMemoryPolicy";
+        TestMacroRecorderMemoryPolicy test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
@@ -272,6 +291,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] MainWindowSessionCoordinator";
         TestMainWindowSessionCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowLazyLoading";
+        TestMainWindowLazyLoading test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

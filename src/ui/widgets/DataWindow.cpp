@@ -21,6 +21,11 @@ DataWindow::DataWindow(const QString& name, QWidget* parent)
     , m_name(name)
 {
     setupUi();
+    /*
+     * 数据分窗是独立辅助窗口。用户点击窗口关闭按钮时，应真正销毁对象，
+     * 让 QTextDocument 历史和滚动缓存立即释放，而不是只从管理器映射移除。
+     */
+    setAttribute(Qt::WA_DeleteOnClose, true);
     setWindowTitle(tr("数据窗口 - %1").arg(name));
     resize(500, 400);
 }

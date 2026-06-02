@@ -92,6 +92,7 @@ void HidReportWorkspaceWidget::setupUi()
     m_historyEdit->setReadOnly(true);
     m_historyEdit->setObjectName(QStringLiteral("hidHistoryEdit"));
     m_historyEdit->setPlaceholderText(tr("HID Report 历史会显示在这里..."));
+    configureLogEdit(m_historyEdit);
     mainLayout->addWidget(m_historyEdit, 1);
 
     QWidget* sendPanel = new QWidget;
@@ -357,6 +358,7 @@ void HidReportWorkspaceWidget::appendHistoryLine(const QString& direction,
                                                  const QString& reportType,
                                                  const QByteArray& data)
 {
+    configureLogEdit(m_historyEdit);
     m_historyEdit->appendPlainText(formatLogLine(direction, reportType, data));
 }
 

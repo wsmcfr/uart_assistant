@@ -302,6 +302,8 @@ PlotterWindow::PlotterWindow(const QString& windowId, QWidget* parent)
         graph->setPen(pen);
         m_plot->replot(QCustomPlot::rpQueuedReplot);
     });
+    connect(m_controlPanel, &PlotControlPanel::curveRenameRequested,
+            this, &PlotterWindow::renameCurve);
     connect(m_controlPanel, &PlotControlPanel::xRangeChanged, this, &PlotterWindow::setXAxisRange);
     connect(m_controlPanel, &PlotControlPanel::yRangeChanged, this, &PlotterWindow::setYAxisRange);
     connect(m_controlPanel, &PlotControlPanel::autoScaleChanged, this, &PlotterWindow::setAutoScale);

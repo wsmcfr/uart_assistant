@@ -10,6 +10,7 @@
 #include "ui/widgets/TabbedReceiveWidget.h"
 
 #include <QAction>
+#include <QFile>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPlainTextEdit>
@@ -195,4 +196,101 @@ void TestTabbedReceiveWidget::testReceiveContextMenuActionsOperateOnDisplayState
 
     autoScrollAction->trigger();
     QVERIFY2(!widget.isAutoScrollEnabled(), "自动滚动动作应能关闭自动滚动");
+}
+
+void TestTabbedReceiveWidget::testPausedReceiveBuffersStayBounded()
+{
+    TabbedReceiveWidget widget;
+    widget.resize(900, 600);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    /*
+     * 用较小的行数设置把主文本区字符上限收紧到 64KB。暂停显示时连续喂入
+     * 明显超过该值的数据，继续显示后只应补刷最近一段，而不是把暂停期间
+     * 所有数据一次性撑进 QTextDocument。
+     */
+    widget.setMaxLines(100);
+    widget.setDisplayPaused(true);
+
+    const QByteArray chunk(16 * 1024, 'A');
+    for (int index = 0; index < 16; ++index) {
+        widget.appendData(chunk);
+    }
+
+    widget.setDisplayPaused(false);
+    QTest::qWait(50);
+
+    const QString text = mainViewText(widget);
+    QVERIFY2(text.size() <= 80 * 1024,
+             "暂停期间积压的文本补刷后仍应接近主文本区上限。");
+    QVERIFY2(text.size() > 0,
+             "继续显示后仍应保留最近收到的数据，而不是直接丢空。");
+}
+
+void TestTabbedReceiveWidget::testMainViewDropsOldestTextWhenLimitReached()
+{
+    TabbedReceiveWidget widget;
+    widget.resize(900, 600);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    /*
+     * 用最小行数把接收区字符上限收紧到 64KB。连续追加明显超过上限
+     * 且不换行的数据，可以覆盖“输出显示不断增长但没有换行”的高风险场景。
+     */
+    widget.setMaxLines(100);
+    widget.appendData(QByteArray("EARLIEST_MARK"));
+    widget.appendData(QByteArray(70 * 1024, 'A'));
+    widget.appendData(QByteArray("LATEST_MARK"));
+    QTest::qWait(80);
+
+    const QString text = mainViewText(widget);
+    QVERIFY2(text.size() <= 66 * 1024,
+             "主文本区超过上限后应裁掉最早内容，不能继续无限增长。");
+    QVERIFY2(text.contains(QStringLiteral("LATEST_MARK")),
+             "裁剪时必须保留最新收到的数据。");
+    QVERIFY2(!text.contains(QStringLiteral("EARLIEST_MARK")),
+             "超过上限后最早的一段历史应被删除，而不是只限制后续追加。");
+}
+
+void TestTabbedReceiveWidget::testClearReleasesReceiveBuffers()
+{
+    TabbedReceiveWidget widget;
+    widget.resize(900, 600);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    /*
+     * 先打开 HEX 表格并喂入大块数据，让原始缓存、待刷新缓存和 HEX 环形
+     * 模型都有机会增长到较大容量。随后清空应把这些容器 squeeze/释放，
+     * 以便窗口关闭或手动清屏后工作集更容易回落。
+     */
+    widget.setHexDisplayEnabled(true);
+    widget.appendData(QByteArray(512 * 1024, 'B'));
+    QTest::qWait(120);
+    QVERIFY2(!mainViewText(widget).isEmpty(),
+             "测试前应先生成可清空的接收内容。");
+
+    widget.clear();
+    QTest::qWait(30);
+
+    QCOMPARE(mainViewText(widget), QString());
+
+    /*
+     * ReceiveHexModel 是私有类，测试无法直接访问容量；这里通过源码级
+     * 回归约束确保 clear() 不再把 QByteArray 重新 resize 到最大缓存。
+     */
+    QFile sourceFile(QStringLiteral(COMASSISTANT_SOURCE_DIR)
+                     + QStringLiteral("/src/ui/widgets/TabbedReceiveWidget.cpp"));
+    QVERIFY2(sourceFile.open(QIODevice::ReadOnly | QIODevice::Text),
+             qPrintable(QStringLiteral("无法读取 TabbedReceiveWidget.cpp: %1").arg(sourceFile.errorString())));
+
+    const QString source = QString::fromUtf8(sourceFile.readAll());
+    QVERIFY2(source.contains(QStringLiteral("m_buffer.clear();")),
+             "HEX 环形缓存 clear() 应释放 QByteArray 容量。");
+    QVERIFY2(source.contains(QStringLiteral("m_rawData.squeeze();")),
+             "原始接收缓存 clear() 后应 squeeze，避免容量停留在峰值。");
+    QVERIFY2(source.contains(QStringLiteral("m_pendingHexData.squeeze();")),
+             "待刷新 HEX 缓存 clear() 后应 squeeze，避免暂停/批量刷新峰值残留。");
 }

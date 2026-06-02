@@ -15,6 +15,17 @@ class MemoryUtils
 {
 public:
     /**
+     * @brief 判断当前构建是否支持进程内存整理。
+     *
+     * 主要流程：根据 Qt 平台宏判断是否处于 Windows 构建；Windows 下
+     * `trimProcessMemory()` 会调用 HeapCompact 和 EmptyWorkingSet，其他
+     * 平台暂不做系统级工作集整理。
+     *
+     * @return Windows 构建返回 true，其他平台返回 false。
+     */
+    static bool isTrimProcessMemorySupported();
+
+    /**
      * @brief 请求操作系统回收当前进程已空闲的内存页。
      *
      * 主要流程：

@@ -21,11 +21,10 @@ DataWindowManager::DataWindowManager(QWidget* parent)
 
 DataWindowManager::~DataWindowManager()
 {
-    // 关闭并删除所有窗口
+    // 关闭所有窗口。DataWindow 设置了 WA_DeleteOnClose，close 后由 Qt 负责销毁。
     for (auto it = m_windows.begin(); it != m_windows.end(); ++it) {
         if (it.value()) {
             it.value()->close();
-            delete it.value();
         }
     }
     m_windows.clear();
@@ -60,7 +59,6 @@ void DataWindowManager::removeWindow(const QString& name)
         DataWindow* window = m_windows.take(name);
         if (window) {
             window->close();
-            window->deleteLater();
         }
         emit windowRemoved(name);
     }

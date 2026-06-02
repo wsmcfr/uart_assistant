@@ -29,6 +29,14 @@ namespace ComAssistant {
 namespace {
 
 /**
+ * @brief 脚本输出区最大保留块数。
+ *
+ * Lua 脚本可能在循环里持续 print。输出区只保留最近一段运行日志，避免
+ * 脚本窗口打开后 QTextDocument 无限增长。
+ */
+constexpr int kScriptOutputBlockLimit = 2000;
+
+/**
  * @brief 生成发送数据的输出预览文本。
  * @param data 即将发送的原始字节。
  * @return 适合显示在脚本输出区域的简短文本。
@@ -233,6 +241,8 @@ void ScriptEditorDialog::setupUi()
     m_outputArea->setObjectName("scriptOutputArea");
     m_outputArea->setReadOnly(true);
     m_outputArea->setFont(QFont("Consolas", 10));
+    m_outputArea->document()->setUndoRedoEnabled(false);
+    m_outputArea->document()->setMaximumBlockCount(kScriptOutputBlockLimit);
     rightLayout->addWidget(m_outputArea);
 
     m_mainSplitter->addWidget(rightPanel);
@@ -441,6 +451,15 @@ void ScriptEditorDialog::saveScriptList()
 
 void ScriptEditorDialog::appendOutput(const QString& text, const QColor& color)
 {
+    /*
+     * 脚本输出可能来自 worker 高频回调。每次追加前兜底恢复文档上限，
+     * 防止输出区在长脚本或无限循环日志下持续占用内存。
+     */
+    if (m_outputArea && m_outputArea->document()->maximumBlockCount() <= 0) {
+        m_outputArea->document()->setUndoRedoEnabled(false);
+        m_outputArea->document()->setMaximumBlockCount(kScriptOutputBlockLimit);
+    }
+
     QString html;
     if (color.isValid()) {
         html = QString("<span style=\"color: %1;\">%2</span><br>")

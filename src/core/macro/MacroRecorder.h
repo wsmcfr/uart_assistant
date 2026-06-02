@@ -112,6 +112,18 @@ public:
     int eventCount() const { return m_events.size(); }
 
     /**
+     * @brief 获取录制事件数量上限
+     * @return 录制期间常驻内存中的最大事件数
+     */
+    static int maxRecordedEvents() { return kMaxRecordedEvents; }
+
+    /**
+     * @brief 获取录制数据字节上限
+     * @return 录制期间常驻内存中的最大事件数据字节数
+     */
+    static qint64 maxRecordedBytes() { return kMaxRecordedBytes; }
+
+    /**
      * @brief 获取录制时长
      */
     qint64 recordingDuration() const;
@@ -133,11 +145,20 @@ signals:
     void recordingStateChanged(bool recording);
 
 private:
+    void appendBoundedEvent(const MacroEvent& event); ///< 追加事件并按上限删除最早历史
+    qint64 recordedPayloadBytes() const;              ///< 返回当前录制事件累计占用的有效载荷字节数
+    static qint64 eventPayloadBytes(const MacroEvent& event); ///< 估算单个事件的数据与注释占用
+    void trimRecordedEvents();                        ///< 执行事件数量和字节数裁剪
+
     bool m_recording = false;
     bool m_recordReceive = false;
     QDateTime m_startTime;
     QString m_macroName;
     QVector<MacroEvent> m_events;
+    qint64 m_recordedPayloadBytes = 0; ///< 当前录制事件有效载荷累计字节数，用于避免裁剪时反复遍历
+
+    static constexpr int kMaxRecordedEvents = 10000;          ///< 宏录制最多保留最近 10000 个事件
+    static constexpr qint64 kMaxRecordedBytes = 4 * 1024 * 1024; ///< 宏录制事件数据最多约 4MB
 };
 
 /**

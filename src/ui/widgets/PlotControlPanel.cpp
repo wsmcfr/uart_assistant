@@ -7,6 +7,7 @@
 
 #include "PlotControlPanel.h"
 #include "../PlotterWindow.h"
+#include <QLineEdit>
 #include <QSignalBlocker>
 
 namespace ComAssistant {
@@ -24,7 +25,7 @@ PlotControlPanel::PlotControlPanel(PlotterWindow* plotterWindow, QWidget* parent
 
 void PlotControlPanel::setupUI()
 {
-    // 主容器 - 不使用滚动区域，更紧凑
+    // 主容器：控制面板内容较多，固定宽度下通过紧凑间距保证入口完整可见。
     QWidget* mainWidget = new QWidget;
     QVBoxLayout* mainLayout = new QVBoxLayout(mainWidget);
     mainLayout->setContentsMargins(6, 6, 6, 6);
@@ -50,14 +51,58 @@ QGroupBox* PlotControlPanel::createCurveManagement()
     layout->setSpacing(4);
 
     m_curveList = new QListWidget;
+    m_curveList->setObjectName(QStringLiteral("plotCurveList"));
     m_curveList->setFixedHeight(80);  // 更紧凑的高度
     m_curveList->setSelectionMode(QAbstractItemView::SingleSelection);
+    connect(m_curveList, &QListWidget::currentRowChanged,
+            this, [this]() {
+        updateCurveActionStates();
+    });
+    connect(m_curveList, &QListWidget::itemDoubleClicked,
+            this, [this](QListWidgetItem*) {
+        if (m_renameCurveBtn && m_renameCurveBtn->isEnabled()) {
+            m_renameCurveBtn->click();
+        }
+    });
     layout->addWidget(m_curveList);
 
+    m_renameCurveBtn = new QPushButton(tr("重命名"));
+    m_renameCurveBtn->setObjectName(QStringLiteral("plotRenameCurveButton"));
+    m_renameCurveBtn->setFixedHeight(26);
+    connect(m_renameCurveBtn, &QPushButton::clicked, this, [this]() {
+        if (!m_plotterWindow || !m_curveList) {
+            return;
+        }
+
+        const int row = m_curveList->currentRow();
+        if (row < 0 || row >= m_plotterWindow->curveCount()) {
+            return;
+        }
+
+        /*
+         * 右侧控制面板是用户最常看到的曲线管理入口。这里直接弹出名称输入框，
+         * 避免用户必须去顶部菜单寻找“重命名曲线”。
+         */
+        const QString oldName = m_plotterWindow->curveName(row);
+        bool ok = false;
+        const QString newName = QInputDialog::getText(
+            this,
+            tr("重命名曲线"),
+            tr("曲线名称:"),
+            QLineEdit::Normal,
+            oldName,
+            &ok).trimmed();
+        if (ok && !newName.isEmpty() && newName != oldName) {
+            emit curveRenameRequested(row, newName);
+        }
+    });
+    layout->addWidget(m_renameCurveBtn);
+
     // 颜色按钮
-    QPushButton* colorBtn = new QPushButton(tr("修改颜色"));
-    colorBtn->setFixedHeight(26);
-    connect(colorBtn, &QPushButton::clicked, this, [this]() {
+    m_colorCurveBtn = new QPushButton(tr("修改颜色"));
+    m_colorCurveBtn->setObjectName(QStringLiteral("plotColorCurveButton"));
+    m_colorCurveBtn->setFixedHeight(26);
+    connect(m_colorCurveBtn, &QPushButton::clicked, this, [this]() {
         int row = m_curveList->currentRow();
         if (row >= 0) {
             QColor color = QColorDialog::getColor(Qt::white, this, tr("选择曲线颜色"));
@@ -66,14 +111,17 @@ QGroupBox* PlotControlPanel::createCurveManagement()
             }
         }
     });
-    layout->addWidget(colorBtn);
+    layout->addWidget(m_colorCurveBtn);
 
     QPushButton* diffBtn = new QPushButton(tr("差值曲线..."));
+    diffBtn->setObjectName(QStringLiteral("plotDifferenceCurveButton"));
     diffBtn->setFixedHeight(26);
     connect(diffBtn, &QPushButton::clicked, this, [this]() {
         emit differenceCurveRequested();
     });
     layout->addWidget(diffBtn);
+
+    updateCurveActionStates();
 
     return group;
 }
@@ -262,6 +310,24 @@ void PlotControlPanel::updateCurveList()
         int row = m_curveList->row(item);
         emit curveVisibilityChanged(row, item->checkState() == Qt::Checked);
     });
+    updateCurveActionStates();
+}
+
+void PlotControlPanel::updateCurveActionStates()
+{
+    /*
+     * 曲线管理按钮依赖当前选择。列表为空或没有选中项时禁用按钮，
+     * 既避免无效弹窗，也给自动化测试一个稳定的状态判断。
+     */
+    const bool hasSelectedCurve = m_curveList
+        && m_curveList->currentRow() >= 0
+        && (!m_plotterWindow || m_curveList->currentRow() < m_plotterWindow->curveCount());
+    if (m_renameCurveBtn) {
+        m_renameCurveBtn->setEnabled(hasSelectedCurve);
+    }
+    if (m_colorCurveBtn) {
+        m_colorCurveBtn->setEnabled(hasSelectedCurve);
+    }
 }
 
 void PlotControlPanel::changeEvent(QEvent* event)

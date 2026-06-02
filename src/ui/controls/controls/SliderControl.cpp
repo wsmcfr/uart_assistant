@@ -17,6 +17,7 @@
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QSpinBox>
+#include <QSizePolicy>
 #include <cmath>
 
 namespace ComAssistant {
@@ -69,33 +70,44 @@ void SliderControl::setupUi()
     connect(m_slider, &QSlider::sliderReleased, this, &SliderControl::onSliderReleased);
     mainLayout->addWidget(m_slider);
 
-    // 值显示区域
+    // 值显示区域：数值和单位保持在同一行，范围提示单独换行，避免窄窗口互相挤压。
     QHBoxLayout* valueLayout = new QHBoxLayout;
     valueLayout->setSpacing(4);
 
     m_valueEdit = new QLineEdit;
-    m_valueEdit->setMaximumWidth(80);
+    m_valueEdit->setObjectName(QStringLiteral("sliderValueEdit"));
+    m_valueEdit->setMinimumWidth(88);
+    m_valueEdit->setMaximumWidth(120);
     m_valueEdit->setAlignment(Qt::AlignRight);
     connect(m_valueEdit, &QLineEdit::editingFinished, this, &SliderControl::onValueEdited);
     valueLayout->addWidget(m_valueEdit);
 
     m_unitLabel = new QLabel;
+    m_unitLabel->setObjectName(QStringLiteral("sliderUnitLabel"));
+    m_unitLabel->setMinimumWidth(24);
     valueLayout->addWidget(m_unitLabel);
 
     valueLayout->addStretch();
 
-    m_rangeLabel = new QLabel;
-    m_rangeLabel->setStyleSheet("color: gray; font-size: 10px;");
-    valueLayout->addWidget(m_rangeLabel);
-
     mainLayout->addLayout(valueLayout);
+
+    m_rangeLabel = new QLabel;
+    m_rangeLabel->setObjectName(QStringLiteral("sliderRangeLabel"));
+    m_rangeLabel->setStyleSheet("color: gray; font-size: 10px;");
+    m_rangeLabel->setWordWrap(true);
+    m_rangeLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    mainLayout->addWidget(m_rangeLabel);
 
     // 初始更新显示
     updateValueDisplay();
 
-    // 设置固定高度
-    setFixedHeight(80);
-    setMinimumWidth(150);
+    /*
+     * 不能固定 80px 高度。中文名称、滑条、数值行和范围提示在高 DPI 或较窄
+     * 窗口中会互相遮挡，因此只设置最小尺寸，让布局按内容自然扩展。
+     */
+    setMinimumHeight(110);
+    setMinimumWidth(180);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
 }
 
 void SliderControl::setControlName(const QString& name)

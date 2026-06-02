@@ -98,6 +98,7 @@ void UdpWorkspaceWidget::setupUi()
     m_logEdit->setReadOnly(true);
     m_logEdit->setObjectName(QStringLiteral("udpLogEdit"));
     m_logEdit->setPlaceholderText(tr("UDP 数据报收发记录会显示在这里..."));
+    configureLogEdit(m_logEdit);
     mainLayout->addWidget(m_logEdit, 1);
 
     QWidget* sendPanel = new QWidget;
@@ -193,6 +194,13 @@ void UdpWorkspaceWidget::addRecentRemote(const QString& ip, int port)
     const QString label = QStringLiteral("%1:%2").arg(ip).arg(port);
     if (m_recentRemoteCombo->findText(label) < 0) {
         m_recentRemoteCombo->insertItem(0, label, QStringList() << ip << QString::number(port));
+    }
+    /*
+     * 最近远端是运行期辅助列表，不应因为长时间 UDP 通信不断增长。
+     * 只保留最新若干项，删除末尾最旧记录，不影响当前目标地址。
+     */
+    while (m_recentRemoteCombo->count() > kMaxRecentRemotes) {
+        m_recentRemoteCombo->removeItem(m_recentRemoteCombo->count() - 1);
     }
     m_recentRemoteCombo->setCurrentIndex(m_recentRemoteCombo->findText(label));
     updateStatusSummary();

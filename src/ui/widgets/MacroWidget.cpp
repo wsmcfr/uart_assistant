@@ -390,12 +390,24 @@ void MacroWidget::onRecordingStateChanged(bool recording)
     if (recording) {
         m_recordTimeLabel->setText(tr("时长: 00:00"));
         m_eventCountLabel->setText(tr("事件: 0"));
+        /*
+         * 新一轮录制从空事件视图开始；否则旧录制或已加载宏的事件项会继续
+         * 留在 QListWidget 中，占用内存并误导当前录制数量。
+         */
+        m_eventList->clear();
     }
 }
 
 void MacroWidget::onEventRecorded(const MacroEvent& event)
 {
     m_eventList->addItem(formatEvent(event));
+    /*
+     * 录制器会删除最早事件以保持有界，UI 列表也必须同步删除最早项。
+     * 这样长时间勾选“录制接收数据”时，列表控件不会成为新的无限增长点。
+     */
+    while (m_eventList->count() > m_recorder->eventCount()) {
+        delete m_eventList->takeItem(0);
+    }
     m_eventList->scrollToBottom();
     m_eventCountLabel->setText(tr("事件: %1").arg(m_recorder->eventCount()));
 }
