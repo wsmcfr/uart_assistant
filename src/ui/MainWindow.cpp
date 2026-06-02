@@ -1505,9 +1505,31 @@ void MainWindow::onScriptEditor()
 {
     if (!m_scriptEditorDialog) {
         m_scriptEditorDialog = new ScriptEditorDialog(this);
-        // 连接脚本发送信号到主窗口发送槽
-        connect(m_scriptEditorDialog, &ScriptEditorDialog::sendData,
-                this, &MainWindow::onSendData);
+
+        /*
+         * 4.8 起脚本发送需要同步拿到主窗口发送入口的接受/拒绝结果，
+         * 这样 Lua 的 serial.send/serial.sendHex 才能在未连接、队列拒绝
+         * 或底层写入失败时抛出稳定错误。这里注入轻量回调，仍不让
+         * worker 线程直接接触通信对象。
+         */
+        m_scriptEditorDialog->setConnectionStateProvider([this]() {
+            return m_commController && m_commController->isConnected();
+        });
+        m_scriptEditorDialog->setSendDataHandler([this](const QByteArray& data) {
+            ScriptSendResult result;
+            if (!m_commController || !m_commController->isConnected()) {
+                result.error = tr("当前连接未打开");
+                statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
+                return result;
+            }
+
+            result.accepted = m_commController->sendData(data);
+            result.error = result.accepted ? QString() : m_commController->lastError();
+            if (!result.accepted && result.error.trimmed().isEmpty()) {
+                result.error = tr("发送失败");
+            }
+            return result;
+        });
     }
     m_scriptEditorDialog->show();
     m_scriptEditorDialog->raise();
