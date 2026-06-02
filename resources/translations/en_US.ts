@@ -2645,6 +2645,10 @@ Time spent: % 4</translation>
         <translation>Data Window Layout...</translation>
     </message>
     <message>
+        <source>接收协议</source>
+        <translation>Receive Protocol</translation>
+    </message>
+    <message>
         <source>协议配置...</source>
         <translation>Protocol Config...</translation>
     </message>
@@ -3321,6 +3325,14 @@ Time spent: % 4</translation>
     <message>
         <source>协议配置已应用</source>
         <translation>Protocol config applied</translation>
+    </message>
+    <message>
+        <source>接收协议已切换: %1</source>
+        <translation>Receive protocol switched: %1</translation>
+    </message>
+    <message>
+        <source>协议解析错误: %1</source>
+        <translation>Protocol parse error: %1</translation>
     </message>
     <message>
         <location filename="../../src/ui/MainWindow.cpp" line="1896" />
@@ -8730,6 +8742,24 @@ Please check application permissions.</translation>
         <location filename="../../src/core/macro/MacroRecorder.cpp" line="97" />
         <source>无法打开文件</source>
         <translation>Cannot open file</translation>
+    </message>
+</context>
+<context>
+    <name>ComAssistant::ProtocolConfigDialog</name>
+    <message>
+        <source>协议配置</source>
+        <translation>Protocol Config</translation>
+    </message>
+    <message>
+        <source>恢复默认</source>
+        <translation>Reset Defaults</translation>
+    </message>
+</context>
+<context>
+    <name>ComAssistant::ProtocolConfigEditor</name>
+    <message>
+        <source>当前协议没有可配置项，可直接使用默认行为。</source>
+        <translation>The current protocol has no configurable items. The default behavior can be used directly.</translation>
     </message>
 </context>
 <context>

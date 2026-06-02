@@ -237,8 +237,8 @@ QVariant normalizedOrDefaultValue(const ProtocolDescriptor& descriptor,
  * @param validation 当前配置校验结果。
  * @return 包含资源限制、通信 API 开关和库边界的 JSON。
  *
- * 这些字段描述当前项目中的 LuaSandbox 边界。4.9 不执行 Lua 协议脚本，
- * 但先把诊断语义稳定下来，后续真实协议实例可复用同一节点。
+ * 这些字段描述当前项目中的 LuaSandbox 边界。Lua 协议解析器会执行
+ * 内联 scriptSource，但仍不开放外部脚本加载和 serial.receive(timeout)。
  */
 QJsonObject buildLuaSandboxObject(const ProtocolDescriptor& descriptor,
                                   const ProtocolConfigValidationResult& validation)

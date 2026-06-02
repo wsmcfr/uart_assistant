@@ -341,6 +341,14 @@
         <li><strong>过滤标签 / Filter Tab:</strong> 根据关键词过滤 / Filter by keywords</li>
     </ul>
 
+    <h3>接收协议 / Receive Protocol</h3>
+    <p><strong>中文：</strong>通过 <code>工具 -&gt; 接收协议</code> 选择当前接收解析器。<code>Raw</code> 直接显示原始数据，<code>Lua Script</code> 会按稳定协议 ID <code>lua.script</code> 调用脚本入口 <code>process(data, context)</code>。</p>
+    <p><strong>English:</strong> Use <code>Tools -&gt; Receive Protocol</code> to select the current receive parser. <code>Raw</code> displays raw data, while <code>Lua Script</code> uses the stable protocol ID <code>lua.script</code> and calls <code>process(data, context)</code>.</p>
+    <p><strong>中文：</strong>选择 Lua 后，可通过 <code>工具 -&gt; 协议配置...</code> 在多行 <code>scriptSource</code> 编辑器中编写脚本；字段错误会显示在对应字段下方，配置随会话保存并可恢复。运行时错误会显示在状态栏，也可通过 <code>工具 -&gt; 协议诊断...</code> 查看最近错误和诊断 JSON。</p>
+    <p><strong>English:</strong> After selecting Lua, open <code>Tools -&gt; Protocol Config...</code> to edit the multiline <code>scriptSource</code>. Field errors are shown next to the related field, and the config is saved and restored with sessions. Runtime errors appear in the status bar and are available from <code>Tools -&gt; Protocol Diagnostics...</code>.</p>
+    <p><strong>中文：</strong>旧版 <code>绘图协议</code> 菜单仍只用于 TEXT、STAMP、CSV 和 JustFloat 等绘图协议。</p>
+    <p><strong>English:</strong> The legacy <code>Plot Protocol</code> menu remains dedicated to plotting protocols such as TEXT, STAMP, CSV and JustFloat.</p>
+
     <h2>4. 常用功能 / Common Features</h2>
 
     <h3>时间戳 / Timestamp</h3>
@@ -430,9 +438,9 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.6.0（发布于 2026-06-01 / released on 2026-06-01）</p>
-    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.6.0/ComAssistant_v1.6.0_Windows_x64_Portable.zip">ComAssistant_v1.6.0_Windows_x64_Portable.zip</a><br>
-    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.6.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
+    <p><strong>当前版本 / Current Version:</strong> v1.7.0（发布于 2026-06-02 / released on 2026-06-02）</p>
+    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.7.0/ComAssistant_v1.7.0_Windows_x64_Portable.zip">ComAssistant_v1.7.0_Windows_x64_Portable.zip</a><br>
+    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.7.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">
