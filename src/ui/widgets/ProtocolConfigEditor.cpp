@@ -11,6 +11,7 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QSpinBox>
 #include <QVBoxLayout>
 
@@ -32,7 +33,8 @@ ProtocolConfigEditor::ProtocolConfigEditor(QWidget* parent)
     m_formLayout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
     mainLayout->addLayout(m_formLayout);
 
-    m_emptyLabel = new QLabel(tr("当前协议没有可配置项"), this);
+    m_emptyLabel = new QLabel(tr("当前协议没有可配置项，可直接使用默认行为。"), this);
+    m_emptyLabel->setObjectName(QStringLiteral("protocolConfigEmptyLabel"));
     m_emptyLabel->setWordWrap(true);
     m_emptyLabel->setVisible(false);
     mainLayout->addWidget(m_emptyLabel);
@@ -62,7 +64,27 @@ void ProtocolConfigEditor::setSchema(const ProtocolConfigSchema& schema)
 
     for (const ProtocolConfigField& field : m_schema.fields) {
         QWidget* fieldWidget = createFieldWidget(field);
-        m_formLayout->addRow(field.displayName, fieldWidget);
+
+        /*
+         * 每个字段外包一层垂直容器，编辑控件仍保留稳定 objectName，
+         * 字段级错误则贴在控件下方显示。这样旧测试和 UI 自动化仍能直接
+         * findChild() 到原控件，同时用户能在出错字段旁边看到原因。
+         */
+        auto* fieldContainer = new QWidget(this);
+        auto* fieldLayout = new QVBoxLayout(fieldContainer);
+        fieldLayout->setContentsMargins(0, 0, 0, 0);
+        fieldLayout->setSpacing(3);
+        fieldLayout->addWidget(fieldWidget);
+
+        auto* fieldErrorLabel = new QLabel(fieldContainer);
+        fieldErrorLabel->setObjectName(QStringLiteral("protocolConfigError_%1").arg(field.key));
+        fieldErrorLabel->setWordWrap(true);
+        fieldErrorLabel->setVisible(false);
+        fieldErrorLabel->setStyleSheet(QStringLiteral("color: #c62828;"));
+        fieldLayout->addWidget(fieldErrorLabel);
+        m_fieldErrorLabels.insert(field.key, fieldErrorLabel);
+
+        m_formLayout->addRow(field.displayName, fieldContainer);
     }
 }
 
@@ -115,6 +137,30 @@ ProtocolConfigValidationResult ProtocolConfigEditor::validateConfig()
     if (result.valid) {
         clearErrors();
     } else {
+        /*
+         * Schema 错误统一采用 “key: reason” 文本。这里只解析第一个冒号
+         * 前的稳定 key，把同一字段的错误贴到字段下方；底部总错误仍保留，
+         * 便于一次性复制和兼容旧对话框行为。
+         */
+        for (const QString& error : result.errors) {
+            const int separatorIndex = error.indexOf(QLatin1Char(':'));
+            if (separatorIndex <= 0) {
+                continue;
+            }
+
+            const QString key = error.left(separatorIndex).trimmed();
+            QLabel* fieldErrorLabel = m_fieldErrorLabels.value(key, nullptr);
+            if (!fieldErrorLabel) {
+                continue;
+            }
+
+            const QString existingText = fieldErrorLabel->text();
+            fieldErrorLabel->setText(existingText.isEmpty()
+                                         ? error
+                                         : existingText + QStringLiteral("\n") + error);
+            fieldErrorLabel->setVisible(true);
+        }
+
         m_errorLabel->setText(result.errors.join(QStringLiteral("\n")));
         m_errorLabel->setVisible(true);
     }
@@ -134,6 +180,18 @@ void ProtocolConfigEditor::clearErrors()
 
     m_errorLabel->clear();
     m_errorLabel->setVisible(false);
+
+    /*
+     * 字段级错误和底部总错误需要同步清理。用户修改配置、恢复默认或重新
+     * 设置 Schema 后，不应继续看到上一轮校验留下的局部错误。
+     */
+    for (QLabel* fieldErrorLabel : m_fieldErrorLabels) {
+        if (!fieldErrorLabel) {
+            continue;
+        }
+        fieldErrorLabel->clear();
+        fieldErrorLabel->setVisible(false);
+    }
 }
 
 void ProtocolConfigEditor::clearForm()
@@ -151,6 +209,7 @@ void ProtocolConfigEditor::clearForm()
         delete item;
     }
     m_fieldWidgets.clear();
+    m_fieldErrorLabels.clear();
 }
 
 QWidget* ProtocolConfigEditor::createFieldWidget(const ProtocolConfigField& field)
@@ -184,7 +243,27 @@ QWidget* ProtocolConfigEditor::createFieldWidget(const ProtocolConfigField& fiel
         break;
     }
 
-    case ProtocolConfigFieldType::String:
+    case ProtocolConfigFieldType::String: {
+        /*
+         * Lua 协议的 scriptSource 是完整脚本文本，单行输入会破坏缩进和
+         * 多行函数结构。其他字符串字段继续使用 QLineEdit，保持旧协议配置
+         * 的紧凑布局和操作习惯。
+         */
+        if (field.key == QStringLiteral("scriptSource")) {
+            auto* plainTextEdit = new QPlainTextEdit(this);
+            plainTextEdit->setPlainText(field.defaultValue.toString());
+            plainTextEdit->setMinimumHeight(220);
+            plainTextEdit->setLineWrapMode(QPlainTextEdit::NoWrap);
+            plainTextEdit->setFont(QFont(QStringLiteral("Consolas"), 10));
+            widget = plainTextEdit;
+        } else {
+            auto* lineEdit = new QLineEdit(this);
+            lineEdit->setText(field.defaultValue.toString());
+            widget = lineEdit;
+        }
+        break;
+    }
+
     case ProtocolConfigFieldType::BytesHex: {
         auto* lineEdit = new QLineEdit(this);
         lineEdit->setText(field.defaultValue.toString());
@@ -245,6 +324,13 @@ void ProtocolConfigEditor::setFieldValue(const ProtocolConfigField& field, const
         break;
 
     case ProtocolConfigFieldType::String:
+        if (auto* plainTextEdit = qobject_cast<QPlainTextEdit*>(widget)) {
+            plainTextEdit->setPlainText(value.toString());
+        } else if (auto* lineEdit = qobject_cast<QLineEdit*>(widget)) {
+            lineEdit->setText(value.toString());
+        }
+        break;
+
     case ProtocolConfigFieldType::BytesHex:
         if (auto* lineEdit = qobject_cast<QLineEdit*>(widget)) {
             lineEdit->setText(value.toString());
@@ -296,6 +382,14 @@ QVariant ProtocolConfigEditor::fieldValue(const ProtocolConfigField& field) cons
         break;
 
     case ProtocolConfigFieldType::String:
+        if (const auto* plainTextEdit = qobject_cast<const QPlainTextEdit*>(widget)) {
+            return plainTextEdit->toPlainText();
+        }
+        if (const auto* lineEdit = qobject_cast<const QLineEdit*>(widget)) {
+            return lineEdit->text();
+        }
+        break;
+
     case ProtocolConfigFieldType::BytesHex:
         if (const auto* lineEdit = qobject_cast<const QLineEdit*>(widget)) {
             return lineEdit->text();

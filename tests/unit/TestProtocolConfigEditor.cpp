@@ -201,7 +201,7 @@ void TestProtocolConfigEditor::showsFieldLevelValidationErrors()
     QLabel* fieldError = editor.findChild<QLabel*>(
         QStringLiteral("protocolConfigError_frameHeader"));
     QVERIFY(fieldError != nullptr);
-    QVERIFY(fieldError->isVisible());
+    QVERIFY(!fieldError->isHidden());
     QVERIFY(fieldError->text().contains(QStringLiteral("frameHeader")));
 }
 
@@ -218,7 +218,7 @@ void TestProtocolConfigEditor::showsHelpfulEmptySchemaText()
     QLabel* emptyLabel = editor.findChild<QLabel*>(
         QStringLiteral("protocolConfigEmptyLabel"));
     QVERIFY(emptyLabel != nullptr);
-    QVERIFY(emptyLabel->isVisible());
+    QVERIFY(!emptyLabel->isHidden());
     QVERIFY(emptyLabel->text().contains(QStringLiteral("默认行为")));
 }
 

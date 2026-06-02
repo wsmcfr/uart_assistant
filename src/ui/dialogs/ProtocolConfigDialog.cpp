@@ -64,7 +64,11 @@ void ProtocolConfigDialog::onRestoreDefaults()
 void ProtocolConfigDialog::setupUi(const QVariantMap& initialConfig)
 {
     setWindowTitle(tr("协议配置"));
-    resize(520, 420);
+    /*
+     * Lua scriptSource 会使用多行编辑器。稍大的默认尺寸能让脚本配置开箱
+     * 即可编辑，同时仍允许用户按需缩放对话框。
+     */
+    resize(720, 560);
 
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(10);

@@ -105,6 +105,7 @@ private:
 
     ProtocolConfigSchema m_schema;       ///< 当前正在展示的配置 Schema。
     QMap<QString, QWidget*> m_fieldWidgets; ///< 字段 key 到编辑控件的索引，便于加载和读取配置。
+    QMap<QString, QLabel*> m_fieldErrorLabels; ///< 字段 key 到错误提示标签的索引，用于字段级校验反馈。
     QFormLayout* m_formLayout = nullptr; ///< Schema 字段表单布局。
     QLabel* m_emptyLabel = nullptr;      ///< 空 Schema 时显示的提示文本。
     QLabel* m_errorLabel = nullptr;      ///< Schema 校验错误提示文本。
