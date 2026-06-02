@@ -21,6 +21,9 @@ class TestProtocolConfigEditor : public QObject
 
 private slots:
     void buildsWidgetsFromSchema();
+    void loadsAndReadsConfig();
+    void restoresDefaults();
+    void reportsValidationErrors();
 };
 
 #endif // TESTPROTOCOLCONFIGEDITOR_H

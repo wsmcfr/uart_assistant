@@ -8,6 +8,8 @@
 
 #include "core/protocol/ProtocolConfigSchema.h"
 
+#include <QMap>
+#include <QVariantMap>
 #include <QWidget>
 
 class QLabel;
@@ -38,6 +40,40 @@ public:
      */
     void setSchema(const ProtocolConfigSchema& schema);
 
+    /**
+     * @brief 将外部配置加载到编辑控件。
+     * @param config 输入配置；缺失字段会使用 Schema 默认值填充。
+     */
+    void setConfig(const QVariantMap& config);
+
+    /**
+     * @brief 从当前控件读取配置。
+     * @return 以 Schema 字段 key 为键的配置表；空 Schema 返回空表。
+     */
+    QVariantMap config() const;
+
+    /**
+     * @brief 恢复 Schema 定义的默认配置。
+     */
+    void restoreDefaults();
+
+    /**
+     * @brief 校验当前控件配置并更新错误提示。
+     * @return Schema 校验结果，包含规范化配置、错误和警告。
+     */
+    ProtocolConfigValidationResult validateConfig();
+
+    /**
+     * @brief 读取当前错误提示文本。
+     * @return 错误摘要；没有错误时返回空字符串。
+     */
+    QString errorText() const;
+
+    /**
+     * @brief 清空当前错误提示。
+     */
+    void clearErrors();
+
 private:
     /**
      * @brief 清空当前表单中的旧控件。
@@ -53,9 +89,25 @@ private:
      */
     QWidget* createFieldWidget(const ProtocolConfigField& field);
 
+    /**
+     * @brief 将单个字段值写入对应控件。
+     * @param field 字段定义，用于决定控件类型和默认值。
+     * @param value 要写入的值。
+     */
+    void setFieldValue(const ProtocolConfigField& field, const QVariant& value);
+
+    /**
+     * @brief 从单个字段控件读取值。
+     * @param field 字段定义，用于决定读取方式。
+     * @return 控件中的当前值；控件不存在时返回字段默认值。
+     */
+    QVariant fieldValue(const ProtocolConfigField& field) const;
+
     ProtocolConfigSchema m_schema;       ///< 当前正在展示的配置 Schema。
+    QMap<QString, QWidget*> m_fieldWidgets; ///< 字段 key 到编辑控件的索引，便于加载和读取配置。
     QFormLayout* m_formLayout = nullptr; ///< Schema 字段表单布局。
     QLabel* m_emptyLabel = nullptr;      ///< 空 Schema 时显示的提示文本。
+    QLabel* m_errorLabel = nullptr;      ///< Schema 校验错误提示文本。
 };
 
 } // namespace ComAssistant

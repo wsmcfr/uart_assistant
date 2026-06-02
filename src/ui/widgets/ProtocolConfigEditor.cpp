@@ -36,6 +36,15 @@ ProtocolConfigEditor::ProtocolConfigEditor(QWidget* parent)
     m_emptyLabel->setWordWrap(true);
     m_emptyLabel->setVisible(false);
     mainLayout->addWidget(m_emptyLabel);
+
+    /*
+     * 错误提示由 validateConfig() 统一维护。默认隐藏，只有 Schema
+     * 返回错误时才显示，避免空表单或有效配置占用额外视觉空间。
+     */
+    m_errorLabel = new QLabel(this);
+    m_errorLabel->setWordWrap(true);
+    m_errorLabel->setVisible(false);
+    mainLayout->addWidget(m_errorLabel);
 }
 
 void ProtocolConfigEditor::setSchema(const ProtocolConfigSchema& schema)
@@ -46,6 +55,7 @@ void ProtocolConfigEditor::setSchema(const ProtocolConfigSchema& schema)
      */
     m_schema = schema;
     clearForm();
+    clearErrors();
 
     const bool hasFields = !m_schema.fields.isEmpty();
     m_emptyLabel->setVisible(!hasFields);
@@ -54,6 +64,76 @@ void ProtocolConfigEditor::setSchema(const ProtocolConfigSchema& schema)
         QWidget* fieldWidget = createFieldWidget(field);
         m_formLayout->addRow(field.displayName, fieldWidget);
     }
+}
+
+void ProtocolConfigEditor::setConfig(const QVariantMap& config)
+{
+    /*
+     * 加载配置时对缺失字段回退到 Schema 默认值，保证旧会话或部分配置
+     * 也能在 UI 中显示完整、可编辑的当前值。
+     */
+    clearErrors();
+    for (const ProtocolConfigField& field : m_schema.fields) {
+        const QVariant value = config.contains(field.key)
+            ? config.value(field.key)
+            : field.defaultValue;
+        setFieldValue(field, value);
+    }
+}
+
+QVariantMap ProtocolConfigEditor::config() const
+{
+    QVariantMap result;
+
+    /*
+     * 只导出 Schema 已知字段。未知字段由核心 Schema 校验层处理，
+     * 编辑器第一版不展示也不编辑未知扩展字段。
+     */
+    for (const ProtocolConfigField& field : m_schema.fields) {
+        result.insert(field.key, fieldValue(field));
+    }
+
+    return result;
+}
+
+void ProtocolConfigEditor::restoreDefaults()
+{
+    /*
+     * 默认值来源必须保持在 Schema 层，尤其是 BytesHex 默认值会在
+     * schema.defaults() 中规范化，避免 UI 与核心规则分叉。
+     */
+    setConfig(m_schema.defaults());
+}
+
+ProtocolConfigValidationResult ProtocolConfigEditor::validateConfig()
+{
+    /*
+     * UI 不自行重写校验规则，而是把当前控件值交给 Schema。
+     * 这样脚本、会话恢复、工厂创建和配置对话框走同一套规则。
+     */
+    const ProtocolConfigValidationResult result = m_schema.validate(config());
+    if (result.valid) {
+        clearErrors();
+    } else {
+        m_errorLabel->setText(result.errors.join(QStringLiteral("\n")));
+        m_errorLabel->setVisible(true);
+    }
+    return result;
+}
+
+QString ProtocolConfigEditor::errorText() const
+{
+    return m_errorLabel ? m_errorLabel->text() : QString();
+}
+
+void ProtocolConfigEditor::clearErrors()
+{
+    if (!m_errorLabel) {
+        return;
+    }
+
+    m_errorLabel->clear();
+    m_errorLabel->setVisible(false);
 }
 
 void ProtocolConfigEditor::clearForm()
@@ -70,6 +150,7 @@ void ProtocolConfigEditor::clearForm()
         }
         delete item;
     }
+    m_fieldWidgets.clear();
 }
 
 QWidget* ProtocolConfigEditor::createFieldWidget(const ProtocolConfigField& field)
@@ -129,7 +210,106 @@ QWidget* ProtocolConfigEditor::createFieldWidget(const ProtocolConfigField& fiel
      */
     widget->setObjectName(QStringLiteral("protocolConfig_%1").arg(field.key));
     widget->setToolTip(field.description);
+    m_fieldWidgets.insert(field.key, widget);
     return widget;
+}
+
+void ProtocolConfigEditor::setFieldValue(const ProtocolConfigField& field, const QVariant& value)
+{
+    QWidget* widget = m_fieldWidgets.value(field.key, nullptr);
+    if (!widget) {
+        return;
+    }
+
+    /*
+     * 根据字段类型写入对应控件。数值控件会按控件范围自动夹取，
+     * 自由文本字段则保留原始输入，等待 Schema 做最终校验和规范化。
+     */
+    switch (field.type) {
+    case ProtocolConfigFieldType::Bool:
+        if (auto* checkBox = qobject_cast<QCheckBox*>(widget)) {
+            checkBox->setChecked(value.toBool());
+        }
+        break;
+
+    case ProtocolConfigFieldType::Integer:
+        if (auto* spinBox = qobject_cast<QSpinBox*>(widget)) {
+            spinBox->setValue(value.toInt());
+        }
+        break;
+
+    case ProtocolConfigFieldType::Double:
+        if (auto* spinBox = qobject_cast<QDoubleSpinBox*>(widget)) {
+            spinBox->setValue(value.toDouble());
+        }
+        break;
+
+    case ProtocolConfigFieldType::String:
+    case ProtocolConfigFieldType::BytesHex:
+        if (auto* lineEdit = qobject_cast<QLineEdit*>(widget)) {
+            lineEdit->setText(value.toString());
+        }
+        break;
+
+    case ProtocolConfigFieldType::Enum:
+        if (auto* comboBox = qobject_cast<QComboBox*>(widget)) {
+            const int index = comboBox->findText(value.toString());
+            if (index >= 0) {
+                comboBox->setCurrentIndex(index);
+            } else {
+                const int defaultIndex = comboBox->findText(field.defaultValue.toString());
+                comboBox->setCurrentIndex(defaultIndex >= 0 ? defaultIndex : 0);
+            }
+        }
+        break;
+    }
+}
+
+QVariant ProtocolConfigEditor::fieldValue(const ProtocolConfigField& field) const
+{
+    QWidget* widget = m_fieldWidgets.value(field.key, nullptr);
+    if (!widget) {
+        return field.defaultValue;
+    }
+
+    /*
+     * 控件读取保持 QVariantMap 的基础类型稳定：Bool 输出 bool，
+     * Integer 输出 int，Double 输出 double，其余输出 QString。
+     */
+    switch (field.type) {
+    case ProtocolConfigFieldType::Bool:
+        if (const auto* checkBox = qobject_cast<const QCheckBox*>(widget)) {
+            return checkBox->isChecked();
+        }
+        break;
+
+    case ProtocolConfigFieldType::Integer:
+        if (const auto* spinBox = qobject_cast<const QSpinBox*>(widget)) {
+            return spinBox->value();
+        }
+        break;
+
+    case ProtocolConfigFieldType::Double:
+        if (const auto* spinBox = qobject_cast<const QDoubleSpinBox*>(widget)) {
+            return spinBox->value();
+        }
+        break;
+
+    case ProtocolConfigFieldType::String:
+    case ProtocolConfigFieldType::BytesHex:
+        if (const auto* lineEdit = qobject_cast<const QLineEdit*>(widget)) {
+            return lineEdit->text();
+        }
+        break;
+
+    case ProtocolConfigFieldType::Enum:
+        if (const auto* comboBox = qobject_cast<const QComboBox*>(widget)) {
+            return comboBox->currentText();
+        }
+        break;
+    }
+
+    return field.defaultValue;
 }
 
 } // namespace ComAssistant

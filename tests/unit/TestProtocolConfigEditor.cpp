@@ -81,3 +81,70 @@ void TestProtocolConfigEditor::buildsWidgetsFromSchema()
     QVERIFY(editor.findChild<QLineEdit*>(QStringLiteral("protocolConfig_frameHeader")) != nullptr);
     QVERIFY(editor.findChild<QComboBox*>(QStringLiteral("protocolConfig_lineEnding")) != nullptr);
 }
+
+void TestProtocolConfigEditor::loadsAndReadsConfig()
+{
+    /*
+     * 编辑器应能把外部配置写入控件，再从控件读回 QVariantMap。
+     * 这是对话框确认、会话恢复和后续协议应用共用的数据通道。
+     */
+    ProtocolConfigEditor editor;
+    editor.setSchema(makeEditorTestSchema());
+
+    QVariantMap config;
+    config.insert(QStringLiteral("enabled"), false);
+    config.insert(QStringLiteral("timeoutMs"), 250);
+    config.insert(QStringLiteral("gain"), 2.5);
+    config.insert(QStringLiteral("encoding"), QStringLiteral("GBK"));
+    config.insert(QStringLiteral("frameHeader"), QStringLiteral("55 AA"));
+    config.insert(QStringLiteral("lineEnding"), QStringLiteral("LF"));
+
+    editor.setConfig(config);
+    const QVariantMap readConfig = editor.config();
+
+    QCOMPARE(readConfig.value(QStringLiteral("enabled")).toBool(), false);
+    QCOMPARE(readConfig.value(QStringLiteral("timeoutMs")).toInt(), 250);
+    QCOMPARE(readConfig.value(QStringLiteral("gain")).toDouble(), 2.5);
+    QCOMPARE(readConfig.value(QStringLiteral("encoding")).toString(), QStringLiteral("GBK"));
+    QCOMPARE(readConfig.value(QStringLiteral("frameHeader")).toString(), QStringLiteral("55 AA"));
+    QCOMPARE(readConfig.value(QStringLiteral("lineEnding")).toString(), QStringLiteral("LF"));
+}
+
+void TestProtocolConfigEditor::restoresDefaults()
+{
+    /*
+     * 恢复默认值必须直接使用 Schema 默认配置，避免 UI 自行拼默认值导致
+     * 十六进制规范化或未来默认值迁移规则和核心层不一致。
+     */
+    ProtocolConfigEditor editor;
+    const ProtocolConfigSchema schema = makeEditorTestSchema();
+    editor.setSchema(schema);
+
+    QVariantMap config;
+    config.insert(QStringLiteral("timeoutMs"), 250);
+    config.insert(QStringLiteral("lineEnding"), QStringLiteral("LF"));
+    editor.setConfig(config);
+    editor.restoreDefaults();
+
+    QCOMPARE(editor.config(), schema.defaults());
+}
+
+void TestProtocolConfigEditor::reportsValidationErrors()
+{
+    /*
+     * 编辑器不应绕过 Schema 校验。非法十六进制文本要被拦截，并把错误
+     * 暴露给对话框底部提示区域，而不是静默应用坏配置。
+     */
+    ProtocolConfigEditor editor;
+    editor.setSchema(makeEditorTestSchema());
+
+    QLineEdit* hexEdit = editor.findChild<QLineEdit*>(QStringLiteral("protocolConfig_frameHeader"));
+    QVERIFY(hexEdit != nullptr);
+    hexEdit->setText(QStringLiteral("AA Z1"));
+
+    const ProtocolConfigValidationResult result = editor.validateConfig();
+
+    QVERIFY(!result.valid);
+    QVERIFY(result.errors.join(QStringLiteral("\n")).contains(QStringLiteral("frameHeader")));
+    QVERIFY(!editor.errorText().isEmpty());
+}
