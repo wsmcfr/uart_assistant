@@ -204,7 +204,97 @@ QJsonObject buildCapabilitiesObject(const ProtocolDescriptor& descriptor)
     capabilities.insert(QStringLiteral("builtin"), descriptor.builtin);
     capabilities.insert(QStringLiteral("plotProtocol"), descriptor.plotProtocol);
     capabilities.insert(QStringLiteral("frameBuilder"), descriptor.frameBuilder);
+    capabilities.insert(QStringLiteral("scriptProtocol"), descriptor.scriptProtocol);
+    capabilities.insert(QStringLiteral("creatable"), descriptor.creatable);
+    capabilities.insert(QStringLiteral("legacyCompatible"), descriptor.legacyCompatible);
     return capabilities;
+}
+
+/**
+ * @brief 从规范化配置或默认配置中读取字段值。
+ * @param descriptor 当前协议描述。
+ * @param validation 当前配置的 Schema 校验结果。
+ * @param key 字段 key。
+ * @return 校验通过时优先返回规范化值，否则返回 descriptor 默认配置值。
+ *
+ * Lua 诊断需要展示沙箱预算。配置非法时 normalizedConfig 在主配置节点会被置空，
+ * 但诊断仍应展示可回退的默认沙箱限制，便于用户理解当前安全边界。
+ */
+QVariant normalizedOrDefaultValue(const ProtocolDescriptor& descriptor,
+                                  const ProtocolConfigValidationResult& validation,
+                                  const QString& key)
+{
+    if (validation.valid && validation.normalizedConfig.contains(key)) {
+        return validation.normalizedConfig.value(key);
+    }
+
+    return descriptor.defaultConfig.value(key);
+}
+
+/**
+ * @brief 构建 Lua 沙箱诊断节点。
+ * @param descriptor 当前 Lua 协议描述。
+ * @param validation 当前配置校验结果。
+ * @return 包含资源限制、通信 API 开关和库边界的 JSON。
+ *
+ * 这些字段描述当前项目中的 LuaSandbox 边界。4.9 不执行 Lua 协议脚本，
+ * 但先把诊断语义稳定下来，后续真实协议实例可复用同一节点。
+ */
+QJsonObject buildLuaSandboxObject(const ProtocolDescriptor& descriptor,
+                                  const ProtocolConfigValidationResult& validation)
+{
+    QJsonObject sandbox;
+    sandbox.insert(QStringLiteral("timeoutMs"),
+                   normalizedOrDefaultValue(descriptor, validation, QStringLiteral("timeoutMs")).toInt());
+    sandbox.insert(QStringLiteral("memoryLimitKb"),
+                   normalizedOrDefaultValue(descriptor, validation, QStringLiteral("memoryLimitKb")).toInt());
+    sandbox.insert(QStringLiteral("maxOutputLines"),
+                   normalizedOrDefaultValue(descriptor, validation, QStringLiteral("maxOutputLines")).toInt());
+    sandbox.insert(QStringLiteral("communicationApi"),
+                   normalizedOrDefaultValue(descriptor, validation, QStringLiteral("allowCommunicationApi")).toBool());
+    sandbox.insert(QStringLiteral("safeLibraries"),
+                   stringListToJsonArray(QStringList{
+                       QStringLiteral("_G"),
+                       QStringLiteral("string"),
+                       QStringLiteral("table"),
+                       QStringLiteral("math"),
+                       QStringLiteral("utf8")
+                   }));
+    sandbox.insert(QStringLiteral("blockedLibraries"),
+                   stringListToJsonArray(QStringList{
+                       QStringLiteral("io"),
+                       QStringLiteral("os"),
+                       QStringLiteral("package"),
+                       QStringLiteral("debug")
+                   }));
+    sandbox.insert(QStringLiteral("blockedGlobals"),
+                   stringListToJsonArray(QStringList{
+                       QStringLiteral("require"),
+                       QStringLiteral("dofile"),
+                       QStringLiteral("loadfile"),
+                       QStringLiteral("load")
+                   }));
+    return sandbox;
+}
+
+/**
+ * @brief 构建 Lua 协议专用诊断节点。
+ * @param descriptor 当前协议描述。
+ * @param validation 当前配置校验结果。
+ * @param context 运行期补充诊断上下文。
+ * @return Lua 协议诊断 JSON。
+ */
+QJsonObject buildLuaProtocolObject(const ProtocolDescriptor& descriptor,
+                                   const ProtocolConfigValidationResult& validation,
+                                   const ProtocolDiagnosticsContext& context)
+{
+    QJsonObject luaProtocol;
+    luaProtocol.insert(QStringLiteral("enabled"), descriptor.scriptProtocol);
+    luaProtocol.insert(QStringLiteral("creatable"), descriptor.creatable);
+    luaProtocol.insert(QStringLiteral("receiveApiAvailable"), false);
+    luaProtocol.insert(QStringLiteral("lastError"), context.recentError);
+    luaProtocol.insert(QStringLiteral("sandbox"), buildLuaSandboxObject(descriptor, validation));
+    return luaProtocol;
 }
 
 /**
@@ -255,7 +345,8 @@ QJsonObject buildValidationObject(const ProtocolConfigValidationResult& validati
 
 QJsonObject ProtocolDiagnosticsBuilder::build(const ProtocolDescriptor& descriptor,
                                               const QVariantMap& currentConfig,
-                                              const QString& generatedAt)
+                                              const QString& generatedAt,
+                                              const ProtocolDiagnosticsContext& context)
 {
     /*
      * 诊断构建从 Schema 校验开始。这样 configuration 和 validation
@@ -276,6 +367,10 @@ QJsonObject ProtocolDiagnosticsBuilder::build(const ProtocolDescriptor& descript
     root.insert(QStringLiteral("configuration"),
                 buildConfigurationObject(descriptor, currentConfig, validation));
     root.insert(QStringLiteral("validation"), buildValidationObject(validation));
+    if (descriptor.scriptProtocol) {
+        root.insert(QStringLiteral("luaProtocol"),
+                    buildLuaProtocolObject(descriptor, validation, context));
+    }
     return root;
 }
 

@@ -8732,4 +8732,101 @@ Please check application permissions.</translation>
         <translation>Cannot open file</translation>
     </message>
 </context>
+<context>
+    <name>ComAssistant::ProtocolDiagnosticsDialog</name>
+    <message>
+        <source>剪贴板不可用，请手动复制 JSON。</source>
+        <translation>Clipboard is unavailable. Please copy the JSON manually.</translation>
+    </message>
+    <message>
+        <source>诊断 JSON 已复制。</source>
+        <translation>Diagnostics JSON copied.</translation>
+    </message>
+    <message>
+        <source>保存协议诊断 JSON</source>
+        <translation>Save Protocol Diagnostics JSON</translation>
+    </message>
+    <message>
+        <source>JSON 文件 (*.json);;所有文件 (*.*)</source>
+        <translation>JSON Files (*.json);;All Files (*.*)</translation>
+    </message>
+    <message>
+        <source>保存失败</source>
+        <translation>Save Failed</translation>
+    </message>
+    <message>
+        <source>无法写入诊断文件：%1</source>
+        <translation>Cannot write diagnostics file: %1</translation>
+    </message>
+    <message>
+        <source>诊断文件未完整写入：%1</source>
+        <translation>Diagnostics file was not fully written: %1</translation>
+    </message>
+    <message>
+        <source>诊断 JSON 已保存。</source>
+        <translation>Diagnostics JSON saved.</translation>
+    </message>
+    <message>
+        <source>协议诊断</source>
+        <translation>Protocol Diagnostics</translation>
+    </message>
+    <message>
+        <source>当前协议诊断</source>
+        <translation>Current Protocol Diagnostics</translation>
+    </message>
+    <message>
+        <source>复制 JSON</source>
+        <translation>Copy JSON</translation>
+    </message>
+    <message>
+        <source>保存 JSON...</source>
+        <translation>Save JSON...</translation>
+    </message>
+    <message>
+        <source>关闭</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>未知协议</source>
+        <translation>Unknown Protocol</translation>
+    </message>
+    <message>
+        <source>协议：%1（ID: %2，分类: %3）%4</source>
+        <translation>Protocol: %1 (ID: %2, Category: %3)%4</translation>
+    </message>
+    <message>
+        <source>
+说明：%1</source>
+        <translation>
+Description: %1</translation>
+    </message>
+    <message>
+        <source>能力：内置=%1，绘图=%2，构帧=%3，脚本=%4，可创建=%5</source>
+        <translation>Capabilities: Built-in=%1, Plot=%2, Frame Builder=%3, Script=%4, Creatable=%5</translation>
+    </message>
+    <message>
+        <source>配置：configVersion=%1，schemaVersion=%2，字段数=%3</source>
+        <translation>Configuration: configVersion=%1, schemaVersion=%2, Fields=%3</translation>
+    </message>
+    <message>
+        <source>校验：通过</source>
+        <translation>Validation: Passed</translation>
+    </message>
+    <message>
+        <source>校验：失败</source>
+        <translation>Validation: Failed</translation>
+    </message>
+    <message>
+        <source>
+错误：%1</source>
+        <translation>
+Errors: %1</translation>
+    </message>
+    <message>
+        <source>
+警告：%1</source>
+        <translation>
+Warnings: %1</translation>
+    </message>
+</context>
 </TS>

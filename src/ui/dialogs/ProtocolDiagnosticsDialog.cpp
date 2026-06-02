@@ -223,10 +223,12 @@ void ProtocolDiagnosticsDialog::populateSummary()
                                           ? QString()
                                           : tr("\n说明：%1").arg(description)));
 
-    m_capabilityLabel->setText(tr("能力：内置=%1，绘图=%2，构帧=%3")
+    m_capabilityLabel->setText(tr("能力：内置=%1，绘图=%2，构帧=%3，脚本=%4，可创建=%5")
                                    .arg(yesNoText(capabilities.value(QStringLiteral("builtin")).toBool()),
                                         yesNoText(capabilities.value(QStringLiteral("plotProtocol")).toBool()),
-                                        yesNoText(capabilities.value(QStringLiteral("frameBuilder")).toBool())));
+                                        yesNoText(capabilities.value(QStringLiteral("frameBuilder")).toBool()),
+                                        yesNoText(capabilities.value(QStringLiteral("scriptProtocol")).toBool()),
+                                        yesNoText(capabilities.value(QStringLiteral("creatable")).toBool())));
 
     m_configLabel->setText(tr("配置：configVersion=%1，schemaVersion=%2，字段数=%3")
                                .arg(jsonInt(configuration, QStringLiteral("configVersion")))
