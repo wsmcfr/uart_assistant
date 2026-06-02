@@ -30,6 +30,11 @@ private slots:
     void truncatesExcessiveOutput();
     void exposesSafeChecksumAndHexUtilities();
     void keepsCommunicationApiDisabledByDefault();
+    void registersSerialSendWhenCommunicationAllowed();
+    void registersSerialSendHexWhenCommunicationAllowed();
+    void serialApiStaysDisabledWithoutCallback();
+    void serialSendFailureReturnsLuaError();
+    void serialIsOpenUsesCallback();
 };
 
 #endif // TESTLUASANDBOX_H

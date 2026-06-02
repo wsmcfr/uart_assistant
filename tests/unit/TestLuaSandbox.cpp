@@ -198,3 +198,105 @@ void TestLuaSandbox::keepsCommunicationApiDisabledByDefault()
     QVERIFY2(result.success, qPrintable(result.errorMessage));
     QCOMPARE(result.outputLines.first(), QStringLiteral("true"));
 }
+
+void TestLuaSandbox::registersSerialSendWhenCommunicationAllowed()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+
+    QList<QByteArray> sentPayloads;
+    options.sendCallback = [&sentPayloads](const QByteArray& data) {
+        sentPayloads.append(data);
+        return true;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("serial.send('AT\\r\\n')"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(sentPayloads.size(), 1);
+    QCOMPARE(sentPayloads.first(), QByteArray("AT\r\n"));
+}
+
+void TestLuaSandbox::registersSerialSendHexWhenCommunicationAllowed()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+
+    QByteArray sent;
+    options.sendCallback = [&sent](const QByteArray& data) {
+        sent = data;
+        return true;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("serial.sendHex('AA 55 01')"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(sent.toHex(' ').toUpper(), QByteArray("AA 55 01"));
+}
+
+void TestLuaSandbox::serialApiStaysDisabledWithoutCallback()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("print(serial == nil)"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(result.outputLines.first(), QStringLiteral("true"));
+}
+
+void TestLuaSandbox::serialSendFailureReturnsLuaError()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+    options.sendCallback = [](const QByteArray&) {
+        return false;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("serial.send('data')"),
+        options);
+
+    QVERIFY(!result.success);
+    QVERIFY(result.errorMessage.contains(QStringLiteral("serial.send failed")));
+}
+
+void TestLuaSandbox::serialIsOpenUsesCallback()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+    options.sendCallback = [](const QByteArray&) {
+        return true;
+    };
+    options.isOpenCallback = []() {
+        return false;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("print(serial.isOpen())"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(result.outputLines.first(), QStringLiteral("false"));
+}

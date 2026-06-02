@@ -8,6 +8,9 @@
 
 #include <QString>
 #include <QStringList>
+#include <QByteArray>
+
+#include <functional>
 
 namespace ComAssistant {
 
@@ -19,10 +22,15 @@ namespace ComAssistant {
  */
 struct LuaSandboxOptions
 {
+    using SendCallback = std::function<bool(const QByteArray&)>;
+    using IsOpenCallback = std::function<bool()>;
+
     int timeoutMs = 1000;               ///< 最大执行时长，<=0 表示不限制时间
     int memoryLimitKb = 1024;           ///< Lua state 内存预算，<=0 表示不限制内存
     int maxOutputLines = 200;           ///< print 输出最多保留的行数
     bool allowCommunicationApi = false; ///< 是否启用后续通信 API，4.5 默认关闭
+    SendCallback sendCallback;          ///< 受控发送回调，仅通信 API 显式启用时使用
+    IsOpenCallback isOpenCallback;      ///< 连接状态回调，仅用于 serial.isOpen()
 };
 
 /**
