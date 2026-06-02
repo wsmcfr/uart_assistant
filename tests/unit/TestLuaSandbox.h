@@ -34,6 +34,7 @@ private slots:
     void registersSerialSendHexWhenCommunicationAllowed();
     void serialApiStaysDisabledWithoutCallback();
     void serialSendFailureReturnsLuaError();
+    void serialSendFailureCanExposeSpecificReason();
     void serialIsOpenUsesCallback();
     void interruptsInfiniteLoopWhenCallbackRequestsStop();
 };

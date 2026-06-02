@@ -279,6 +279,36 @@ void TestLuaSandbox::serialSendFailureReturnsLuaError()
     QVERIFY(result.errorMessage.contains(QStringLiteral("serial.send failed")));
 }
 
+/**
+ * @brief 验证 serial.send 失败时能暴露调用方提供的具体原因。
+ *
+ * 4.8 需要把主窗口发送队列拒绝、未连接或写入失败传回 Lua。
+ * 该测试先使用新回调注入稳定错误文本，证明 LuaSandbox 不再只能
+ * 返回泛化的 serial.send failed。
+ */
+void TestLuaSandbox::serialSendFailureCanExposeSpecificReason()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+    options.allowCommunicationApi = true;
+    options.sendWithErrorCallback = [](const QByteArray&, QString* error) {
+        if (error) {
+            *error = QStringLiteral("queue rejected for test");
+        }
+        return false;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("serial.send('data')"),
+        options);
+
+    QVERIFY(!result.success);
+    QVERIFY(result.errorMessage.contains(QStringLiteral("serial.send failed")));
+    QVERIFY(result.errorMessage.contains(QStringLiteral("queue rejected for test")));
+}
+
 void TestLuaSandbox::serialIsOpenUsesCallback()
 {
     LuaSandbox sandbox;
