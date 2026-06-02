@@ -38,6 +38,7 @@ set(TEST_SOURCES
     unit/TestDocumentationLinks.cpp
     unit/TestSendQueue.cpp
     unit/TestLuaSandbox.cpp
+    unit/TestScriptEditorDialog.cpp
     unit/TestProtocolConfigSchema.cpp
     unit/TestProtocolConfigEditor.cpp
     unit/TestProtocolDiagnostics.cpp
@@ -79,6 +80,8 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.h
@@ -163,6 +166,8 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/QuickSendWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.cpp
