@@ -24,6 +24,7 @@ namespace ComAssistant {
 struct LuaSandboxOptions
 {
     using SendCallback = std::function<bool(const QByteArray&)>;
+    using SendWithErrorCallback = std::function<bool(const QByteArray&, QString*)>;
     using IsOpenCallback = std::function<bool()>;
     using InterruptCallback = std::function<bool()>;
 
@@ -32,6 +33,7 @@ struct LuaSandboxOptions
     int maxOutputLines = 200;           ///< print 输出最多保留的行数
     bool allowCommunicationApi = false; ///< 是否启用后续通信 API，4.5 默认关闭
     SendCallback sendCallback;          ///< 受控发送回调，仅通信 API 显式启用时使用
+    SendWithErrorCallback sendWithErrorCallback; ///< 受控发送回调，可把失败原因写回 Lua 错误
     IsOpenCallback isOpenCallback;      ///< 连接状态回调，仅用于 serial.isOpen()
     InterruptCallback interruptCallback; ///< 外部取消回调，返回 true 时 hook 中断脚本
 };

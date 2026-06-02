@@ -240,6 +240,67 @@ int sandboxCrc32(lua_State* L)
 }
 
 /**
+ * @brief 执行沙箱受控发送回调。
+ * @param context 当前 Lua 沙箱上下文。
+ * @param bytes 待发送的原始字节。
+ * @param error 用于写回调用方提供的失败原因。
+ * @return 发送请求被接受返回 true。
+ *
+ * 4.8 引入 sendWithErrorCallback，用来把主窗口连接状态、发送队列拒绝
+ * 或底层写入失败原因传回 Lua。旧的 sendCallback 保留为兼容路径，
+ * 避免既有测试和未来简单调用方被迫关心错误文本。
+ */
+bool sendBytesFromSandbox(SandboxContext* context,
+                          const QByteArray& bytes,
+                          QString* error)
+{
+    if (!context) {
+        if (error) {
+            *error = QStringLiteral("Lua sandbox context unavailable");
+        }
+        return false;
+    }
+
+    if (context->options.sendWithErrorCallback) {
+        return context->options.sendWithErrorCallback(bytes, error);
+    }
+
+    if (context->options.sendCallback) {
+        const bool accepted = context->options.sendCallback(bytes);
+        if (!accepted && error) {
+            *error = QStringLiteral("Send callback rejected payload");
+        }
+        return accepted;
+    }
+
+    if (error) {
+        *error = QStringLiteral("serial send callback unavailable");
+    }
+    return false;
+}
+
+/**
+ * @brief 抛出带可选原因的 serial 发送失败 Lua 错误。
+ * @param L Lua 状态。
+ * @param prefix 稳定错误前缀，例如 serial.send failed。
+ * @param reason 调用方提供的具体失败原因。
+ * @return luaL_error 的返回值。
+ *
+ * 稳定前缀便于脚本和测试识别错误类型；具体原因让 UI 和脚本作者
+ * 能区分未连接、队列拒绝、写入失败等实际问题。
+ */
+int raiseSendFailure(lua_State* L, const char* prefix, const QString& reason)
+{
+    if (reason.trimmed().isEmpty()) {
+        return luaL_error(L, "%s", prefix);
+    }
+
+    const QByteArray message =
+        QStringLiteral("%1: %2").arg(QString::fromUtf8(prefix), reason.trimmed()).toUtf8();
+    return luaL_error(L, "%s", message.constData());
+}
+
+/**
  * @brief 沙箱版 serial.send。
  * @param L Lua 状态。
  * @return Lua 返回值数量；发送失败时通过 luaL_error 抛出 Lua 错误。
@@ -250,15 +311,17 @@ int sandboxCrc32(lua_State* L)
 int sandboxSerialSend(lua_State* L)
 {
     SandboxContext* context = contextFromState(L);
-    if (!context || !context->options.sendCallback) {
+    if (!context
+        || (!context->options.sendCallback && !context->options.sendWithErrorCallback)) {
         return luaL_error(L, "serial.send unavailable");
     }
 
     size_t length = 0;
     const char* data = luaL_checklstring(L, 1, &length);
     const QByteArray bytes(data, static_cast<int>(length));
-    if (!context->options.sendCallback(bytes)) {
-        return luaL_error(L, "serial.send failed");
+    QString error;
+    if (!sendBytesFromSandbox(context, bytes, &error)) {
+        return raiseSendFailure(L, "serial.send failed", error);
     }
 
     return 0;
@@ -275,14 +338,16 @@ int sandboxSerialSend(lua_State* L)
 int sandboxSerialSendHex(lua_State* L)
 {
     SandboxContext* context = contextFromState(L);
-    if (!context || !context->options.sendCallback) {
+    if (!context
+        || (!context->options.sendCallback && !context->options.sendWithErrorCallback)) {
         return luaL_error(L, "serial.sendHex unavailable");
     }
 
     const char* hex = luaL_checkstring(L, 1);
     const QByteArray bytes = ConversionUtils::hexStringToBytes(QString::fromUtf8(hex));
-    if (!context->options.sendCallback(bytes)) {
-        return luaL_error(L, "serial.sendHex failed");
+    QString error;
+    if (!sendBytesFromSandbox(context, bytes, &error)) {
+        return raiseSendFailure(L, "serial.sendHex failed", error);
     }
 
     return 0;
@@ -462,7 +527,8 @@ LuaSandboxResult LuaSandbox::execute(const QString& script,
     storeContext(L, &context);
     openSafeLibraries(L);
     registerSafeFunctions(L);
-    if (options.allowCommunicationApi && options.sendCallback) {
+    if (options.allowCommunicationApi
+        && (options.sendCallback || options.sendWithErrorCallback)) {
         registerSerialApi(L);
     }
     lua_sethook(L, sandboxHook, LUA_MASKCOUNT, kHookInstructionInterval);
