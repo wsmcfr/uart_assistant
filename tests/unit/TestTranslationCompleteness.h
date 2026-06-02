@@ -36,6 +36,7 @@ private slots:
     void testMainWindowToolbarTranslations();
     void testFileTransferDialogTranslations();
     void testQuickSendTranslations();
+    void testTabbedReceiveContextMenuTranslations();
     void testNoUnfinishedTranslations();
 
 private:

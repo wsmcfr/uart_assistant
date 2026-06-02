@@ -259,6 +259,25 @@ void TestTranslationCompleteness::testQuickSendTranslations()
         });
 }
 
+void TestTranslationCompleteness::testTabbedReceiveContextMenuTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+    verifyTranslations(
+        translations,
+        QStringLiteral("ComAssistant::TabbedReceiveWidget"),
+        {
+            {QStringLiteral("复制"), QStringLiteral("Copy")},
+            {QStringLiteral("全选"), QStringLiteral("Select All")},
+            {QStringLiteral("清屏"), QStringLiteral("Clear Screen")},
+            {QStringLiteral("暂停显示"), QStringLiteral("Pause Display")},
+            {QStringLiteral("继续显示"), QStringLiteral("Resume Display")},
+            {QStringLiteral("自动滚动"), QStringLiteral("Auto")},
+            {QStringLiteral("HEX显示"), QStringLiteral("HEX")},
+            {QStringLiteral("时间戳"), QStringLiteral("Time")},
+            {QStringLiteral("高亮"), QStringLiteral("Highlight")}
+        });
+}
+
 void TestTranslationCompleteness::testNoUnfinishedTranslations()
 {
     const ContextTranslations translations = loadTranslations();
