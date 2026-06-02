@@ -237,3 +237,50 @@ void TestProtocolRegistry::defaultConfigMatchesSchema()
         QCOMPARE(result.normalizedConfig, descriptor.defaultConfig);
     }
 }
+
+void TestProtocolRegistry::registersLuaScriptProtocolDescriptor()
+{
+    /*
+     * 4.9 的最小闭环不是立刻执行 Lua 协议，而是先让 Lua 协议能力进入
+     * 注册中心、Schema 和诊断事实源。该描述必须清楚标记“脚本协议、
+     * 不可创建实例、也不参与旧版枚举兼容链路”。
+     */
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    QVERIFY(registry.contains(QStringLiteral("lua.script")));
+
+    const ProtocolDescriptor descriptor = registry.descriptor(QStringLiteral("lua.script"));
+    QCOMPARE(descriptor.id, QStringLiteral("lua.script"));
+    QCOMPARE(descriptor.displayName, QStringLiteral("Lua Script"));
+    QCOMPARE(descriptor.category, ProtocolCategory::Custom);
+    QVERIFY(descriptor.scriptProtocol);
+    QVERIFY(!descriptor.creatable);
+    QVERIFY(!descriptor.legacyCompatible);
+    QVERIFY(!descriptor.builtin);
+    QVERIFY(!descriptor.plotProtocol);
+    QVERIFY(!descriptor.frameBuilder);
+    QVERIFY(descriptor.configSchema.fields.size() >= 7);
+    QCOMPARE(descriptor.defaultConfig.value(QStringLiteral("timeoutMs")).toInt(), 1000);
+    QCOMPARE(descriptor.defaultConfig.value(QStringLiteral("memoryLimitKb")).toInt(), 1024);
+    QCOMPARE(descriptor.defaultConfig.value(QStringLiteral("maxOutputLines")).toInt(), 200);
+    QCOMPARE(descriptor.defaultConfig.value(QStringLiteral("entryFunction")).toString(),
+             QStringLiteral("process"));
+
+    QVERIFY(registry.create(QStringLiteral("lua.script")) == nullptr);
+}
+
+void TestProtocolRegistry::factoryLegacyListIgnoresLuaDescriptor()
+{
+    /*
+     * Lua 脚本协议已经进入共享注册中心，但它当前没有旧版 ProtocolType
+     * 映射意义。supportedTypes() 仍必须只返回旧工作流中的 10 个协议，
+     * 避免影响绘图协议菜单、旧会话恢复和已有 UI 逻辑。
+     */
+    const QList<ProtocolType> types = ProtocolFactory::supportedTypes();
+    QCOMPARE(types.size(), 10);
+    QVERIFY(types.contains(ProtocolType::Raw));
+    QVERIFY(types.contains(ProtocolType::JustFloat));
+    QCOMPARE(ProtocolFactory::typeId(ProtocolType::Raw), QStringLiteral("raw"));
+    QVERIFY(ProtocolFactory::registry().contains(QStringLiteral("lua.script")));
+}

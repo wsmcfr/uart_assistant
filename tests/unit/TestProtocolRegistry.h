@@ -89,6 +89,22 @@ private slots:
      * 默认配置如果无法自洽，会导致会话迁移、后续 UI 和协议实例创建都不可靠。
      */
     void defaultConfigMatchesSchema();
+
+    /**
+     * @brief 验证 Lua 脚本协议元数据已登记。
+     *
+     * 4.9 先让 Lua 协议进入 descriptor/schema/diagnostics 事实源，
+     * 但当前阶段不创建真实协议实例。
+     */
+    void registersLuaScriptProtocolDescriptor();
+
+    /**
+     * @brief 验证旧版协议列表不会包含 Lua 脚本协议。
+     *
+     * Lua 协议当前不参与旧版 ProtocolType 工作流，避免污染绘图协议菜单、
+     * 旧会话恢复和已有工厂调用方。
+     */
+    void factoryLegacyListIgnoresLuaDescriptor();
 };
 
 #endif // TESTPROTOCOLREGISTRY_H
