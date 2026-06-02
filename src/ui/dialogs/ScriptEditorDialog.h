@@ -8,6 +8,8 @@
 #ifndef COMASSISTANT_SCRIPTEDITORDIALOG_H
 #define COMASSISTANT_SCRIPTEDITORDIALOG_H
 
+#include "ScriptExecutionWorker.h"
+
 #include <QDialog>
 #include <QPlainTextEdit>
 #include <QTextEdit>
@@ -17,6 +19,7 @@
 #include <QTimer>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 
 class QThread;
@@ -25,7 +28,6 @@ namespace ComAssistant {
 
 struct LuaSandboxResult;
 class LuaSyntaxHighlighter;
-class ScriptExecutionWorker;
 
 /**
  * @brief 脚本编辑器对话框
@@ -34,11 +36,32 @@ class ScriptEditorDialog : public QDialog {
     Q_OBJECT
 
 public:
+    using ConnectionStateProvider = std::function<bool()>;
+    using SendDataHandler = std::function<ScriptSendResult(const QByteArray&)>;
+
     explicit ScriptEditorDialog(QWidget* parent = nullptr);
     ~ScriptEditorDialog() override;
 
     QString currentScript() const;
     void setScript(const QString& script);
+
+    /**
+     * @brief 注入当前通信连接状态提供函数。
+     * @param provider 返回 true 表示主窗口当前通信链路已连接。
+     *
+     * 脚本 worker 通过线程安全 wrapper 调用该函数，让 serial.isOpen()
+     * 能反映主窗口真实连接状态，而不是固定返回通道可用。
+     */
+    void setConnectionStateProvider(ConnectionStateProvider provider);
+
+    /**
+     * @brief 注入脚本发送处理函数。
+     * @param handler 接收脚本 payload，并返回发送入口接受或拒绝结果。
+     *
+     * 该 handler 通常由 MainWindow 注入，内部调用通信控制器的 sendData()。
+     * 对话框负责保证它在 UI 线程执行，worker 不直接触碰通信对象。
+     */
+    void setSendDataHandler(SendDataHandler handler);
 
 signals:
     void scriptOutput(const QString& text);
@@ -94,14 +117,6 @@ private:
     void requestWorkerCancellation();
 
     /**
-     * @brief 处理 worker 请求发送的数据。
-     * @param data 脚本产生的原始发送字节。
-     *
-     * 该槽在 UI 线程执行，负责追加输出预览并继续发射 sendData 信号。
-     */
-    void handleWorkerSendRequested(const QByteArray& data);
-
-    /**
      * @brief 处理 worker 返回的脚本执行结果。
      * @param result LuaSandbox 的结构化执行结果。
      *
@@ -122,6 +137,41 @@ private:
      * @param state 目标运行状态。
      */
     void setRunState(ScriptRunState state);
+
+    /**
+     * @brief 在线程安全边界上读取脚本连接状态。
+     * @return 当前主窗口通信链路可用于脚本发送返回 true。
+     *
+     * worker 线程调用该函数时会阻塞投递到 UI 线程；如果当前已经在 UI 线程，
+     * 则直接读取，避免 BlockingQueuedConnection 自锁。
+     */
+    bool isScriptConnectionOpenOnUiThread();
+
+    /**
+     * @brief 在线程安全边界上执行脚本发送。
+     * @param data 脚本请求发送的原始字节。
+     * @return 发送入口接受或拒绝结果。
+     *
+     * 该函数是 worker 和 UI/通信层之间的同步桥。它只等待本地发送入口结果，
+     * 不等待设备响应，因此不会改变现有通信协议语义。
+     */
+    ScriptSendResult sendScriptDataOnUiThread(const QByteArray& data);
+
+    /**
+     * @brief 直接读取 UI 线程中的脚本连接状态。
+     * @return 当前连接可用返回 true。
+     */
+    bool isScriptConnectionOpenDirect() const;
+
+    /**
+     * @brief 在 UI 线程执行一次脚本发送请求。
+     * @param data 脚本请求发送的原始字节。
+     * @return 发送入口接受或拒绝结果。
+     *
+     * 该函数负责统一处理未连接、空数据、handler 缺失、发送成功提示和
+     * 发送失败提示。调用者必须保证当前线程是对话框所属 UI 线程。
+     */
+    ScriptSendResult performScriptSend(const QByteArray& data);
 
 private:
     // UI组件
@@ -149,6 +199,8 @@ private:
     ScriptExecutionWorker* m_scriptWorker = nullptr;      ///< 当前脚本 worker，生命周期归线程清理流程管理
     std::shared_ptr<std::atomic_bool> m_cancelRequested;  ///< 停止按钮写入、Lua hook 读取的取消标记
     ScriptRunState m_runState = ScriptRunState::Idle;     ///< 当前脚本运行状态，用于按钮和重复运行防护
+    ConnectionStateProvider m_connectionStateProvider;    ///< 主窗口注入的连接状态提供函数
+    SendDataHandler m_sendDataHandler;                    ///< 主窗口注入的脚本发送处理函数
 };
 
 } // namespace ComAssistant

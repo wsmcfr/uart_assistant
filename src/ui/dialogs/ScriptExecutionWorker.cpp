@@ -19,10 +19,14 @@ namespace ComAssistant {
  */
 ScriptExecutionWorker::ScriptExecutionWorker(QString script,
                                              InterruptCallback interruptCallback,
+                                             SendCallback sendCallback,
+                                             ConnectionStateCallback connectionStateCallback,
                                              QObject* parent)
     : QObject(parent)
     , m_script(std::move(script))
     , m_interruptCallback(std::move(interruptCallback))
+    , m_sendCallback(std::move(sendCallback))
+    , m_connectionStateCallback(std::move(connectionStateCallback))
 {
 }
 
@@ -43,24 +47,30 @@ void ScriptExecutionWorker::run()
     options.interruptCallback = m_interruptCallback;
 
     /*
-     * serial.send/serial.sendHex 在 worker 线程内被 Lua 调用。这里不直接操作 UI 或通信对象，
-     * 只把非空数据通过 queued signal 交回对话框，保持线程边界清晰。
+     * serial.send/serial.sendHex 在 worker 线程内被 Lua 调用。这里仍不直接操作
+     * UI 或通信对象，只调用对话框注入的线程安全 wrapper，并把拒绝原因写回 Lua。
      */
-    options.sendCallback = [this](const QByteArray& bytes) {
-        if (bytes.isEmpty()) {
+    options.sendWithErrorCallback = [this](const QByteArray& bytes, QString* error) {
+        if (!m_sendCallback) {
+            if (error) {
+                *error = QStringLiteral("脚本发送通道未连接到主窗口");
+            }
             return false;
         }
 
-        emit sendRequested(bytes);
-        return true;
+        const ScriptSendResult result = m_sendCallback(bytes);
+        if (!result.accepted && error) {
+            *error = result.error;
+        }
+        return result.accepted;
     };
 
     /*
-     * 4.7 第一版仍沿用 4.6 语义：脚本发送通道启用时 serial.isOpen() 返回 true。
-     * 真实连接状态注入需要主窗口提供线程安全状态回调，留给后续小阶段处理。
+     * 连接状态由 ScriptEditorDialog 注入的线程安全 wrapper 提供。没有回调时
+     * 保守返回 false，避免脚本在未绑定主窗口发送入口时误判可以通信。
      */
-    options.isOpenCallback = []() {
-        return true;
+    options.isOpenCallback = [this]() {
+        return m_connectionStateCallback ? m_connectionStateCallback() : false;
     };
 
     LuaSandbox sandbox;

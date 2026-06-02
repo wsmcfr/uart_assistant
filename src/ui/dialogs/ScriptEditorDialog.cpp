@@ -20,6 +20,8 @@
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QThread>
+#include <QMetaObject>
+#include <QPointer>
 
 #include <utility>
 
@@ -253,6 +255,24 @@ void ScriptEditorDialog::setScript(const QString& script)
     m_codeEditor->setPlainText(script);
 }
 
+void ScriptEditorDialog::setConnectionStateProvider(ConnectionStateProvider provider)
+{
+    /*
+     * provider 通常捕获 MainWindow 或通信控制器，只能在 UI 线程调用。
+     * 这里仅保存函数对象，实际跨线程调度由 isScriptConnectionOpenOnUiThread() 负责。
+     */
+    m_connectionStateProvider = std::move(provider);
+}
+
+void ScriptEditorDialog::setSendDataHandler(SendDataHandler handler)
+{
+    /*
+     * handler 只表示“本地发送入口是否接受 payload”，不等待设备响应。
+     * 对话框负责在 UI 线程调用它，worker 只拿到同步结果。
+     */
+    m_sendDataHandler = std::move(handler);
+}
+
 void ScriptEditorDialog::onNewScript()
 {
     if (m_modified) {
@@ -467,17 +487,31 @@ void ScriptEditorDialog::startWorkerExecution(const QString& script)
         return !flag || flag->load();
     };
 
+    const QPointer<ScriptEditorDialog> dialogGuard(this);
+    auto sendCallback = [dialogGuard](const QByteArray& bytes) {
+        if (!dialogGuard) {
+            ScriptSendResult result;
+            result.accepted = false;
+            result.error = QStringLiteral("脚本编辑器已关闭");
+            return result;
+        }
+        return dialogGuard->sendScriptDataOnUiThread(bytes);
+    };
+    auto connectionStateCallback = [dialogGuard]() {
+        return dialogGuard ? dialogGuard->isScriptConnectionOpenOnUiThread() : false;
+    };
+
     m_scriptThread = new QThread(this);
-    m_scriptWorker = new ScriptExecutionWorker(script, interruptCallback);
+    m_scriptWorker = new ScriptExecutionWorker(script,
+                                               interruptCallback,
+                                               sendCallback,
+                                               connectionStateCallback);
     m_scriptWorker->moveToThread(m_scriptThread);
     QThread* thread = m_scriptThread;
     ScriptExecutionWorker* worker = m_scriptWorker;
 
     connect(m_scriptThread, &QThread::started,
             m_scriptWorker, &ScriptExecutionWorker::run);
-    connect(m_scriptWorker, &ScriptExecutionWorker::sendRequested,
-            this, &ScriptEditorDialog::handleWorkerSendRequested,
-            Qt::QueuedConnection);
     connect(m_scriptWorker, &ScriptExecutionWorker::finished,
             this, &ScriptEditorDialog::handleWorkerFinished,
             Qt::QueuedConnection);
@@ -517,16 +551,6 @@ void ScriptEditorDialog::requestWorkerCancellation()
     if (m_cancelRequested) {
         m_cancelRequested->store(true);
     }
-}
-
-void ScriptEditorDialog::handleWorkerSendRequested(const QByteArray& data)
-{
-    /*
-     * 该槽通过 queued connection 在 UI 线程执行，所以可以安全更新输出区域。
-     * 真正发送仍交给 MainWindow 既有 sendData 连接处理。
-     */
-    emit sendData(data);
-    appendOutput(tr("[发送] %1").arg(sentPayloadPreview(data)), QColor(33, 150, 243));
 }
 
 void ScriptEditorDialog::handleWorkerFinished(const LuaSandboxResult& result)
@@ -581,6 +605,94 @@ void ScriptEditorDialog::setRunState(ScriptRunState state)
     if (m_stopBtn) {
         m_stopBtn->setEnabled(state == ScriptRunState::Running);
     }
+}
+
+bool ScriptEditorDialog::isScriptConnectionOpenOnUiThread()
+{
+    /*
+     * Lua 的 serial.isOpen() 可能在 worker 线程触发。主窗口连接状态属于 UI
+     * 对象图，因此跨线程时必须同步切回对话框线程读取。
+     */
+    if (QThread::currentThread() == thread()) {
+        return isScriptConnectionOpenDirect();
+    }
+
+    bool open = false;
+    QMetaObject::invokeMethod(this,
+                              [this, &open]() {
+                                  open = isScriptConnectionOpenDirect();
+                              },
+                              Qt::BlockingQueuedConnection);
+    return open;
+}
+
+ScriptSendResult ScriptEditorDialog::sendScriptDataOnUiThread(const QByteArray& data)
+{
+    /*
+     * Lua 的 serial.send()/sendHex() 必须等待本地发送入口给出接受或拒绝
+     * 结果，才能把失败转成 Lua 错误。这里同步切回 UI 线程，但只执行
+     * 本地发送入口，不等待远端设备响应。
+     */
+    if (QThread::currentThread() == thread()) {
+        return performScriptSend(data);
+    }
+
+    ScriptSendResult result;
+    QMetaObject::invokeMethod(this,
+                              [this, &data, &result]() {
+                                  result = performScriptSend(data);
+                              },
+                              Qt::BlockingQueuedConnection);
+    return result;
+}
+
+bool ScriptEditorDialog::isScriptConnectionOpenDirect() const
+{
+    /*
+     * 未注入 provider 时保守视为未连接。这样测试、独立对话框或错误绑定
+     * 不会让 serial.isOpen() 误报 true。
+     */
+    return m_connectionStateProvider ? m_connectionStateProvider() : false;
+}
+
+ScriptSendResult ScriptEditorDialog::performScriptSend(const QByteArray& data)
+{
+    ScriptSendResult result;
+
+    if (!isScriptConnectionOpenDirect()) {
+        result.error = tr("当前连接未打开");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    if (data.isEmpty()) {
+        result.error = tr("脚本发送数据不能为空");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    if (!m_sendDataHandler) {
+        result.error = tr("脚本发送通道未连接到主窗口");
+        appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+        return result;
+    }
+
+    result = m_sendDataHandler(data);
+    if (result.accepted) {
+        /*
+         * sendData 信号现在是“脚本发送成功通知”，保留给测试和未来观察者。
+         * MainWindow 的真实发送由 m_sendDataHandler 完成，避免重复发送。
+         */
+        emit sendData(data);
+        appendOutput(tr("[发送] %1").arg(sentPayloadPreview(data)), QColor(33, 150, 243));
+        return result;
+    }
+
+    if (result.error.trimmed().isEmpty()) {
+        result.error = tr("发送失败");
+    }
+    appendOutput(tr("[发送失败] %1").arg(result.error), QColor(220, 20, 60));
+    return result;
 }
 
 } // namespace ComAssistant
