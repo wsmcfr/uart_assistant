@@ -61,6 +61,13 @@ public:
     QList<ProtocolDescriptor> descriptors() const;
 
     /**
+     * @brief 按分类返回协议描述列表
+     * @param category 目标协议分类
+     * @return 保持注册顺序的协议描述列表
+     */
+    QList<ProtocolDescriptor> descriptorsByCategory(ProtocolCategory category) const;
+
+    /**
      * @brief 按 ID 创建协议实例
      * @param id 稳定协议 ID
      * @param parent Qt 父对象，传入后由父子关系管理生命周期

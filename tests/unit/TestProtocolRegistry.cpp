@@ -152,3 +152,18 @@ void TestProtocolRegistry::keepsFactoryCompatibility()
     std::unique_ptr<IProtocol> raw(ProtocolFactory::create(ProtocolType::Raw));
     QVERIFY(raw == nullptr);
 }
+
+void TestProtocolRegistry::filtersDescriptorsByCategory()
+{
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    const QList<ProtocolDescriptor> plotProtocols =
+        registry.descriptorsByCategory(ProtocolCategory::Plot);
+    QCOMPARE(plotProtocols.size(), 4);
+
+    for (const ProtocolDescriptor& descriptor : plotProtocols) {
+        QVERIFY(descriptor.plotProtocol);
+        QCOMPARE(descriptor.category, ProtocolCategory::Plot);
+    }
+}

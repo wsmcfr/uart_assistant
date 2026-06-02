@@ -61,6 +61,13 @@ private slots:
      * 旧调用方仍通过 ProtocolType 使用工厂，迁移到注册中心后不能改变行为。
      */
     void keepsFactoryCompatibility();
+
+    /**
+     * @brief 验证可按分类筛选协议描述
+     *
+     * 分类筛选为后续协议 UI 分组、诊断包和插件管理视图提供基础能力。
+     */
+    void filtersDescriptorsByCategory();
 };
 
 #endif // TESTPROTOCOLREGISTRY_H

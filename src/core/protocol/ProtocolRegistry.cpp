@@ -223,6 +223,24 @@ QList<ProtocolDescriptor> ProtocolRegistry::descriptors() const
     return result;
 }
 
+QList<ProtocolDescriptor> ProtocolRegistry::descriptorsByCategory(ProtocolCategory category) const
+{
+    QList<ProtocolDescriptor> result;
+
+    /*
+     * 分类筛选保持原始注册顺序，避免 UI 分组或诊断包导出时因为筛选
+     * 改变协议列表顺序，导致用户看到的协议排列不稳定。
+     */
+    for (const QString& id : m_orderedIds) {
+        const ProtocolDescriptor protocolDescriptor = m_descriptors.value(id);
+        if (protocolDescriptor.category == category) {
+            result.append(protocolDescriptor);
+        }
+    }
+
+    return result;
+}
+
 IProtocol* ProtocolRegistry::create(const QString& id, QObject* parent) const
 {
     const ProtocolCreator creator = m_creators.value(id);
