@@ -37,6 +37,7 @@ set(TEST_SOURCES
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
     unit/TestSendQueue.cpp
+    unit/TestProtocolRegistry.cpp
     unit/TestMainWindowCommunicationController.cpp
     unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
     unit/TestMainWindowPlotDataRouter.cpp
@@ -58,6 +59,8 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/IProtocol.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDescriptor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
@@ -160,6 +163,17 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/FrameParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/AsciiProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/HexProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ModbusProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CustomProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/EasyHexProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/TextProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/StampProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CsvProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/JustFloatProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp
 )
 
