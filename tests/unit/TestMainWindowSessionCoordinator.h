@@ -41,6 +41,21 @@ private slots:
      * @brief 会话中的非法协议值应回退为 Raw。
      */
     void testInvalidProtocolFallsBackToRaw();
+
+    /**
+     * @brief 非旧版稳定协议 ID 应能按 ID 恢复。
+     *
+     * `lua.script` 的旧版 protocolType 固定为 Raw，但稳定 ID 不能因此被
+     * Raw 抹掉，否则 Lua 协议无法进入用户可选接收链路。
+     */
+    void testStableProtocolIdRestoresLuaScript();
+
+    /**
+     * @brief 未知稳定协议 ID 应安全回退 Raw。
+     *
+     * 会话文件可能来自未来版本或损坏文件；未知 ID 不能继续创建协议实例。
+     */
+    void testUnknownStableProtocolIdFallsBackToRaw();
 };
 
 #endif // TESTMAINWINDOWSESSIONCOORDINATOR_H

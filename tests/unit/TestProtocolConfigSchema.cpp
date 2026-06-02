@@ -170,6 +170,33 @@ void TestProtocolConfigSchema::sessionPersistsProtocolIdAndConfig()
     QCOMPARE(restored.protocolConfig.value(QStringLiteral("timeoutMs")).toInt(), 250);
 }
 
+void TestProtocolConfigSchema::sessionPersistsLuaScriptProtocolConfig()
+{
+    /*
+     * Lua 协议依赖多行 scriptSource。保存会话和恢复会话必须保留源码文本，
+     * 否则用户配置好的脚本协议在下次打开后无法继续解析接收数据。
+     */
+    const ProtocolDescriptor descriptor =
+        ProtocolFactory::registry().descriptor(QStringLiteral("lua.script"));
+    const QString script = QStringLiteral("function process(data, context)\n"
+                                          "  return { valid = false, consumedBytes = 0 }\n"
+                                          "end");
+
+    SessionData session;
+    session.protocolType = static_cast<int>(ProtocolType::Raw);
+    session.protocolId = QStringLiteral("lua.script");
+    session.protocolConfigVersion = descriptor.configVersion;
+    session.protocolConfig = descriptor.defaultConfig;
+    session.protocolConfig.insert(QStringLiteral("scriptSource"), script);
+
+    const QJsonObject json = session.toJson();
+    const SessionData restored = SessionData::fromJson(json);
+
+    QCOMPARE(restored.protocolId, QStringLiteral("lua.script"));
+    QCOMPARE(restored.protocolConfigVersion, descriptor.configVersion);
+    QCOMPARE(restored.protocolConfig.value(QStringLiteral("scriptSource")).toString(), script);
+}
+
 void TestProtocolConfigSchema::sessionMigratesLegacyProtocolTypeToProtocolId()
 {
     /*

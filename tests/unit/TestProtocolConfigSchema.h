@@ -26,6 +26,7 @@ private slots:
     void factoryAppliesValidatedAsciiConfig();
     void factoryAppliesValidatedEasyHexConfig();
     void sessionPersistsProtocolIdAndConfig();
+    void sessionPersistsLuaScriptProtocolConfig();
     void sessionMigratesLegacyProtocolTypeToProtocolId();
 };
 

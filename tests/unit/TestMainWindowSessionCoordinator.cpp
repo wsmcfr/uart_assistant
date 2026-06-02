@@ -213,3 +213,66 @@ void TestMainWindowSessionCoordinator::testInvalidProtocolFallsBackToRaw()
 
     QCOMPARE(result.restoredProtocolType, ProtocolType::Raw);
 }
+
+void TestMainWindowSessionCoordinator::testStableProtocolIdRestoresLuaScript()
+{
+    /*
+     * Lua 协议不参与旧版 ProtocolType 枚举，因此 protocolType 会保持 Raw。
+     * 协调器必须把稳定 protocolId 原样返回给 MainWindow，后者再通过注册
+     * 中心创建真实协议实例并应用配置。
+     */
+    SessionCoordinatorFixture fixture;
+    SessionData session = makeBaseSession();
+    session.protocolType = static_cast<int>(ProtocolType::Raw);
+    session.protocolId = QStringLiteral("lua.script");
+    session.protocolConfig.insert(
+        QStringLiteral("scriptSource"),
+        QStringLiteral("function process(data, context)\n"
+                       "  return { valid = false, consumedBytes = 0 }\n"
+                       "end"));
+
+    CommType commType = CommType::Serial;
+    SerialConfig serialConfig;
+    NetworkConfig networkConfig;
+    HidConfig hidConfig;
+
+    const MainWindowSessionCoordinator::ApplyResult result =
+        fixture.coordinator.applySession(session,
+                                         commType,
+                                         serialConfig,
+                                         networkConfig,
+                                         hidConfig);
+
+    QCOMPARE(result.restoredProtocolType, ProtocolType::Raw);
+    QCOMPARE(result.restoredProtocolId, QStringLiteral("lua.script"));
+    QCOMPARE(result.restoredProtocolConfig.value(QStringLiteral("scriptSource")).toString(),
+             session.protocolConfig.value(QStringLiteral("scriptSource")).toString());
+}
+
+void TestMainWindowSessionCoordinator::testUnknownStableProtocolIdFallsBackToRaw()
+{
+    /*
+     * 如果会话显式带了未知 protocolId，说明当前版本不认识该协议。此时
+     * 应回退 raw，而不是继续相信旧 protocolType，避免误用错误协议解析数据。
+     */
+    SessionCoordinatorFixture fixture;
+    SessionData session = makeBaseSession();
+    session.protocolType = static_cast<int>(ProtocolType::TextPlot);
+    session.protocolId = QStringLiteral("future.protocol");
+
+    CommType commType = CommType::Serial;
+    SerialConfig serialConfig;
+    NetworkConfig networkConfig;
+    HidConfig hidConfig;
+
+    const MainWindowSessionCoordinator::ApplyResult result =
+        fixture.coordinator.applySession(session,
+                                         commType,
+                                         serialConfig,
+                                         networkConfig,
+                                         hidConfig);
+
+    QCOMPARE(result.restoredProtocolType, ProtocolType::Raw);
+    QCOMPARE(result.restoredProtocolId, QStringLiteral("raw"));
+    QVERIFY(result.restoredProtocolConfig.isEmpty());
+}
