@@ -39,6 +39,16 @@ private slots:
      * @brief 验证 Raw/空 Schema 协议也能安全导出。
      */
     void exportsRawProtocolWithoutFields();
+
+    /**
+     * @brief 验证诊断对话框展示只读 JSON 文本。
+     */
+    void dialogShowsSummaryAndJson();
+
+    /**
+     * @brief 验证诊断对话框提供复制和保存按钮。
+     */
+    void dialogCopyAndSaveButtonsExist();
 };
 
 #endif // TESTPROTOCOLDIAGNOSTICS_H

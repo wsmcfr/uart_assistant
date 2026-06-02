@@ -7,9 +7,12 @@
 
 #include "core/protocol/ProtocolDiagnostics.h"
 #include "core/protocol/ProtocolFactory.h"
+#include "ui/dialogs/ProtocolDiagnosticsDialog.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPlainTextEdit>
+#include <QPushButton>
 
 using namespace ComAssistant;
 
@@ -127,4 +130,42 @@ void TestProtocolDiagnostics::exportsRawProtocolWithoutFields()
     QCOMPARE(json.value(QStringLiteral("configuration")).toObject().value(QStringLiteral("fieldCount")).toInt(),
              0);
     QVERIFY(json.value(QStringLiteral("validation")).toObject().value(QStringLiteral("valid")).toBool());
+}
+
+void TestProtocolDiagnostics::dialogShowsSummaryAndJson()
+{
+    /*
+     * 对话框必须把完整诊断 JSON 暴露在只读文本框中，便于用户复制、
+     * 审核和保存。objectName 保持稳定，方便后续 UI 回归测试定位。
+     */
+    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(ProtocolType::Ascii);
+    const QJsonObject json = ProtocolDiagnosticsBuilder::build(
+        descriptor,
+        descriptor.defaultConfig,
+        QStringLiteral("2026-06-02T12:30:00+08:00"));
+
+    ProtocolDiagnosticsDialog dialog(json);
+
+    auto* jsonEdit = dialog.findChild<QPlainTextEdit*>(
+        QStringLiteral("protocolDiagnosticsJsonEdit"));
+    QVERIFY(jsonEdit != nullptr);
+    QVERIFY(jsonEdit->isReadOnly());
+    QVERIFY(jsonEdit->toPlainText().contains(QStringLiteral("\"diagnosticVersion\"")));
+    QVERIFY(jsonEdit->toPlainText().contains(QStringLiteral("\"ascii\"")));
+}
+
+void TestProtocolDiagnostics::dialogCopyAndSaveButtonsExist()
+{
+    /*
+     * 4.4 第一版至少提供复制和保存入口；真实保存路径交互由 Qt 对话框处理，
+     * 单元测试只锁定按钮存在和 objectName 稳定，避免测试阻塞在文件选择框。
+     */
+    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(ProtocolType::Ascii);
+    ProtocolDiagnosticsDialog dialog(
+        ProtocolDiagnosticsBuilder::build(descriptor, descriptor.defaultConfig));
+
+    QVERIFY(dialog.findChild<QPushButton*>(
+        QStringLiteral("protocolDiagnosticsCopyButton")) != nullptr);
+    QVERIFY(dialog.findChild<QPushButton*>(
+        QStringLiteral("protocolDiagnosticsSaveButton")) != nullptr);
 }
