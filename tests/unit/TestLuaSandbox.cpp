@@ -300,3 +300,35 @@ void TestLuaSandbox::serialIsOpenUsesCallback()
     QVERIFY2(result.success, qPrintable(result.errorMessage));
     QCOMPARE(result.outputLines.first(), QStringLiteral("false"));
 }
+
+/**
+ * @brief 验证外部取消回调能中断 Lua 死循环。
+ *
+ * 该用例使用无超时配置，确保失败原因来自 interruptCallback，
+ * 而不是既有 timeout hook。回调在被 hook 查询数次后返回 true，
+ * 模拟 UI 线程点击停止按钮后的取消标记。
+ */
+void TestLuaSandbox::interruptsInfiniteLoopWhenCallbackRequestsStop()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 0;
+    options.memoryLimitKb = 256;
+
+    int hookChecks = 0;
+    options.interruptCallback = [&hookChecks]() {
+        ++hookChecks;
+        return hookChecks >= 2;
+    };
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("while true do end"),
+        options);
+
+    QVERIFY(!result.success);
+    QVERIFY(result.interrupted);
+    QVERIFY(!result.timedOut);
+    QVERIFY(hookChecks >= 2);
+    QVERIFY(result.errorMessage.contains(QStringLiteral("interrupted"),
+                                         Qt::CaseInsensitive));
+}

@@ -35,6 +35,7 @@ private slots:
     void serialApiStaysDisabledWithoutCallback();
     void serialSendFailureReturnsLuaError();
     void serialIsOpenUsesCallback();
+    void interruptsInfiniteLoopWhenCallbackRequestsStop();
 };
 
 #endif // TESTLUASANDBOX_H
