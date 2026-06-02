@@ -219,6 +219,10 @@
         <p><strong>English:</strong> Protocol configuration is now managed by schemas for defaults, field types, and basic validation. Session files store stable protocol IDs and protocol config, while legacy sessions migrate from the old protocol type to default config.</p>
         <p><strong>中文：</strong>可通过 <code>工具 -&gt; 协议配置...</code> 打开当前协议的 Schema 配置面板，编辑后会先校验并规范化，再应用到当前协议并随会话保存。</p>
         <p><strong>English:</strong> Use <code>Tools -&gt; Protocol Config...</code> to open the schema-driven config panel for the current protocol. Values are validated and normalized before being applied and saved with the session.</p>
+        <p><strong>中文：</strong>可通过 <code>工具 -&gt; 协议诊断...</code> 打开当前协议的只读诊断面板，查看协议 ID、分类、能力、配置版本、Schema 字段数量和当前配置校验结果。</p>
+        <p><strong>English:</strong> Use <code>Tools -&gt; Protocol Diagnostics...</code> to open a read-only diagnostics panel for the current protocol, including protocol ID, category, capabilities, config version, schema field count, and current config validation result.</p>
+        <p><strong>中文：</strong>诊断面板支持复制或保存完整 JSON，适合在反馈问题、排查会话配置、后续 Lua 或插件协议接入时作为事实源。</p>
+        <p><strong>English:</strong> The diagnostics panel can copy or save the full JSON snapshot, which is useful for issue reports, session config troubleshooting, and future Lua or plugin protocol integration.</p>
     </div>
 
     <h2>1. 数据显示协议 / Data Display Protocols</h2>
