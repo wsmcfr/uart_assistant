@@ -24,6 +24,7 @@ struct LuaSandboxOptions
 {
     using SendCallback = std::function<bool(const QByteArray&)>;
     using IsOpenCallback = std::function<bool()>;
+    using InterruptCallback = std::function<bool()>;
 
     int timeoutMs = 1000;               ///< 最大执行时长，<=0 表示不限制时间
     int memoryLimitKb = 1024;           ///< Lua state 内存预算，<=0 表示不限制内存
@@ -31,6 +32,7 @@ struct LuaSandboxOptions
     bool allowCommunicationApi = false; ///< 是否启用后续通信 API，4.5 默认关闭
     SendCallback sendCallback;          ///< 受控发送回调，仅通信 API 显式启用时使用
     IsOpenCallback isOpenCallback;      ///< 连接状态回调，仅用于 serial.isOpen()
+    InterruptCallback interruptCallback; ///< 外部取消回调，返回 true 时 hook 中断脚本
 };
 
 /**

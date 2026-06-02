@@ -309,16 +309,22 @@ int sandboxSerialIsOpen(lua_State* L)
 }
 
 /**
- * @brief Lua hook，用于周期性检查超时。
+ * @brief Lua hook，用于周期性检查外部取消和超时。
  *
- * Lua 没有安全的抢占式中断机制；hook 是第一版同步执行中最可控的边界。
- * 触发超时后通过 luaL_error 让 lua_pcall 返回错误。
+ * Lua 没有安全的抢占式中断机制；hook 是当前沙箱中最可控的协作式边界。
+ * 这里先检查外部取消，再检查超时，确保用户主动点击“停止”时结果被归类为取消。
  */
 void sandboxHook(lua_State* L, lua_Debug*)
 {
     SandboxContext* context = contextFromState(L);
     if (!context || !context->result) {
         return;
+    }
+
+    if (context->options.interruptCallback
+        && context->options.interruptCallback()) {
+        context->result->interrupted = true;
+        luaL_error(L, "Lua sandbox interrupted");
     }
 
     if (context->options.timeoutMs > 0
@@ -489,6 +495,11 @@ LuaSandboxResult LuaSandbox::execute(const QString& script,
     if (result.timedOut
         && !result.errorMessage.contains(QStringLiteral("timeout"), Qt::CaseInsensitive)) {
         result.errorMessage = QStringLiteral("Lua sandbox timeout");
+    }
+
+    if (result.interrupted
+        && !result.errorMessage.contains(QStringLiteral("interrupted"), Qt::CaseInsensitive)) {
+        result.errorMessage = QStringLiteral("Lua sandbox interrupted");
     }
 
     result.elapsedMs = context.timer.elapsed();
