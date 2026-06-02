@@ -1,6 +1,6 @@
 # 脚本功能
 
-ComAssistant 内置 Lua 脚本能力，用于自动化发送、数据转换和校验计算。脚本编辑器当前已接入受限 `LuaSandbox`，每次运行都会创建独立 Lua state，并通过受控 `serial.send` / `serial.sendHex` 回调复用现有发送队列。
+ComAssistant 内置 Lua 脚本能力，用于自动化发送、数据转换和校验计算。脚本编辑器当前已接入受限 `LuaSandbox`，每次运行都会创建独立 Lua state，并在后台 worker 线程中执行；`serial.send` / `serial.sendHex` 会通过受控回调复用现有发送队列。
 
 ## 打开脚本编辑器
 
@@ -22,7 +22,7 @@ ComAssistant 内置 Lua 脚本能力，用于自动化发送、数据转换和�
 | `crc16(data)` | 计算 Modbus CRC16 |
 | `crc32(data)` | 计算 CRC32 |
 
-> `sleep(ms)` 和 `serial.receive(timeout)` 在 4.6 的脚本编辑器沙箱中暂不可用。当前版本只开放发送、输出、HEX 转换和校验计算；后台执行、强取消和接收 API 会在后续阶段评估。
+> `sleep(ms)` 和 `serial.receive(timeout)` 在当前脚本编辑器沙箱中暂不可用。当前版本只开放后台执行、停止请求、发送、输出、HEX 转换和校验计算；接收 API 会在后续阶段评估。
 
 ## 示例：发送 AT 指令
 
@@ -48,7 +48,7 @@ serial.sendHex("AA 55 01 02 03")
 ## 安全说明
 
 - Lua 沙箱默认禁用 `io`、`os`、`package`、`debug`、`require`、`dofile`、`loadfile` 和 `load`，避免脚本直接读写文件、执行系统命令或加载外部模块。
-- 沙箱执行支持超时中断、Lua 内存预算和输出行数限制；脚本超出限制时会返回明确错误。
-- 脚本编辑器当前同步执行脚本，停止按钮会恢复界面状态；后台 worker 和强取消不属于 4.6 范围。
+- 沙箱执行支持超时中断、Lua 内存预算、输出行数限制和外部取消请求；脚本超出限制时会返回明确错误。
+- 脚本编辑器会在后台线程执行 LuaSandbox，点击“停止”会请求取消并由 Lua hook 在安全检查点中断脚本。取消不是强制杀死线程；如果脚本正在执行长时间 C 回调，需要等回调返回后才会响应。
 - `serial.send` 和 `serial.sendHex` 只发起本地发送请求，实际写入仍受当前通信连接、发送队列和连接状态约束。
 - 仍然建议只运行自己编写或可信来源的脚本；沙箱用于降低 Lua 层风险，不等同于操作系统级隔离。

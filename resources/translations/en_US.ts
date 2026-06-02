@@ -6741,9 +6741,14 @@ Alarm with Temperature Range</translation>
         <translation>[System] Script execution complete</translation>
     </message>
     <message>
-        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="326" />
-        <source>[系统] 脚本已停止</source>
-        <translation>[System] Script stopped</translation>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="364" />
+        <source>[系统] 正在请求停止脚本...</source>
+        <translation>[System] Requesting script stop...</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="543" />
+        <source>[系统] 脚本已取消</source>
+        <translation>[System] Script cancelled</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="444" />
