@@ -7823,6 +7823,26 @@ Alarm with Temperature Range</translation>
 <context>
     <name>ComAssistant::TabbedReceiveWidget</name>
     <message>
+        <source>复制</source>
+        <translation>Copy</translation>
+    </message>
+    <message>
+        <source>全选</source>
+        <translation>Select All</translation>
+    </message>
+    <message>
+        <source>清屏</source>
+        <translation>Clear Screen</translation>
+    </message>
+    <message>
+        <source>暂停显示</source>
+        <translation>Pause Display</translation>
+    </message>
+    <message>
+        <source>继续显示</source>
+        <translation>Resume Display</translation>
+    </message>
+    <message>
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="384" />
         <location filename="../../src/ui/widgets/TabbedReceiveWidget.cpp" line="1612" />
         <source>时间戳</source>

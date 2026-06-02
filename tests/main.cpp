@@ -31,6 +31,9 @@
 #include "unit/TestHidCommunication.h"
 #include "unit/TestCommunicationWorkspaces.h"
 #include "unit/TestReleaseMetadata.h"
+#include "unit/TestThemeCoverage.h"
+#include "unit/TestSettingsDialogLayout.h"
+#include "unit/TestToolboxDialogLayout.h"
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
 #include "unit/TestSendQueue.h"
@@ -179,6 +182,21 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] ReleaseMetadata";
         TestReleaseMetadata test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ThemeCoverage";
+        TestThemeCoverage test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] SettingsDialogLayout";
+        TestSettingsDialogLayout test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ToolboxDialogLayout";
+        TestToolboxDialogLayout test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

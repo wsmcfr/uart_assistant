@@ -50,6 +50,7 @@ void FileTransferDialog::setupUi()
 {
     auto* mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(16, 16, 16, 14);
 
     // 模式选择：三种文件发送形态共享同一个对话框，避免用户在多个入口之间来回找。
     auto* modeLayout = new QHBoxLayout();
@@ -191,8 +192,11 @@ void FileTransferDialog::setupUi()
     progressLayout->addWidget(m_progressBar, 0, 0, 1, 4);
 
     m_statusLabel = new QLabel(tr("就绪"), this);
+    m_statusLabel->setProperty("role", "muted");
     m_speedLabel = new QLabel(tr("速度: --"), this);
+    m_speedLabel->setProperty("role", "muted");
     m_packetLabel = new QLabel(tr("数据包: 0/0"), this);
+    m_packetLabel->setProperty("role", "muted");
     progressLayout->addWidget(m_statusLabel, 1, 0);
     progressLayout->addWidget(m_speedLabel, 1, 1);
     progressLayout->addWidget(m_packetLabel, 1, 2);
@@ -209,10 +213,16 @@ void FileTransferDialog::setupUi()
     mainLayout->addWidget(logGroup);
 
     // 控制按钮
-    auto* buttonLayout = new QHBoxLayout();
+    QWidget* footerWidget = new QWidget(this);
+    footerWidget->setObjectName(QStringLiteral("dialogFooter"));
+    auto* footerLayout = new QHBoxLayout(footerWidget);
+    footerLayout->setContentsMargins(0, 10, 0, 0);
+    footerLayout->setSpacing(8);
     m_startBtn = new QPushButton(tr("开始传输"), this);
     m_pauseBtn = new QPushButton(tr("暂停"), this);
     m_cancelBtn = new QPushButton(tr("取消"), this);
+    m_startBtn->setDefault(true);
+    m_cancelBtn->setProperty("danger", true);
     m_pauseBtn->setEnabled(false);
     m_cancelBtn->setEnabled(false);
 
@@ -220,11 +230,11 @@ void FileTransferDialog::setupUi()
     connect(m_pauseBtn, &QPushButton::clicked, this, &FileTransferDialog::onPauseClicked);
     connect(m_cancelBtn, &QPushButton::clicked, this, &FileTransferDialog::onCancelClicked);
 
-    buttonLayout->addStretch();
-    buttonLayout->addWidget(m_startBtn);
-    buttonLayout->addWidget(m_pauseBtn);
-    buttonLayout->addWidget(m_cancelBtn);
-    mainLayout->addLayout(buttonLayout);
+    footerLayout->addStretch();
+    footerLayout->addWidget(m_startBtn);
+    footerLayout->addWidget(m_pauseBtn);
+    footerLayout->addWidget(m_cancelBtn);
+    mainLayout->addWidget(footerWidget);
 
     // 连接方向切换信号
     connect(m_sendRadio, &QRadioButton::toggled, this, [this](bool checked) {

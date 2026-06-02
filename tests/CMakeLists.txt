@@ -34,6 +34,9 @@ set(TEST_SOURCES
     unit/TestHidCommunication.cpp
     unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
+    unit/TestThemeCoverage.cpp
+    unit/TestSettingsDialogLayout.cpp
+    unit/TestToolboxDialogLayout.cpp
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
     unit/TestSendQueue.cpp
@@ -169,6 +172,8 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SerialSettingsWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/NetworkSettingsWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/QuickSendWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/SettingsDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ToolboxDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.cpp
@@ -180,6 +185,9 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/ConfigManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/session/SessionManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/session/SessionSerializer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidWorker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp

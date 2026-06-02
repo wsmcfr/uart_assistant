@@ -41,6 +41,22 @@ private slots:
      * 却丢失了搜索/过滤能力。
      */
     void testFilterViewFindsMatchingLinesFromCurrentDocument();
+
+    /**
+     * @brief 接收区右键菜单应包含可操作的显示控制项。
+     *
+     * 菜单需要保留常用文本操作，同时补充清屏、暂停/继续显示、
+     * 自动滚动和 HEX 显示等接收区业务动作。
+     */
+    void testReceiveContextMenuContainsOperationalActions();
+
+    /**
+     * @brief 接收区右键菜单动作应直接改变显示状态。
+     *
+     * 测试流程覆盖清屏、暂停/继续显示、自动滚动和 HEX 显示，
+     * 避免菜单只显示动作却没有绑定真实逻辑。
+     */
+    void testReceiveContextMenuActionsOperateOnDisplayState();
 };
 
 #endif // TESTTABBEDRECEIVEWIDGET_H
