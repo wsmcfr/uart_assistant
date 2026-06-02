@@ -132,6 +132,43 @@ void TestProtocolDiagnostics::exportsRawProtocolWithoutFields()
     QVERIFY(json.value(QStringLiteral("validation")).toObject().value(QStringLiteral("valid")).toBool());
 }
 
+void TestProtocolDiagnostics::exportsLuaProtocolDiagnostics()
+{
+    /*
+     * 4.9 让 Lua 脚本协议先进入诊断事实源。这里不执行脚本，只验证
+     * JSON 能导出沙箱预算、通信 API 开关、接收 API 未开放状态和最近错误。
+     */
+    const ProtocolDescriptor descriptor =
+        ProtocolFactory::registry().descriptor(QStringLiteral("lua.script"));
+    QVariantMap config = descriptor.defaultConfig;
+    config.insert(QStringLiteral("timeoutMs"), 1500);
+    config.insert(QStringLiteral("allowCommunicationApi"), true);
+
+    ProtocolDiagnosticsContext context;
+    context.recentError = QStringLiteral("last lua error");
+
+    const QJsonObject json = ProtocolDiagnosticsBuilder::build(
+        descriptor,
+        config,
+        QStringLiteral("2026-06-02T16:30:00+08:00"),
+        context);
+
+    const QJsonObject lua = json.value(QStringLiteral("luaProtocol")).toObject();
+    QVERIFY(lua.value(QStringLiteral("enabled")).toBool());
+    QVERIFY(!lua.value(QStringLiteral("creatable")).toBool());
+    QVERIFY(!lua.value(QStringLiteral("receiveApiAvailable")).toBool());
+    QCOMPARE(lua.value(QStringLiteral("lastError")).toString(), QStringLiteral("last lua error"));
+
+    const QJsonObject sandbox = lua.value(QStringLiteral("sandbox")).toObject();
+    QCOMPARE(sandbox.value(QStringLiteral("timeoutMs")).toInt(), 1500);
+    QCOMPARE(sandbox.value(QStringLiteral("memoryLimitKb")).toInt(), 1024);
+    QCOMPARE(sandbox.value(QStringLiteral("maxOutputLines")).toInt(), 200);
+    QVERIFY(sandbox.value(QStringLiteral("communicationApi")).toBool());
+    QVERIFY(!sandbox.value(QStringLiteral("safeLibraries")).toArray().isEmpty());
+    QVERIFY(!sandbox.value(QStringLiteral("blockedLibraries")).toArray().isEmpty());
+    QVERIFY(!sandbox.value(QStringLiteral("blockedGlobals")).toArray().isEmpty());
+}
+
 void TestProtocolDiagnostics::dialogShowsSummaryAndJson()
 {
     /*

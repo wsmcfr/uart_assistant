@@ -41,6 +41,14 @@ private slots:
     void exportsRawProtocolWithoutFields();
 
     /**
+     * @brief 验证 Lua 脚本协议导出专用诊断节点。
+     *
+     * Lua 协议 4.9 只登记元数据，但诊断 JSON 必须能说明沙箱选项、
+     * 接收 API 状态和最近错误，便于后续协议脚本化排障。
+     */
+    void exportsLuaProtocolDiagnostics();
+
+    /**
      * @brief 验证诊断对话框展示只读 JSON 文本。
      */
     void dialogShowsSummaryAndJson();
