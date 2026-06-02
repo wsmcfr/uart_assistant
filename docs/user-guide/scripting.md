@@ -2,7 +2,7 @@
 
 ComAssistant 内置 Lua 脚本能力，用于自动化发送、数据转换和校验计算。脚本编辑器当前已接入受限 `LuaSandbox`，每次运行都会创建独立 Lua state，并在后台 worker 线程中执行；`serial.isOpen()` 会读取主窗口当前连接状态，`serial.send` / `serial.sendHex` 会通过受控回调复用现有发送队列，并在发送入口拒绝时返回 Lua 错误。
 
-4.9 起，Lua 脚本协议元数据已登记为稳定协议 ID `lua.script`。它会通过协议能力目录暴露脚本协议身份，通过配置 Schema 暴露脚本来源、入口函数、超时、内存预算、输出行数和通信 API 开关，并通过协议诊断 JSON 导出沙箱边界、`serial.receive(timeout)` 未开放状态和最近错误。当前阶段 `lua.script` 只用于配置和诊断事实源，尚不能在接收链路中作为真实协议解析器使用。
+4.10 起，Lua 脚本协议已登记为稳定协议 ID `lua.script`，并可通过协议注册中心创建最小接收解析器。它会通过协议能力目录暴露脚本协议身份，通过配置 Schema 暴露脚本来源、入口函数、超时、内存预算、输出行数和通信 API 开关，并通过协议诊断 JSON 导出沙箱边界、脚本协议可创建状态、`serial.receive(timeout)` 未开放状态和最近错误。当前阶段 `lua.script` 仍不进入旧版绘图协议菜单，也不会参与旧版 `ProtocolType` 会话枚举恢复链路。
 
 ## 打开脚本编辑器
 
@@ -47,11 +47,49 @@ print("CRC16:", crc16(request))
 serial.sendHex("AA 55 01 02 03")
 ```
 
+## Lua 脚本协议解析器
+
+`lua.script` 的第一版协议解析入口是 `process(data, context)`。`data` 是本次传入的原始字节字符串，`context` 是只读约定表，当前包含 `protocolId`、`entryFunction` 和 `dataLength`。入口函数必须返回 table，协议解析器会把返回值映射为 `FrameResult`。
+
+| 返回字段 | 作用 |
+|----------|------|
+| `valid` | 是否解析出有效帧 |
+| `consumedBytes` | 本次消耗的输入字节数，C++ 层会限制到 `0..#data` |
+| `frame` | 完整帧原始字节字符串 |
+| `payload` | 有效载荷原始字节字符串 |
+| `metadata` | 元数据表，当前支持字符串、数字和布尔标量 |
+| `error` | 脚本主动返回的错误说明 |
+
+```lua
+function process(data, context)
+    if #data < 3 then
+        return {
+            valid = false,
+            consumedBytes = 0
+        }
+    end
+
+    return {
+        valid = true,
+        consumedBytes = #data,
+        frame = data,
+        payload = string.sub(data, 2),
+        metadata = {
+            protocol = context.protocolId,
+            length = context.dataLength,
+            ok = true
+        }
+    }
+end
+```
+
+当前最小原型只执行 `scriptSource` 内联脚本，不加载 `scriptPath` 外部文件；`build(payload)` 仍原样返回 payload，不调用 Lua 构帧入口。`allowCommunicationApi` 只影响发送类 API 是否注册，`serial.receive(timeout)` 仍未开放。
+
 ## 安全说明
 
 - Lua 沙箱默认禁用 `io`、`os`、`package`、`debug`、`require`、`dofile`、`loadfile` 和 `load`，避免脚本直接读写文件、执行系统命令或加载外部模块。
 - 沙箱执行支持超时中断、Lua 内存预算、输出行数限制和外部取消请求；脚本超出限制时会返回明确错误。
 - 脚本编辑器会在后台线程执行 LuaSandbox，点击“停止”会请求取消并由 Lua hook 在安全检查点中断脚本。取消不是强制杀死线程；如果脚本正在执行长时间 C 回调，需要等回调返回后才会响应。
 - `serial.send` 和 `serial.sendHex` 只发起本地发送请求，实际写入仍受当前通信连接、发送队列和连接状态约束；未连接、空数据、队列拒绝或底层写入失败都会作为 Lua 错误显示在输出区。
-- `lua.script` 当前只登记协议元数据、配置 Schema 和诊断节点；它不会出现在旧版绘图协议菜单中，也不会创建 `IProtocol` 实例或解析接收数据。
+- `lua.script` 当前可通过协议注册中心创建最小接收解析器，但不会出现在旧版绘图协议菜单中，也不会参与旧版 `ProtocolType` 会话枚举恢复链路；接收 API、外部脚本文件加载和脚本化构帧仍需后续设计。
 - 仍然建议只运行自己编写或可信来源的脚本；沙箱用于降低 Lua 层风险，不等同于操作系统级隔离。
