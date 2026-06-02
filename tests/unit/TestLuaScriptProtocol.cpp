@@ -25,6 +25,20 @@ QVariantMap makeScriptConfig(const QString& scriptSource)
     return config;
 }
 
+/**
+ * @brief 构造完整 Lua 协议配置，允许测试覆盖资源边界。
+ * @param scriptSource Lua 脚本源码。
+ * @param maxOutputLines LuaSandbox 保留的最大输出行数。
+ * @return 可传给 LuaScriptProtocol::setConfig() 的配置表。
+ */
+QVariantMap makeScriptConfigWithOutputLimit(const QString& scriptSource,
+                                            int maxOutputLines)
+{
+    QVariantMap config = makeScriptConfig(scriptSource);
+    config.insert(QStringLiteral("maxOutputLines"), maxOutputLines);
+    return config;
+}
+
 } // namespace
 
 void TestLuaScriptProtocol::parsesFrameFromProcessResult()
@@ -100,6 +114,68 @@ void TestLuaScriptProtocol::reportsLuaErrorsFromProcess()
     QVERIFY(!result.valid);
     QCOMPARE(result.consumedBytes, 0);
     QVERIFY(result.errorMessage.contains(QStringLiteral("bad lua frame")));
+}
+
+void TestLuaScriptProtocol::recordsRecentError()
+{
+    /*
+     * 协议诊断对话框不会持有上一轮 FrameResult，因此 LuaScriptProtocol
+     * 自身需要保存最近一次错误，供 MainWindow 后续读取。
+     */
+    LuaScriptProtocol protocol;
+    protocol.setConfig(makeScriptConfig(
+        QStringLiteral("function process(data, context)\n"
+                       "  error('bad lua frame')\n"
+                       "end\n")));
+
+    const FrameResult result = protocol.parse(QByteArray::fromHex("A102"));
+
+    QVERIFY(!result.valid);
+    QVERIFY(protocol.recentError().contains(QStringLiteral("bad lua frame")));
+}
+
+void TestLuaScriptProtocol::clearsRecentErrorAfterValidFrame()
+{
+    /*
+     * 最近错误只描述当前最近一次失败状态。有效帧解析成功后需要清空，
+     * 避免用户修好脚本后诊断仍展示旧错误。
+     */
+    LuaScriptProtocol protocol;
+    protocol.setConfig(makeScriptConfig(
+        QStringLiteral("function process(data, context)\n"
+                       "  error('first failure')\n"
+                       "end\n")));
+    protocol.parse(QByteArray::fromHex("A102"));
+    QVERIFY(!protocol.recentError().isEmpty());
+
+    protocol.setConfig(makeScriptConfig(
+        QStringLiteral("function process(data, context)\n"
+                       "  return { valid = true, consumedBytes = #data, frame = data, payload = data }\n"
+                       "end\n")));
+    const FrameResult result = protocol.parse(QByteArray::fromHex("A102"));
+
+    QVERIFY(result.valid);
+    QVERIFY(protocol.recentError().isEmpty());
+}
+
+void TestLuaScriptProtocol::recordsResultBlockErrorWhenOutputLimitIsTooLow()
+{
+    /*
+     * wrapper 需要输出固定哨兵和字段。如果 maxOutputLines 过低导致哨兵区
+     * 缺失，协议层应把错误保存下来，帮助用户从诊断中发现输出边界问题。
+     */
+    LuaScriptProtocol protocol;
+    protocol.setConfig(makeScriptConfigWithOutputLimit(
+        QStringLiteral("function process(data, context)\n"
+                       "  return { valid = true, consumedBytes = #data, frame = data, payload = data }\n"
+                       "end\n"),
+        1));
+
+    const FrameResult result = protocol.parse(QByteArray::fromHex("A102"));
+
+    QVERIFY(!result.valid);
+    QVERIFY(result.errorMessage.contains(QStringLiteral("result block")));
+    QVERIFY(protocol.recentError().contains(QStringLiteral("result block")));
 }
 
 void TestLuaScriptProtocol::clampsConsumedBytesToInputSize()

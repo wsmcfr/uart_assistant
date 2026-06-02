@@ -45,6 +45,29 @@ private slots:
     void reportsLuaErrorsFromProcess();
 
     /**
+     * @brief 验证 Lua 运行错误会记录为最近错误。
+     *
+     * 最近错误是 MainWindow 状态栏提示和协议诊断 JSON 的运行期事实源，
+     * 不能只临时存在于单次 FrameResult 中。
+     */
+    void recordsRecentError();
+
+    /**
+     * @brief 验证成功解析有效帧后会清空最近错误。
+     *
+     * 旧错误如果一直残留，会让诊断包误报当前协议仍处于失败状态。
+     */
+    void clearsRecentErrorAfterValidFrame();
+
+    /**
+     * @brief 验证输出行数限制导致结果区缺失时会记录最近错误。
+     *
+     * 用户把 maxOutputLines 设置过低时，LuaSandbox 会截断 wrapper 输出；
+     * 协议层必须把该状态暴露出来，方便用户调整性能边界。
+     */
+    void recordsResultBlockErrorWhenOutputLimitIsTooLow();
+
+    /**
      * @brief 验证脚本返回的 consumedBytes 会被限制在输入长度范围内。
      *
      * Lua 脚本可能写错消耗字节数，C++ 层必须兜底，避免调用方误删
