@@ -223,8 +223,8 @@
         <p><strong>English:</strong> Use <code>Tools -&gt; Protocol Diagnostics...</code> to open a read-only diagnostics panel for the current protocol, including protocol ID, category, capabilities, config version, schema field count, and current config validation result.</p>
         <p><strong>中文：</strong>诊断面板支持复制或保存完整 JSON，适合在反馈问题、排查会话配置、后续 Lua 或插件协议接入时作为事实源。</p>
         <p><strong>English:</strong> The diagnostics panel can copy or save the full JSON snapshot, which is useful for issue reports, session config troubleshooting, and future Lua or plugin protocol integration.</p>
-        <p><strong>中文：</strong>Lua 扩展会先经过受限沙箱执行，后续脚本协议仍需通过协议描述、配置 Schema 和诊断导出暴露能力。</p>
-        <p><strong>English:</strong> Lua extensions will run through the restricted sandbox first. Future script protocols still need descriptors, config schemas, and diagnostics before they become protocol capabilities.</p>
+        <p><strong>中文：</strong>脚本编辑器已先接入受限 Lua 沙箱，支持通过 <code>serial.send</code> 和 <code>serial.sendHex</code> 发起发送；后续脚本协议仍需通过协议描述、配置 Schema 和诊断导出暴露能力。</p>
+        <p><strong>English:</strong> The script editor now runs through the restricted Lua sandbox and can send through <code>serial.send</code> and <code>serial.sendHex</code>. Future script protocols still need descriptors, config schemas, and diagnostics before they become protocol capabilities.</p>
     </div>
 
     <h2>1. 数据显示协议 / Data Display Protocols</h2>
