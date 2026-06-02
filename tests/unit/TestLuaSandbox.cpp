@@ -162,3 +162,39 @@ void TestLuaSandbox::truncatesExcessiveOutput()
     QVERIFY(result.outputLines.last().contains(QStringLiteral("truncated"),
                                                Qt::CaseInsensitive));
 }
+
+void TestLuaSandbox::exposesSafeChecksumAndHexUtilities()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral(
+            "local bytes = hexToBytes('AA 55 01')\n"
+            "print(bytesToHex(bytes))\n"
+            "print(crc16(hexToBytes('01 03 00 00 00 02')))\n"
+            "print(crc32('abc'))"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(result.outputLines.at(0), QStringLiteral("AA 55 01"));
+    QVERIFY(result.outputLines.at(1).toInt() > 0);
+    QVERIFY(result.outputLines.at(2).toUInt() > 0U);
+}
+
+void TestLuaSandbox::keepsCommunicationApiDisabledByDefault()
+{
+    LuaSandbox sandbox;
+    LuaSandboxOptions options;
+    options.timeoutMs = 500;
+    options.memoryLimitKb = 256;
+
+    const LuaSandboxResult result = sandbox.execute(
+        QStringLiteral("print(serial == nil)"),
+        options);
+
+    QVERIFY2(result.success, qPrintable(result.errorMessage));
+    QCOMPARE(result.outputLines.first(), QStringLiteral("true"));
+}

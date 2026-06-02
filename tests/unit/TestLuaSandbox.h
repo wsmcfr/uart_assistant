@@ -28,6 +28,8 @@ private slots:
     void limitsMemoryUsage();
     void isolatesExecutions();
     void truncatesExcessiveOutput();
+    void exposesSafeChecksumAndHexUtilities();
+    void keepsCommunicationApiDisabledByDefault();
 };
 
 #endif // TESTLUASANDBOX_H
