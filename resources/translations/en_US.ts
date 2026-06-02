@@ -2609,6 +2609,18 @@ Time spent: % 4</translation>
         <translation>Script Editor...</translation>
     </message>
     <message>
+        <source>请先打开当前连接后再发送。</source>
+        <translation>Please open the current connection before sending.</translation>
+    </message>
+    <message>
+        <source>当前连接未打开</source>
+        <translation>The current connection is not open</translation>
+    </message>
+    <message>
+        <source>发送失败</source>
+        <translation>Send failed</translation>
+    </message>
+    <message>
         <source>文件传输...</source>
         <translation>File Transfer...</translation>
     </message>
@@ -6749,6 +6761,34 @@ Alarm with Temperature Range</translation>
         <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="543" />
         <source>[系统] 脚本已取消</source>
         <translation>[System] Script cancelled</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="664" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="670" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="676" />
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="694" />
+        <source>[发送失败] %1</source>
+        <translation>[Send Failed] %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="663" />
+        <source>当前连接未打开</source>
+        <translation>The current connection is not open</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="669" />
+        <source>脚本发送数据不能为空</source>
+        <translation>Script send data cannot be empty</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="675" />
+        <source>脚本发送通道未连接到主窗口</source>
+        <translation>The script send channel is not connected to the main window</translation>
+    </message>
+    <message>
+        <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="692" />
+        <source>发送失败</source>
+        <translation>Send failed</translation>
     </message>
     <message>
         <location filename="../../src/ui/dialogs/ScriptEditorDialog.cpp" line="444" />
