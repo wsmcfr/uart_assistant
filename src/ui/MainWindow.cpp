@@ -7,6 +7,8 @@
 
 #include "MainWindow.h"
 #include "HelpDialog.h"
+#include "MainWindowCommunicationController.h"
+#include "MainWindowPlotDataRouter.h"
 #include "PlotterManager.h"
 #include "PlotterWindow.h"
 #include "dialogs/ToolboxDialog.h"
@@ -30,6 +32,8 @@
 #include "widgets/ModbusAnalyzerWidget.h"
 #include "widgets/DataWindowManager.h"
 #include "dialogs/DataWindowConfigDialog.h"
+#include "dialogs/ProtocolConfigDialog.h"
+#include "dialogs/ProtocolDiagnosticsDialog.h"
 #include "controls/ControlPanel.h"
 #include "widgets/DataTableWidget.h"
 #include "widgets/SideNavigationBar.h"
@@ -40,10 +44,10 @@
 #include "utils/Logger.h"
 #include "config/ConfigManager.h"
 #include "config/DisplaySettingsPolicy.h"
-#include "communication/TcpClient.h"
 #include "communication/TcpServer.h"
 #include "communication/UdpSocket.h"
 #include "communication/HidDevice.h"
+#include "protocol/ProtocolDiagnostics.h"
 #include "protocol/ProtocolFactory.h"
 #include "macro/MacroRecorder.h"
 #include "communication/MultiPortManager.h"
@@ -86,8 +90,27 @@ namespace ComAssistant {
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    m_commController = new MainWindowCommunicationController(this);
+
     setupUi();
+    m_workspaceCoordinator.setWorkspaces(m_tcpClientWorkspace,
+                                         m_tcpServerWorkspace,
+                                         m_udpWorkspace,
+                                         m_hidWorkspace);
+    m_sessionCoordinator.setConfigurationWidgets(m_serialSettings,
+                                                 m_networkSettings,
+                                                 m_tcpClientWorkspace,
+                                                 m_tcpServerWorkspace,
+                                                 m_udpWorkspace,
+                                                 m_hidWorkspace);
     setupToolBar();
+    m_sessionCoordinator.setToolbarWidgets(m_commTypeCombo,
+                                           m_portCombo,
+                                           m_baudCombo,
+                                           m_ipEdit,
+                                           m_portSpin,
+                                           m_displayModeCombo);
+    m_sessionCoordinator.setQuickSendWidget(m_quickSendWidget);
     setupStatusBar();
     setupConnections();
     loadSettings();
@@ -517,6 +540,49 @@ void MainWindow::setupConnections()
 {
     // 注意：不要直接连接 m_sendWidget->sendRequested，因为它已经通过
     // SerialModeWidget 的 sendDataRequested 转发了，直接连接会导致数据发送两次
+    if (m_commController) {
+        /*
+         * 通信控制器不直接依赖 UI 工作台。这里用回调把 TCP Client
+         * 自动重连选项延迟提供给控制器，保持控制器只知道配置值。
+         */
+        m_commController->setTcpClientReconnectOptionsProvider([this]() {
+            MainWindowCommunicationController::TcpClientReconnectOptions options;
+            options.enabled = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->autoReconnectEnabled()
+                : false;
+            options.intervalMs = m_tcpClientWorkspace
+                ? m_tcpClientWorkspace->reconnectIntervalMs()
+                : 3000;
+            return options;
+        });
+
+        connect(m_commController, &MainWindowCommunicationController::dataReceived,
+                this, &MainWindow::onDataReceived);
+        connect(m_commController, &MainWindowCommunicationController::dataSent,
+                this, &MainWindow::onDataSent);
+        connect(m_commController, &MainWindowCommunicationController::connectionStatusChanged,
+                this, &MainWindow::onConnectionStatusChanged);
+        connect(m_commController, &MainWindowCommunicationController::errorOccurred,
+                this, &MainWindow::onErrorOccurred);
+        connect(m_commController, &MainWindowCommunicationController::tcpServerClientConnected,
+                this, [this](const QString& clientId) {
+            if (m_tcpServerWorkspace) {
+                m_tcpServerWorkspace->addClient(clientId);
+            }
+        });
+        connect(m_commController, &MainWindowCommunicationController::tcpServerClientDisconnected,
+                this, [this](const QString& clientId) {
+            if (m_tcpServerWorkspace) {
+                m_tcpServerWorkspace->removeClient(clientId);
+            }
+        });
+        connect(m_commController, &MainWindowCommunicationController::udpDatagramRemoteReceived,
+                this, [this](const QString& senderIp, int senderPort) {
+            if (m_udpWorkspace) {
+                m_udpWorkspace->addRecentRemote(senderIp, senderPort);
+            }
+        });
+    }
 
     // 快捷发送
     if (m_quickSendWidget) {
@@ -558,7 +624,9 @@ void MainWindow::setupConnections()
     if (m_tcpServerWorkspace) {
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::sendToClientRequested,
                 this, [this](const QString& clientId, const QByteArray& data) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法发送到客户端。"), 3000);
                 return;
@@ -571,7 +639,9 @@ void MainWindow::setupConnections()
         });
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::broadcastDataRequested,
                 this, [this](const QByteArray& data) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法广播。"), 3000);
                 return;
@@ -586,7 +656,9 @@ void MainWindow::setupConnections()
         });
         connect(m_tcpServerWorkspace, &TcpServerWorkspaceWidget::disconnectClientRequested,
                 this, [this](const QString& clientId) {
-            auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get());
+            auto* tcpServer = m_commController
+                ? dynamic_cast<TcpServer*>(m_commController->communication())
+                : nullptr;
             if (!tcpServer || !m_connected) {
                 statusBar()->showMessage(tr("TCP服务器未启动，无法断开客户端。"), 3000);
                 return;
@@ -603,7 +675,9 @@ void MainWindow::setupConnections()
     if (m_udpWorkspace) {
         connect(m_udpWorkspace, &UdpWorkspaceWidget::sendDatagramRequested,
                 this, [this](const QByteArray& data, const QString& ip, int port) {
-            auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get());
+            auto* udpSocket = m_commController
+                ? dynamic_cast<UdpSocket*>(m_commController->communication())
+                : nullptr;
             if (!udpSocket || !m_connected) {
                 statusBar()->showMessage(tr("UDP 未绑定，无法发送数据报。"), 3000);
                 return;
@@ -620,7 +694,9 @@ void MainWindow::setupConnections()
                 this, &MainWindow::onSendData);
         connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportSetRequested,
                 this, [this](const QByteArray& report) {
-            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            auto* hidDevice = m_commController
+                ? dynamic_cast<HidDevice*>(m_commController->communication())
+                : nullptr;
             if (!hidDevice || !m_connected) {
                 statusBar()->showMessage(tr("HID 未打开，无法发送 Feature Report。"), 3000);
                 return;
@@ -634,7 +710,9 @@ void MainWindow::setupConnections()
         });
         connect(m_hidWorkspace, &HidReportWorkspaceWidget::featureReportGetRequested,
                 this, [this](const QByteArray& requestReport) {
-            auto* hidDevice = dynamic_cast<HidDevice*>(m_communication.get());
+            auto* hidDevice = m_commController
+                ? dynamic_cast<HidDevice*>(m_commController->communication())
+                : nullptr;
             if (!hidDevice || !m_connected) {
                 statusBar()->showMessage(tr("HID 未打开，无法读取 Feature Report。"), 3000);
                 return;
@@ -845,64 +923,20 @@ void MainWindow::applyDisplaySettings()
 
 void MainWindow::createCommunication()
 {
-    destroyCommunication();
-
-    m_communication = CommunicationFactory::create(m_currentCommType,
-                                                    m_serialConfig,
-                                                    m_networkConfig,
-                                                    m_hidConfig);
-
-    if (m_communication) {
-        if (auto* tcpClient = dynamic_cast<TcpClient*>(m_communication.get())) {
-            const bool autoReconnect = m_tcpClientWorkspace
-                ? m_tcpClientWorkspace->autoReconnectEnabled()
-                : false;
-            const int reconnectIntervalMs = m_tcpClientWorkspace
-                ? m_tcpClientWorkspace->reconnectIntervalMs()
-                : 3000;
-            tcpClient->setAutoReconnect(autoReconnect, reconnectIntervalMs);
-        }
-
-        connect(m_communication.get(), &ICommunication::dataReceived,
-                this, &MainWindow::onDataReceived);
-        connect(m_communication.get(), &ICommunication::dataSent,
-                this, &MainWindow::onDataSent);
-        connect(m_communication.get(), &ICommunication::connectionStatusChanged,
-                this, &MainWindow::onConnectionStatusChanged);
-        connect(m_communication.get(), &ICommunication::errorOccurred,
-                this, &MainWindow::onErrorOccurred);
-
-        if (auto* tcpServer = dynamic_cast<TcpServer*>(m_communication.get())) {
-            connect(tcpServer, &TcpServer::clientConnected,
-                    this, [this](const QString& clientId) {
-                if (m_tcpServerWorkspace) {
-                    m_tcpServerWorkspace->addClient(clientId);
-                }
-            });
-            connect(tcpServer, &TcpServer::clientDisconnected,
-                    this, [this](const QString& clientId) {
-                if (m_tcpServerWorkspace) {
-                    m_tcpServerWorkspace->removeClient(clientId);
-                }
-            });
-        }
-        if (auto* udpSocket = dynamic_cast<UdpSocket*>(m_communication.get())) {
-            connect(udpSocket, &UdpSocket::datagramReceived,
-                    this, [this](const QByteArray& data, const QString& senderIp, int senderPort) {
-                Q_UNUSED(data)
-                if (m_udpWorkspace) {
-                    m_udpWorkspace->addRecentRemote(senderIp, senderPort);
-                }
-            });
-        }
+    if (!m_commController) {
+        return;
     }
+
+    m_commController->openCurrent(m_currentCommType,
+                                  m_serialConfig,
+                                  m_networkConfig,
+                                  m_hidConfig);
 }
 
 void MainWindow::destroyCommunication()
 {
-    if (m_communication) {
-        m_communication->close();
-        m_communication.reset();
+    if (m_commController) {
+        m_commController->closeCurrent();
     }
 }
 
@@ -911,14 +945,14 @@ void MainWindow::onConnectClicked()
     syncCurrentWorkspaceToConfig();
     createCommunication();
 
-    if (!m_communication) {
+    if (!m_commController || !m_commController->communication()) {
         QMessageBox::critical(this, tr("错误"), tr("无法创建通信实例"));
         return;
     }
 
-    if (!m_communication->open()) {
+    if (!m_commController->isConnected()) {
         QMessageBox::critical(this, tr("错误"),
-            tr("无法打开连接: %1").arg(m_communication->lastError()));
+            tr("无法打开连接: %1").arg(m_commController->lastError()));
         updateCommunicationWidgetsForType();
         updateConnectionButtonText();
         return;
@@ -927,14 +961,15 @@ void MainWindow::onConnectClicked()
     m_connected = true;
     updateCommunicationWidgetsForType();
     updateConnectionButtonText();
-    LOG_INFO(QString("Connected: %1").arg(m_communication->statusString()));
+    LOG_INFO(QString("Connected: %1").arg(
+        m_commController->communication()
+            ? m_commController->communication()->statusString()
+            : QString()));
 }
 
 void MainWindow::onDisconnectClicked()
 {
-    if (m_communication) {
-        m_communication->close();
-    }
+    destroyCommunication();
     m_connected = false;
     updateCommunicationWidgetsForType();
     updateConnectionButtonText();
@@ -972,61 +1007,52 @@ void MainWindow::onDataReceived(const QByteArray& data)
     if (m_dataTableWidget) {
         QVector<double> parsedValues;
         // 如果有绘图协议，尝试解析数值
-        if (m_currentProtocol && m_currentProtocol->isPlotProtocol()) {
-            PlotData plotData = m_currentProtocol->parsePlotData(data);
+        IProtocol* currentProtocol = m_protocolState.protocol();
+        if (currentProtocol && currentProtocol->isPlotProtocol()) {
+            PlotData plotData = currentProtocol->parsePlotData(data);
             if (plotData.valid) {
                 parsedValues = plotData.yValues;
             }
         }
-        QString protocolName = m_currentProtocol ?
-            ProtocolFactory::typeName(m_currentProtocolType) : QString();
-        m_dataTableWidget->addReceivedData(data, protocolName, parsedValues);
+        m_dataTableWidget->addReceivedData(data, currentProtocolDisplayName(), parsedValues);
     }
 
-    // 自动检测绘图协议（仅在未手动选择协议时）
-    if (m_currentProtocolType == ProtocolType::Raw && m_plotDetector) {
-        m_plotDetector->feedData(data);
+    /*
+     * 非绘图协议（例如 lua.script）在这里执行通用帧解析。Raw 不会进入该
+     * 分支，绘图协议仍由 MainWindowPlotDataRouter 处理，避免三条链路
+     * 互相吞数据。
+     */
+    if (!m_protocolState.isRawProtocol() &&
+        !m_protocolState.descriptor().plotProtocol) {
+        const FrameResult frameResult = m_protocolState.parseNonPlotData(data);
+        if (!frameResult.errorMessage.trimmed().isEmpty()) {
+            statusBar()->showMessage(
+                tr("协议解析错误: %1").arg(frameResult.errorMessage.trimmed()),
+                5000);
+        }
+    }
+
+    /*
+     * 绘图协议接收路由已下沉到 MainWindowPlotDataRouter。MainWindow
+     * 只负责把 Raw 数据喂给自动检测器，以及把路由结果交给绘图管理器。
+     */
+    const MainWindowPlotDataRouter::ProcessResult plotResult =
+        m_plotDataRouter.processReceivedData(data,
+                                             m_protocolState.protocolType(),
+                                             m_protocolState.protocol());
+    if (plotResult.shouldFeedDetector && m_protocolState.isRawProtocol()) {
+        if (m_plotDetector) {
+            m_plotDetector->feedData(data);
+        }
         return;
     }
 
-    // 绘图协议解析和数据路由
-    if (m_currentProtocol && m_currentProtocol->isPlotProtocol()) {
-        // 将数据添加到缓冲区
-        m_plotDataBuffer.append(data);
-
-        // 按行处理数据
-        int pos;
-        while ((pos = m_plotDataBuffer.indexOf('\n')) >= 0) {
-            QByteArray line = m_plotDataBuffer.left(pos);
-            m_plotDataBuffer.remove(0, pos + 1);
-
-            // 移除可能的 \r
-            if (line.endsWith('\r')) {
-                line.chop(1);
-            }
-
-            if (line.isEmpty()) continue;
-
-            // 解析绘图数据
-            PlotData plotData = m_currentProtocol->parsePlotData(line);
-            if (plotData.valid && !plotData.windowId.isEmpty()) {
-                // 路由到绘图管理器
-                if (plotData.useTimestamp) {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.timestamp, plotData.yValues);
-                } else if (plotData.useCustomX) {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.xValue, plotData.yValues);
-                } else {
-                    PlotterManager::instance()->routeData(
-                        plotData.windowId, plotData.yValues);
-                }
-            }
-        }
-
-        // 防止缓冲区过大
-        if (m_plotDataBuffer.size() > 4096) {
-            m_plotDataBuffer.clear();
+    for (const MainWindowPlotDataRouter::PlotRoute& route : plotResult.routes) {
+        if (route.xMode == MainWindowPlotDataRouter::PlotRoute::Timestamp ||
+            route.xMode == MainWindowPlotDataRouter::PlotRoute::CustomX) {
+            PlotterManager::instance()->routeData(route.windowId, route.x, route.values);
+        } else {
+            PlotterManager::instance()->routeData(route.windowId, route.values);
         }
     }
 }
@@ -1046,22 +1072,33 @@ void MainWindow::onDataSent(const QByteArray& data)
 
     // 数据表格视图更新
     if (m_dataTableWidget) {
-        QString protocolName = m_currentProtocol ?
-            ProtocolFactory::typeName(m_currentProtocolType) : QString();
-        m_dataTableWidget->addSentData(data, protocolName);
+        m_dataTableWidget->addSentData(data, currentProtocolDisplayName());
     }
 }
 
 void MainWindow::onSendData(const QByteArray& data)
 {
-    if (!m_communication || !m_connected) {
+    if (!m_commController || !m_commController->isConnected()) {
         statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
+        if (m_fileTransferDialog && sender() == m_fileTransferDialog) {
+            m_fileTransferDialog->notifyLocalSendResult(false, tr("当前连接未打开"));
+        }
         return;
     }
 
-    qint64 written = m_communication->write(data);
-    if (written < 0) {
-        LOG_ERROR(QString("Send failed: %1").arg(m_communication->lastError()));
+    const bool sent = m_commController->sendData(data);
+    const QString error = sent ? QString() : m_commController->lastError();
+
+    if (m_fileTransferDialog && sender() == m_fileTransferDialog) {
+        /*
+         * Raw/OTA 文件传输按块等待本地发送队列确认。只有发送请求来自当前
+         * 文件传输对话框时才回调，普通发送、快捷发送和脚本发送不需要该确认。
+         */
+        m_fileTransferDialog->notifyLocalSendResult(sent, error);
+    }
+
+    if (!sent) {
+        LOG_ERROR(QString("Send failed: %1").arg(m_commController->lastError()));
     }
 }
 
@@ -1113,7 +1150,9 @@ void MainWindow::onConnectionStatusChanged(bool connected)
 
     if (connected) {
         m_statusLabel->setText(tr("已连接: %1").arg(
-            m_communication ? m_communication->statusString() : QString()));
+            m_commController && m_commController->communication()
+                ? m_commController->communication()->statusString()
+                : QString()));
         m_statusLabel->setProperty("connected", true);
         m_statusLabel->style()->unpolish(m_statusLabel);
         m_statusLabel->style()->polish(m_statusLabel);
@@ -1175,7 +1214,11 @@ void MainWindow::onSaveSession()
     session.hidConfig = m_hidConfig;
 
     // 协议和显示模式
-    session.protocolType = static_cast<int>(m_currentProtocolType);
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    session.protocolType = static_cast<int>(m_protocolState.protocolType());
+    session.protocolId = m_protocolState.protocolId();
+    session.protocolConfigVersion = descriptor.configVersion;
+    session.protocolConfig = m_protocolState.config();
     session.displayMode = static_cast<int>(m_displayMode);
 
     // 快捷发送项
@@ -1242,144 +1285,26 @@ void MainWindow::onLoadSession()
  */
 void MainWindow::applySessionDataToUi(const SessionData& session)
 {
-    // 通信配置先写回成员变量，再同步到设置面板和工具栏。
-    m_currentCommType = session.commType;
-    m_serialConfig = session.serialConfig;
-    m_networkConfig = session.networkConfig;
-    m_hidConfig = session.hidConfig;
-
-    if (m_serialSettings) {
-        m_serialSettings->setConfig(m_serialConfig);
-    }
-    if (m_networkSettings) {
-        m_networkSettings->setConfig(m_networkConfig);
-    }
-    if (m_tcpClientWorkspace) {
-        m_tcpClientWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_tcpServerWorkspace) {
-        m_tcpServerWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_udpWorkspace) {
-        m_udpWorkspace->setConfig(m_networkConfig);
-    }
-    if (m_hidWorkspace) {
-        m_hidWorkspace->setConfig(m_hidConfig);
-    }
-
-    if (m_commTypeCombo) {
-        const int commIndex = m_commTypeCombo->findData(static_cast<int>(m_currentCommType));
-        if (commIndex >= 0) {
-            m_commTypeCombo->blockSignals(true);
-            m_commTypeCombo->setCurrentIndex(commIndex);
-            m_commTypeCombo->blockSignals(false);
-        }
-    }
+    /*
+     * 会话中的配置对象、设置页、工作台和轻量工具栏状态由协调器统一回填。
+     * MainWindow 只继续负责依赖真实环境的端口刷新、协议对象创建和窗口几何恢复。
+     */
+    const MainWindowSessionCoordinator::ApplyResult applyResult =
+        m_sessionCoordinator.applySession(session,
+                                          m_currentCommType,
+                                          m_serialConfig,
+                                          m_networkConfig,
+                                          m_hidConfig);
 
     if (m_currentCommType == CommType::Hid) {
         refreshHidDevices();
     } else {
         refreshPorts();
     }
+    m_sessionCoordinator.selectRestoredPort(m_currentCommType, m_serialConfig, m_hidConfig);
 
-    if (m_portCombo && m_currentCommType == CommType::Serial && !m_serialConfig.portName.isEmpty()) {
-        int portIdx = m_portCombo->findData(m_serialConfig.portName);
-        if (portIdx < 0) {
-            portIdx = m_portCombo->findText(m_serialConfig.portName);
-        }
-        if (portIdx >= 0) {
-            m_portCombo->setCurrentIndex(portIdx);
-        }
-    }
-
-    if (m_portCombo && m_currentCommType == CommType::Hid && !m_hidConfig.path.isEmpty()) {
-        int hidIdx = m_portCombo->findData(m_hidConfig.path);
-        if (hidIdx < 0) {
-            hidIdx = m_portCombo->findText(m_hidConfig.name);
-        }
-        if (hidIdx >= 0) {
-            m_portCombo->setCurrentIndex(hidIdx);
-        }
-    }
-
-    if (m_baudCombo) {
-        const int baudIdx = m_baudCombo->findData(m_serialConfig.baudRate);
-        if (baudIdx >= 0) {
-            m_baudCombo->setCurrentIndex(baudIdx);
-        } else {
-            m_baudCombo->setCurrentText(QString::number(m_serialConfig.baudRate));
-        }
-    }
-
-    if (m_ipEdit) {
-        switch (m_currentCommType) {
-            case CommType::TcpClient:
-                m_ipEdit->setText(m_networkConfig.serverIp);
-                break;
-            case CommType::TcpServer:
-                m_ipEdit->setText(QStringLiteral("0.0.0.0"));
-                break;
-            case CommType::Udp:
-                m_ipEdit->setText(m_networkConfig.remoteIp.isEmpty()
-                                      ? QStringLiteral("127.0.0.1")
-                                      : m_networkConfig.remoteIp);
-                break;
-            case CommType::Serial:
-            case CommType::Hid:
-            default:
-                break;
-        }
-    }
-
-    if (m_portSpin) {
-        switch (m_currentCommType) {
-            case CommType::TcpClient:
-                m_portSpin->setValue(m_networkConfig.serverPort);
-                break;
-            case CommType::TcpServer:
-                m_portSpin->setValue(m_networkConfig.listenPort);
-                break;
-            case CommType::Udp:
-                m_portSpin->setValue(m_networkConfig.remotePort > 0
-                                         ? m_networkConfig.remotePort
-                                         : m_networkConfig.listenPort);
-                break;
-            case CommType::Serial:
-            case CommType::Hid:
-            default:
-                break;
-        }
-    }
-
-    // 协议枚举来自会话文件，落在 supportedTypes 外时保守退回 Raw，避免非法值进入工厂。
-    ProtocolType restoredProtocol = static_cast<ProtocolType>(session.protocolType);
-    if (!ProtocolFactory::supportedTypes().contains(restoredProtocol)) {
-        restoredProtocol = ProtocolType::Raw;
-    }
-    onProtocolTypeChanged(restoredProtocol);
-    if (m_protocolActionGroup) {
-        for (QAction* action : m_protocolActionGroup->actions()) {
-            if (action->data().toInt() == static_cast<int>(m_currentProtocolType)) {
-                action->setChecked(true);
-                break;
-            }
-        }
-    }
-
-    // 显示模式只接受已知 0..3 范围，损坏会话文件中的非法值不会触发越界切换。
-    if (m_displayModeCombo) {
-        const int displayIndex = m_displayModeCombo->findData(session.displayMode);
-        if (displayIndex >= 0) {
-            m_displayModeCombo->setCurrentIndex(displayIndex);
-        }
-    }
-
-    if (m_quickSendWidget) {
-        m_quickSendWidget->clearAll();
-        for (const auto& item : session.quickSendItems) {
-            m_quickSendWidget->addItem(item);
-        }
-    }
+    switchCurrentProtocolById(applyResult.restoredProtocolId,
+                              applyResult.restoredProtocolConfig);
 
     if (!session.windowGeometry.isEmpty()) {
         restoreGeometry(session.windowGeometry);
@@ -1392,6 +1317,119 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     updateCommunicationWidgetsForType();
     updateCommunicationWorkspaceForType();
     updateConnectionButtonText();
+}
+
+/**
+ * @brief 按稳定协议 ID 切换当前接收协议。
+ *
+ * 主要流程：委托 MainWindowProtocolState 创建协议实例并规范化配置；清空绘图
+ * 路由残留；按需重置自动检测器；最后同步旧绘图菜单选中状态。
+ *
+ * @param protocolId 稳定协议 ID，例如 raw、plot.text、lua.script。
+ * @param config 待应用配置。
+ * @param syncPlotAction 是否同步绘图协议菜单选中状态。
+ */
+void MainWindow::switchCurrentProtocolById(const QString& protocolId,
+                                           const QVariantMap& config,
+                                           bool syncPlotAction)
+{
+    m_protocolState.switchById(protocolId, config);
+
+    // 协议切换后清空绘图半行缓冲，避免上一协议的残留污染新协议。
+    m_plotDataRouter.reset();
+
+    /*
+     * 手动切换协议后重置自动检测器。自动检测回调本身也会走到这里，重置只
+     * 清理历史样本，不会改变已经切好的绘图协议。
+     */
+    if (m_plotDetector) {
+        m_plotDetector->reset();
+    }
+
+    if (syncPlotAction) {
+        syncProtocolActionCheckedState();
+        syncReceiveProtocolActionCheckedState();
+    }
+
+    LOG_INFO(QString("Protocol changed to: %1 (%2)")
+             .arg(currentProtocolDisplayName(), m_protocolState.protocolId()));
+}
+
+/**
+ * @brief 按旧版 ProtocolType 切换当前接收协议。
+ * @param type 旧版协议枚举。
+ * @param config 待应用配置。
+ * @param syncPlotAction 是否同步绘图协议菜单选中状态。
+ */
+void MainWindow::switchCurrentProtocolByLegacyType(ProtocolType type,
+                                                   const QVariantMap& config,
+                                                   bool syncPlotAction)
+{
+    const QString protocolId = ProtocolFactory::typeId(type);
+    switchCurrentProtocolById(protocolId.isEmpty() ? QStringLiteral("raw") : protocolId,
+                              config,
+                              syncPlotAction);
+}
+
+/**
+ * @brief 同步绘图协议菜单选中状态。
+ *
+ * Lua 等非旧版协议的 legacyType 是 Raw，但稳定 ID 不是 raw；此时绘图菜单
+ * 选中“无”，表示当前没有绘图协议，而不是覆盖真实接收协议 ID。
+ */
+void MainWindow::syncProtocolActionCheckedState()
+{
+    if (!m_protocolActionGroup) {
+        return;
+    }
+
+    const ProtocolType checkedType = m_protocolState.descriptor().plotProtocol
+        ? m_protocolState.protocolType()
+        : ProtocolType::Raw;
+    for (QAction* action : m_protocolActionGroup->actions()) {
+        if (action->data().toInt() == static_cast<int>(checkedType)) {
+            action->setChecked(true);
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 同步接收协议菜单选中状态。
+ *
+ * 该菜单以稳定协议 ID 为事实源，因此 Lua、未来插件协议和旧版绘图协议都
+ * 可以准确恢复选中状态。
+ */
+void MainWindow::syncReceiveProtocolActionCheckedState()
+{
+    if (!m_receiveProtocolActionGroup) {
+        return;
+    }
+
+    for (QAction* action : m_receiveProtocolActionGroup->actions()) {
+        if (action->data().toString() == m_protocolState.protocolId()) {
+            action->setChecked(true);
+            break;
+        }
+    }
+}
+
+/**
+ * @brief 返回当前协议显示名称。
+ * @return 数据表格、日志和状态栏使用的协议名称；Raw 返回空字符串。
+ */
+QString MainWindow::currentProtocolDisplayName() const
+{
+    if (m_protocolState.isRawProtocol()) {
+        return QString();
+    }
+
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    if (!descriptor.displayName.isEmpty()) {
+        return descriptor.displayName;
+    }
+
+    return m_protocolState.protocol() ? m_protocolState.protocol()->name() : QString();
 }
 
 void MainWindow::onExportData()
@@ -1577,9 +1615,31 @@ void MainWindow::onScriptEditor()
 {
     if (!m_scriptEditorDialog) {
         m_scriptEditorDialog = new ScriptEditorDialog(this);
-        // 连接脚本发送信号到主窗口发送槽
-        connect(m_scriptEditorDialog, &ScriptEditorDialog::sendData,
-                this, &MainWindow::onSendData);
+
+        /*
+         * 4.8 起脚本发送需要同步拿到主窗口发送入口的接受/拒绝结果，
+         * 这样 Lua 的 serial.send/serial.sendHex 才能在未连接、队列拒绝
+         * 或底层写入失败时抛出稳定错误。这里注入轻量回调，仍不让
+         * worker 线程直接接触通信对象。
+         */
+        m_scriptEditorDialog->setConnectionStateProvider([this]() {
+            return m_commController && m_commController->isConnected();
+        });
+        m_scriptEditorDialog->setSendDataHandler([this](const QByteArray& data) {
+            ScriptSendResult result;
+            if (!m_commController || !m_commController->isConnected()) {
+                result.error = tr("当前连接未打开");
+                statusBar()->showMessage(tr("请先打开当前连接后再发送。"), 3000);
+                return result;
+            }
+
+            result.accepted = m_commController->sendData(data);
+            result.error = result.accepted ? QString() : m_commController->lastError();
+            if (!result.accepted && result.error.trimmed().isEmpty()) {
+                result.error = tr("发送失败");
+            }
+            return result;
+        });
     }
     m_scriptEditorDialog->show();
     m_scriptEditorDialog->raise();
@@ -1917,6 +1977,32 @@ void MainWindow::populateHamburgerMenu()
     toolsMenu->addAction(tr("多端口管理..."), this, &MainWindow::onMultiPortManager);
     toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
     toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
+    QMenu* receiveProtocolMenu = toolsMenu->addMenu(tr("接收协议"));
+    QActionGroup* receiveProtocolGroup = new QActionGroup(this);
+    receiveProtocolGroup->setExclusive(true);
+    const QList<ProtocolDescriptor> receiveProtocols =
+        MainWindowProtocolState::receiveProtocolChoices();
+    for (const ProtocolDescriptor& descriptor : receiveProtocols) {
+        QAction* act = receiveProtocolMenu->addAction(
+            descriptor.displayName.isEmpty() ? descriptor.id : descriptor.displayName);
+        act->setCheckable(true);
+        act->setData(descriptor.id);
+        receiveProtocolGroup->addAction(act);
+        if (descriptor.id == m_protocolState.protocolId()) {
+            act->setChecked(true);
+        }
+    }
+    connect(receiveProtocolGroup, &QActionGroup::triggered, this, [this](QAction* action) {
+        switchCurrentProtocolById(action->data().toString());
+        statusBar()->showMessage(
+            tr("接收协议已切换: %1").arg(currentProtocolDisplayName().isEmpty()
+                ? tr("无")
+                : currentProtocolDisplayName()),
+            3000);
+    });
+    m_receiveProtocolActionGroup = receiveProtocolGroup;
+    toolsMenu->addAction(tr("协议配置..."), this, &MainWindow::onProtocolConfig);
+    toolsMenu->addAction(tr("协议诊断..."), this, &MainWindow::onProtocolDiagnostics);
     toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
     toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
     toolsMenu->addSeparator();
@@ -1941,7 +2027,7 @@ void MainWindow::populateHamburgerMenu()
         act->setCheckable(true);
         act->setData(static_cast<int>(p.type));
         protocolGroup->addAction(act);
-        if (p.type == m_currentProtocolType) {
+        if (p.type == m_protocolState.protocolType()) {
             act->setChecked(true);
         }
     }
@@ -2124,38 +2210,9 @@ void MainWindow::updateCommunicationWorkspaceForType()
  */
 void MainWindow::syncCurrentWorkspaceToConfig()
 {
-    switch (m_currentCommType) {
-        case CommType::TcpClient:
-            if (m_tcpClientWorkspace) {
-                m_networkConfig = m_tcpClientWorkspace->config();
-            }
-            break;
-        case CommType::TcpServer:
-            if (m_tcpServerWorkspace) {
-                m_networkConfig = m_tcpServerWorkspace->config();
-            }
-            break;
-        case CommType::Udp:
-            if (m_udpWorkspace) {
-                m_networkConfig = m_udpWorkspace->config();
-            }
-            break;
-        case CommType::Hid:
-            if (m_hidWorkspace) {
-                const HidConfig reportConfig = m_hidWorkspace->config();
-                m_hidConfig.inputReportLength = reportConfig.inputReportLength;
-                m_hidConfig.outputReportLength = reportConfig.outputReportLength;
-                m_hidConfig.featureReportLength = reportConfig.featureReportLength;
-                m_hidConfig.firstDataIsLength = reportConfig.firstDataIsLength;
-                m_hidConfig.outReportId = reportConfig.outReportId;
-                m_hidConfig.featureReportId = reportConfig.featureReportId;
-                m_hidConfig.removeInReportId = reportConfig.removeInReportId;
-            }
-            break;
-        case CommType::Serial:
-        default:
-            break;
-    }
+    m_workspaceCoordinator.syncWorkspaceToConfig(m_currentCommType,
+                                                m_networkConfig,
+                                                m_hidConfig);
 }
 
 /**
@@ -2164,19 +2221,7 @@ void MainWindow::syncCurrentWorkspaceToConfig()
  */
 CommunicationWorkspaceWidget* MainWindow::currentCommunicationWorkspace() const
 {
-    switch (m_currentCommType) {
-        case CommType::TcpClient:
-            return m_tcpClientWorkspace;
-        case CommType::TcpServer:
-            return m_tcpServerWorkspace;
-        case CommType::Udp:
-            return m_udpWorkspace;
-        case CommType::Hid:
-            return m_hidWorkspace;
-        case CommType::Serial:
-        default:
-            return nullptr;
-    }
+    return m_workspaceCoordinator.currentWorkspace(m_currentCommType);
 }
 
 /**
@@ -2413,24 +2458,7 @@ void MainWindow::onCloseAllPlotWindows()
 
 void MainWindow::onProtocolTypeChanged(ProtocolType type)
 {
-    m_currentProtocolType = type;
-
-    // 创建对应的协议解析器
-    m_currentProtocol.reset();
-    if (m_currentProtocolType != ProtocolType::Raw) {
-        m_currentProtocol = ProtocolFactory::create(m_currentProtocolType);
-    }
-
-    // 清空绘图数据缓冲
-    m_plotDataBuffer.clear();
-
-    // 重置自动检测器（手动切换协议后停止自动检测）
-    if (m_plotDetector) {
-        m_plotDetector->reset();
-    }
-
-    LOG_INFO(QString("Protocol changed to: %1").arg(
-        ProtocolFactory::typeName(m_currentProtocolType)));
+    switchCurrentProtocolByLegacyType(type);
 }
 
 /**
@@ -2441,20 +2469,8 @@ void MainWindow::onProtocolTypeChanged(ProtocolType type)
  */
 void MainWindow::onPlotProtocolAutoDetected(ProtocolType type)
 {
-    // 更新协议状态
-    m_currentProtocolType = type;
-    m_currentProtocol = ProtocolFactory::create(type);
-    m_plotDataBuffer.clear();
-
-    // 同步菜单选中状态
-    if (m_protocolActionGroup) {
-        for (QAction* action : m_protocolActionGroup->actions()) {
-            if (action->data().toInt() == static_cast<int>(type)) {
-                action->setChecked(true);
-                break;
-            }
-        }
-    }
+    // 自动检测只会产生旧版绘图协议，仍通过统一协议状态协调器同步稳定 ID。
+    switchCurrentProtocolByLegacyType(type, QVariantMap(), true);
 
     // 状态栏通知
     statusBar()->showMessage(
@@ -2675,6 +2691,56 @@ void MainWindow::onDataWindowConfig()
         m_dataWindowManager->setRules(dialog.rules());
         LOG_INFO(QString("Data window rules updated, count: %1").arg(dialog.rules().size()));
     }
+}
+
+void MainWindow::onProtocolConfig()
+{
+    /*
+     * 协议配置以稳定协议 ID 为事实源。Lua 等非旧版协议可以在这里恢复
+     * 多行脚本源码，旧绘图菜单仍只负责绘图协议选择。
+     */
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    QVariantMap currentConfig = m_protocolState.config();
+    if (currentConfig.isEmpty()) {
+        currentConfig = descriptor.defaultConfig;
+    }
+
+    ProtocolConfigDialog dialog(descriptor, currentConfig, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    /*
+     * 对话框只会在 Schema 校验通过后返回 Accepted，因此这里可直接
+     * 应用 normalizedConfig。通过稳定 ID 重新切换一次协议，可以让 Lua
+     * 脚本源码、沙箱限制和后续插件协议状态立即生效。
+     */
+    const QVariantMap normalizedConfig = dialog.normalizedConfig();
+    switchCurrentProtocolById(m_protocolState.protocolId(), normalizedConfig);
+
+    statusBar()->showMessage(tr("协议配置已应用"), 3000);
+    LOG_INFO(QString("Protocol config applied for: %1").arg(descriptor.id));
+}
+
+void MainWindow::onProtocolDiagnostics()
+{
+    /*
+     * 诊断入口只读取当前协议状态，不修改配置，也不强行创建 Raw 协议实例。
+     * 这样用户可以安全导出当前事实源，用于 Issue 或后续 Lua/插件排障。
+     */
+    const ProtocolDescriptor descriptor = m_protocolState.descriptor();
+    QVariantMap currentConfig = m_protocolState.config();
+    if (currentConfig.isEmpty()) {
+        currentConfig = descriptor.defaultConfig;
+    }
+
+    ProtocolDiagnosticsDialog dialog(
+        ProtocolDiagnosticsBuilder::build(descriptor,
+                                          currentConfig,
+                                          QString(),
+                                          m_protocolState.diagnosticsContext()),
+        this);
+    dialog.exec();
 }
 
 void MainWindow::onControlPanelToggled()

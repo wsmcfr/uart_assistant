@@ -28,6 +28,7 @@ void RecoveryDialog::setupUi()
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(15);
+    mainLayout->setContentsMargins(18, 18, 18, 16);
 
     // 图标和标题
     QHBoxLayout* headerLayout = new QHBoxLayout;
@@ -38,9 +39,11 @@ void RecoveryDialog::setupUi()
     QVBoxLayout* titleLayout = new QVBoxLayout;
     m_titleLabel = new QLabel;
     m_titleLabel->setObjectName("recoveryTitleLabel");
+    m_titleLabel->setProperty("role", "title");
     m_messageLabel = new QLabel;
     m_messageLabel->setWordWrap(true);
     m_messageLabel->setObjectName("recoveryMessageLabel");
+    m_messageLabel->setProperty("role", "muted");
     titleLayout->addWidget(m_titleLabel);
     titleLayout->addWidget(m_messageLabel);
     titleLayout->addStretch();
@@ -64,7 +67,11 @@ void RecoveryDialog::setupUi()
     mainLayout->addStretch();
 
     // 按钮
-    QHBoxLayout* buttonLayout = new QHBoxLayout;
+    QWidget* footerWidget = new QWidget(this);
+    footerWidget->setObjectName(QStringLiteral("dialogFooter"));
+    QHBoxLayout* buttonLayout = new QHBoxLayout(footerWidget);
+    buttonLayout->setContentsMargins(0, 10, 0, 0);
+    buttonLayout->setSpacing(8);
 
     m_recoverBtn = new QPushButton;
     m_recoverBtn->setDefault(true);
@@ -73,6 +80,11 @@ void RecoveryDialog::setupUi()
 
     m_discardBtn = new QPushButton;
     m_discardBtn->setObjectName("discardBtn");
+    /*
+     * 丢弃恢复数据是不可逆操作。用 danger 属性交给全局主题渲染，
+     * 避免不同弹窗各自写死红色导致危险态不一致。
+     */
+    m_discardBtn->setProperty("danger", true);
     connect(m_discardBtn, &QPushButton::clicked, this, &RecoveryDialog::onDiscardClicked);
 
     m_laterBtn = new QPushButton;
@@ -83,7 +95,7 @@ void RecoveryDialog::setupUi()
     buttonLayout->addWidget(m_discardBtn);
     buttonLayout->addWidget(m_recoverBtn);
 
-    mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(footerWidget);
 }
 
 void RecoveryDialog::retranslateUi()

@@ -123,7 +123,9 @@ void TestTranslationCompleteness::testMainWindowLanguageCriticalTranslations()
             {QStringLiteral("控件面板(&C)..."), QStringLiteral("Control Panel(&C)...")},
             {QStringLiteral("数据表格(&T)..."), QStringLiteral("Data Table(&T)...")},
             {QStringLiteral("类型:"), QStringLiteral("Type:")},
-            {QStringLiteral("连接"), QStringLiteral("Connect")}
+            {QStringLiteral("连接"), QStringLiteral("Connect")},
+            {QStringLiteral("接收协议已切换: %1"), QStringLiteral("Receive protocol switched: %1")},
+            {QStringLiteral("协议解析错误: %1"), QStringLiteral("Protocol parse error: %1")}
         });
 }
 
@@ -161,6 +163,9 @@ void TestTranslationCompleteness::testMainWindowHamburgerMenuTranslations()
             {QStringLiteral("多端口管理..."), QStringLiteral("Multi-Port Manager...")},
             {QStringLiteral("Modbus分析..."), QStringLiteral("Modbus Analyzer...")},
             {QStringLiteral("数据分窗..."), QStringLiteral("Data Window Layout...")},
+            {QStringLiteral("接收协议"), QStringLiteral("Receive Protocol")},
+            {QStringLiteral("协议配置..."), QStringLiteral("Protocol Config...")},
+            {QStringLiteral("协议诊断..."), QStringLiteral("Protocol Diagnostics...")},
             {QStringLiteral("控件面板..."), QStringLiteral("Control Panel...")},
             {QStringLiteral("数据表格..."), QStringLiteral("Data Table...")},
             {QStringLiteral("设置..."), QStringLiteral("Settings...")},
@@ -251,6 +256,25 @@ void TestTranslationCompleteness::testQuickSendTranslations()
             {QStringLiteral("快捷发送"), QStringLiteral("Quick Send")},
             {QStringLiteral("添加快捷指令"), QStringLiteral("Add Quick Command")},
             {QStringLiteral("查询版本"), QStringLiteral("Query Version")}
+        });
+}
+
+void TestTranslationCompleteness::testTabbedReceiveContextMenuTranslations()
+{
+    const ContextTranslations translations = loadTranslations();
+    verifyTranslations(
+        translations,
+        QStringLiteral("ComAssistant::TabbedReceiveWidget"),
+        {
+            {QStringLiteral("复制"), QStringLiteral("Copy")},
+            {QStringLiteral("全选"), QStringLiteral("Select All")},
+            {QStringLiteral("清屏"), QStringLiteral("Clear Screen")},
+            {QStringLiteral("暂停显示"), QStringLiteral("Pause Display")},
+            {QStringLiteral("继续显示"), QStringLiteral("Resume Display")},
+            {QStringLiteral("自动滚动"), QStringLiteral("Auto")},
+            {QStringLiteral("HEX显示"), QStringLiteral("HEX")},
+            {QStringLiteral("时间戳"), QStringLiteral("Time")},
+            {QStringLiteral("高亮"), QStringLiteral("Highlight")}
         });
 }
 

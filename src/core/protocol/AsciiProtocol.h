@@ -57,6 +57,15 @@ public:
     bool validate(const QByteArray& frame) override;
     QByteArray calculateChecksum(const QByteArray& data) override;
 
+    /**
+     * @brief 设置协议配置表
+     * @param config 已经通过 Schema 校验并补全默认值的配置表
+     *
+     * 该重载把统一配置表转换为 ASCII 协议内部结构，同时保留配置表本身，
+     * 便于会话保存和后续配置界面读取。
+     */
+    void setConfig(const QVariantMap& config) override;
+
     void reset() override;
 
     //=========================================================================

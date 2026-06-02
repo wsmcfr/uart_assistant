@@ -13,8 +13,10 @@
 7. [交互式控件](controls.md)
 8. [脚本功能](scripting.md)
 9. [工具箱](tools.md)
-10. [主题定制](themes.md)
-11. [常见问题](faq.md)
+10. [真实设备端到端验证](real-device-validation.md)
+11. [真实设备验证日志模板](real-device-validation-log-template.md)
+12. [主题定制](themes.md)
+13. [常见问题](faq.md)
 
 ## 系统要求
 

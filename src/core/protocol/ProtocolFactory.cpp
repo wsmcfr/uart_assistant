@@ -9,6 +9,23 @@
 
 namespace ComAssistant {
 
+namespace {
+
+/**
+ * @brief 获取已初始化的共享协议注册中心
+ * @return 已注册内置协议的注册中心
+ *
+ * 使用函数内静态对象可以保证按需初始化，避免应用启动时要求显式调用初始化。
+ */
+ProtocolRegistry& sharedRegistry()
+{
+    static ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+    return registry;
+}
+
+} // namespace
+
 //=============================================================================
 // 智能指针版本
 //=============================================================================
@@ -62,29 +79,20 @@ std::unique_ptr<JustFloatProtocol> ProtocolFactory::createJustFloat()
 
 std::unique_ptr<IProtocol> ProtocolFactory::create(ProtocolType type)
 {
-    switch (type) {
-        case ProtocolType::Ascii:
-            return createAscii();
-        case ProtocolType::Hex:
-            return createHex();
-        case ProtocolType::Modbus:
-            return createModbus();
-        case ProtocolType::Custom:
-            return createCustom();
-        case ProtocolType::EasyHex:
-            return createEasyHex();
-        case ProtocolType::TextPlot:
-            return createTextPlot();
-        case ProtocolType::StampPlot:
-            return createStampPlot();
-        case ProtocolType::CsvPlot:
-            return createCsvPlot();
-        case ProtocolType::JustFloat:
-            return createJustFloat();
-        case ProtocolType::Raw:
-        default:
-            return nullptr;
-    }
+    /*
+     * 通用创建入口委托给注册中心，使旧 API 与平台化能力目录使用同一个事实源。
+     * 具体 createAscii/createHex 等函数仍保留，避免破坏依赖具体返回类型的调用方。
+     */
+    return std::unique_ptr<IProtocol>(create(type, nullptr));
+}
+
+std::unique_ptr<IProtocol> ProtocolFactory::create(ProtocolType type, const QVariantMap& config)
+{
+    /*
+     * 智能指针重载不拥有 Qt 父对象，因此直接复用裸指针重载并交给 unique_ptr 管理。
+     * 这样两种创建方式会走同一套 Schema 校验、默认值回退和协议配置应用流程。
+     */
+    return std::unique_ptr<IProtocol>(create(type, config, nullptr));
 }
 
 //=============================================================================
@@ -140,29 +148,44 @@ JustFloatProtocol* ProtocolFactory::createJustFloat(QObject* parent)
 
 IProtocol* ProtocolFactory::create(ProtocolType type, QObject* parent)
 {
-    switch (type) {
-        case ProtocolType::Ascii:
-            return createAscii(parent);
-        case ProtocolType::Hex:
-            return createHex(parent);
-        case ProtocolType::Modbus:
-            return createModbus(ModbusMode::RTU, parent);
-        case ProtocolType::Custom:
-            return createCustom(parent);
-        case ProtocolType::EasyHex:
-            return createEasyHex(parent);
-        case ProtocolType::TextPlot:
-            return createTextPlot(parent);
-        case ProtocolType::StampPlot:
-            return createStampPlot(parent);
-        case ProtocolType::CsvPlot:
-            return createCsvPlot(parent);
-        case ProtocolType::JustFloat:
-            return createJustFloat(parent);
-        case ProtocolType::Raw:
-        default:
-            return nullptr;
+    return sharedRegistry().create(typeId(type), parent);
+}
+
+IProtocol* ProtocolFactory::create(ProtocolType type, const QVariantMap& config, QObject* parent)
+{
+    /*
+     * 带配置创建入口以协议描述为事实源：
+     * 1. 根据旧版枚举找到稳定协议 ID 和描述；
+     * 2. 通过 Schema 校验并规范化调用方配置；
+     * 3. 校验失败时回退到描述中的默认配置；
+     * 4. 创建真实协议实例后调用虚函数 setConfig(QVariantMap) 应用配置。
+     *
+     * 这样会话恢复、后续配置 UI 和脚本入口即使传入坏配置，也不会把非法状态
+     * 直接塞进协议实现。
+     */
+    const QString id = typeId(type);
+    if (id.isEmpty()) {
+        return nullptr;
     }
+
+    const ProtocolDescriptor protocolDescriptor = sharedRegistry().descriptor(id);
+    if (protocolDescriptor.id.isEmpty()) {
+        return nullptr;
+    }
+
+    ProtocolConfigValidationResult validation =
+        protocolDescriptor.configSchema.validate(config);
+    QVariantMap effectiveConfig = validation.valid
+        ? validation.normalizedConfig
+        : protocolDescriptor.defaultConfig;
+
+    IProtocol* protocol = sharedRegistry().create(id, parent);
+    if (!protocol) {
+        return nullptr;
+    }
+
+    protocol->setConfig(effectiveConfig);
+    return protocol;
 }
 
 //=============================================================================
@@ -171,35 +194,64 @@ IProtocol* ProtocolFactory::create(ProtocolType type, QObject* parent)
 
 QString ProtocolFactory::typeName(ProtocolType type)
 {
-    switch (type) {
-        case ProtocolType::Raw:       return QStringLiteral("Raw");
-        case ProtocolType::Ascii:     return QStringLiteral("ASCII");
-        case ProtocolType::Hex:       return QStringLiteral("HEX");
-        case ProtocolType::Modbus:    return QStringLiteral("Modbus");
-        case ProtocolType::Custom:    return QStringLiteral("Custom");
-        case ProtocolType::EasyHex:   return QStringLiteral("EasyHEX");
-        case ProtocolType::TextPlot:  return QStringLiteral("TEXT绘图");
-        case ProtocolType::StampPlot: return QStringLiteral("STAMP绘图");
-        case ProtocolType::CsvPlot:   return QStringLiteral("CSV绘图");
-        case ProtocolType::JustFloat: return QStringLiteral("JustFloat");
-        default:                      return QStringLiteral("Unknown");
+    const ProtocolDescriptor protocolDescriptor = descriptor(type);
+    if (!protocolDescriptor.displayName.isEmpty()) {
+        return protocolDescriptor.displayName;
     }
+
+    return QStringLiteral("Unknown");
+}
+
+QString ProtocolFactory::typeId(ProtocolType type)
+{
+    /*
+     * ID 映射通过注册中心反查旧版枚举，确保新增能力查询与 supportedTypes()
+     * 使用同一份注册顺序和描述数据。
+     */
+    const QList<ProtocolDescriptor> protocolDescriptors = sharedRegistry().descriptors();
+    for (const ProtocolDescriptor& protocolDescriptor : protocolDescriptors) {
+        if (!protocolDescriptor.legacyCompatible) {
+            continue;
+        }
+
+        if (protocolDescriptor.legacyType == type) {
+            return protocolDescriptor.id;
+        }
+    }
+
+    return QString();
+}
+
+ProtocolDescriptor ProtocolFactory::descriptor(ProtocolType type)
+{
+    const QString id = typeId(type);
+    if (id.isEmpty()) {
+        return ProtocolDescriptor();
+    }
+
+    return sharedRegistry().descriptor(id);
+}
+
+const ProtocolRegistry& ProtocolFactory::registry()
+{
+    return sharedRegistry();
 }
 
 QList<ProtocolType> ProtocolFactory::supportedTypes()
 {
-    return {
-        ProtocolType::Raw,
-        ProtocolType::Ascii,
-        ProtocolType::Hex,
-        ProtocolType::Modbus,
-        ProtocolType::Custom,
-        ProtocolType::EasyHex,
-        ProtocolType::TextPlot,
-        ProtocolType::StampPlot,
-        ProtocolType::CsvPlot,
-        ProtocolType::JustFloat
-    };
+    QList<ProtocolType> types;
+    const QList<ProtocolDescriptor> protocolDescriptors = sharedRegistry().descriptors();
+    types.reserve(protocolDescriptors.size());
+
+    for (const ProtocolDescriptor& protocolDescriptor : protocolDescriptors) {
+        if (!protocolDescriptor.legacyCompatible) {
+            continue;
+        }
+
+        types.append(protocolDescriptor.legacyType);
+    }
+
+    return types;
 }
 
 QMap<QString, ProtocolCreator>& ProtocolFactory::registeredProtocols()

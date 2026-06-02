@@ -10,13 +10,11 @@
 
 #include "ICommunication.h"
 #include "config/AppConfig.h"
+#include "HidWorker.h"
 
 #include <QList>
-#include <QTimer>
-
-#ifdef COMASSISTANT_ENABLE_HIDAPI
-#include <hidapi/hidapi.h>
-#endif
+#include <QThread>
+#include <functional>
 
 namespace ComAssistant {
 
@@ -39,9 +37,9 @@ struct HidDeviceInfo {
 /**
  * @brief USB HID 通信类。
  *
- * 主要流程：open() 根据 path 或 VID/PID 打开设备；QTimer 定时用
- * hid_read_timeout() 拉取输入报告并发出 dataReceived；write() 根据配置
- * 补齐 Report ID 和报告长度后写入设备。
+ * 主要流程：open() 根据 path 或 VID/PID 打开设备；HidWorker 在线程中
+ * 轮询输入报告并发回主对象；write() 根据配置补齐 Report ID 和报告长度
+ * 后投递给 worker 写入设备。
  */
 class HidDevice : public ICommunication {
     Q_OBJECT
@@ -121,11 +119,24 @@ public:
      */
     static bool backendAvailable();
 
+    /**
+     * @brief 测试辅助：获取 HID worker 所在线程。
+     * @return worker 线程指针；生产代码不应依赖该对象生命周期。
+     */
+    QThread* workerThreadForTest() const { return m_workerThread; }
+
 private slots:
     /**
-     * @brief 轮询输入报告并派发接收信号。
+     * @brief 处理 worker 线程读到的原始输入报告。
+     * @param report HID 原始输入报告。
      */
-    void pollInputReport();
+    void handleInputReport(const QByteArray& report);
+
+    /**
+     * @brief 处理 worker 线程报告的错误。
+     * @param errorMessage 错误文本。
+     */
+    void handleWorkerError(const QString& errorMessage);
 
 private:
     /**
@@ -148,20 +159,33 @@ private:
      */
     QString displayName() const;
 
-#ifdef COMASSISTANT_ENABLE_HIDAPI
     /**
-     * @brief 从 hidapi 返回的宽字符串构造 QString。
-     * @param text hidapi 宽字符串指针，可为空。
-     * @return 转换后的 QString。
+     * @brief 创建并启动 HID worker 线程。
+     *
+     * 构造函数调用该函数，让 open/write/Feature Report 可以统一通过
+     * worker 串行执行。即使设备未打开，线程也保持就绪，便于测试生命周期。
      */
-    static QString fromWideString(const wchar_t* text);
+    void startWorkerThread();
 
-    hid_device* m_device = nullptr;  ///< hidapi 设备句柄
-#endif
+    /**
+     * @brief 停止 HID worker 线程并释放 worker 对象。
+     *
+     * 关闭时先通过阻塞调用让 worker 在自己的线程内释放设备句柄，再退出
+     * 线程，避免应用退出时仍有 hidapi 读写悬挂。
+     */
+    void stopWorkerThread();
+
+    /**
+     * @brief 在 worker 线程同步调用无返回值函数。
+     * @param operation 要在 worker 线程执行的操作。
+     */
+    void invokeWorkerBlocking(const std::function<void()>& operation) const;
 
     HidConfig m_config;              ///< 当前 HID 配置
-    QTimer* m_pollTimer = nullptr;   ///< 输入报告轮询定时器
+    QThread* m_workerThread = nullptr; ///< HID 后台线程
+    HidWorker* m_worker = nullptr;    ///< HID 后台工作器
     QByteArray m_readBuffer;         ///< 未被 readAll() 消费的接收缓存
+    bool m_open = false;             ///< UI 线程可读的连接状态缓存
 };
 
 } // namespace ComAssistant

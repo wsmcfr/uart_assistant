@@ -211,6 +211,30 @@
     <p><strong>中文：</strong>串口调试助手支持多种协议，包括数据显示协议和绘图协议。</p>
     <p><strong>English:</strong> ComAssistant supports multiple protocols, including data display protocols and plotting protocols.</p>
 
+    <div class="protocol-box">
+        <h3>协议能力平台化 / Protocol Capability Platform</h3>
+        <p><strong>中文：</strong>内置协议已纳入统一协议能力目录，程序可以按稳定协议 ID 查询协议名称、分类、绘图能力和构帧能力，为后续脚本协议、外部插件和诊断包扩展做准备。</p>
+        <p><strong>English:</strong> Built-in protocols are organized through a unified capability registry with stable IDs, categories, plotting capability, and frame-building capability. This prepares the app for future script protocols, external plugins, and diagnostic exports.</p>
+        <p><strong>中文：</strong>协议配置现在通过 Schema 管理默认值、字段类型和基础校验；会话文件会保存稳定协议 ID 与协议配置，加载旧会话时会按旧版协议类型自动迁移到默认配置。</p>
+        <p><strong>English:</strong> Protocol configuration is now managed by schemas for defaults, field types, and basic validation. Session files store stable protocol IDs and protocol config, while legacy sessions migrate from the old protocol type to default config.</p>
+        <p><strong>中文：</strong>可通过 <code>工具 -&gt; 协议配置...</code> 打开当前协议的 Schema 配置面板，编辑后会先校验并规范化，再应用到当前协议并随会话保存。</p>
+        <p><strong>English:</strong> Use <code>Tools -&gt; Protocol Config...</code> to open the schema-driven config panel for the current protocol. Values are validated and normalized before being applied and saved with the session.</p>
+        <p><strong>中文：</strong>可通过 <code>工具 -&gt; 协议诊断...</code> 打开当前协议的只读诊断面板，查看协议 ID、分类、能力、配置版本、Schema 字段数量和当前配置校验结果。</p>
+        <p><strong>English:</strong> Use <code>Tools -&gt; Protocol Diagnostics...</code> to open a read-only diagnostics panel for the current protocol, including protocol ID, category, capabilities, config version, schema field count, and current config validation result.</p>
+        <p><strong>中文：</strong>诊断面板支持复制或保存完整 JSON，适合在反馈问题、排查会话配置、后续 Lua 或插件协议接入时作为事实源。</p>
+        <p><strong>English:</strong> The diagnostics panel can copy or save the full JSON snapshot, which is useful for issue reports, session config troubleshooting, and future Lua or plugin protocol integration.</p>
+        <p><strong>中文：</strong>脚本编辑器已先接入受限 Lua 沙箱，脚本在后台 worker 中执行，停止按钮会请求 Lua hook 取消，并支持通过 <code>serial.isOpen()</code> 查询主窗口真实连接状态；<code>serial.send</code> 和 <code>serial.sendHex</code> 会复用当前发送队列，未连接、队列拒绝或底层写入失败会作为 Lua 错误显示。</p>
+        <p><strong>English:</strong> The script editor now runs through the restricted Lua sandbox in a background worker. The Stop button requests cancellation through the Lua hook, and <code>serial.isOpen()</code> reflects the real main-window connection state. <code>serial.send</code> and <code>serial.sendHex</code> reuse the current send queue, and disconnected, queue rejection, or write failures are reported as Lua errors.</p>
+        <p><strong>中文：</strong>Lua 脚本协议现已登记为稳定协议 ID <code>lua.script</code>，并可通过 <code>工具 -&gt; 接收协议 -&gt; Lua Script</code> 进入主窗口接收解析链路；会话会保存稳定协议 ID 和脚本配置，下次加载时可恢复。</p>
+        <p><strong>English:</strong> The Lua script protocol is registered with the stable ID <code>lua.script</code> and can be selected through <code>Tools -&gt; Receive Protocol -&gt; Lua Script</code> for the main receive parsing workflow. Sessions save the stable protocol ID and script config for later restore.</p>
+        <p><strong>中文：</strong>协议配置 Schema 暴露脚本来源、入口函数、超时、内存预算、输出行数和通信 API 开关；<code>scriptSource</code> 使用多行脚本编辑器，字段校验错误会显示在对应字段下方，空 Schema 协议会提示可直接使用默认行为。</p>
+        <p><strong>English:</strong> The protocol schema exposes script source, entry function, timeout, memory budget, output limit, and communication API options. <code>scriptSource</code> uses a multiline script editor, field validation errors are shown next to each field, and empty-schema protocols show a default-behavior hint.</p>
+        <p><strong>中文：</strong>协议诊断 JSON 会导出 Lua 沙箱边界、脚本协议可创建状态、<code>serial.receive(timeout)</code> 未开放状态、当前配置校验结果和最近错误。</p>
+        <p><strong>English:</strong> The diagnostics JSON exports Lua sandbox boundaries, the creatable state, the unavailable <code>serial.receive(timeout)</code> state, current config validation, and the recent error.</p>
+        <p><strong>中文：</strong>Lua 解析入口为 <code>process(data, context)</code>，返回表可映射 <code>valid</code>、<code>consumedBytes</code>、<code>frame</code>、<code>payload</code>、<code>metadata</code> 和 <code>error</code>；旧版绘图协议菜单仍只显示 Raw/TEXT/STAMP/CSV/JustFloat，不加载外部 <code>scriptPath</code>，也不脚本化构帧。</p>
+        <p><strong>English:</strong> The Lua parser entry point is <code>process(data, context)</code>. Its returned table maps <code>valid</code>, <code>consumedBytes</code>, <code>frame</code>, <code>payload</code>, <code>metadata</code>, and <code>error</code>. The legacy plotting protocol menu still only lists Raw/TEXT/STAMP/CSV/JustFloat, external <code>scriptPath</code> files are not loaded, and frame building is not scripted.</p>
+    </div>
+
     <h2>1. 数据显示协议 / Data Display Protocols</h2>
 
     <div class="protocol-box">

@@ -22,7 +22,11 @@ set(TEST_SOURCES
     unit/TestFFTUtils.cpp
     unit/TestFilterUtils.cpp
     unit/TestDisplaySettingsPolicy.cpp
+    unit/TestPlotterDataPolicy.cpp
     unit/TestPlotRenderQuality.cpp
+    unit/TestPlotterRenderCoordinator.cpp
+    unit/TestPlotterAnalysisService.cpp
+    unit/TestPlotterStatisticsCalculator.cpp
     unit/TestPlotterManagerLifecycle.cpp
     unit/TestTabbedReceiveWidget.cpp
     unit/TestTerminalModeWidget.cpp
@@ -30,8 +34,24 @@ set(TEST_SOURCES
     unit/TestHidCommunication.cpp
     unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
+    unit/TestThemeCoverage.cpp
+    unit/TestSettingsDialogLayout.cpp
+    unit/TestToolboxDialogLayout.cpp
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
+    unit/TestSendQueue.cpp
+    unit/TestLuaSandbox.cpp
+    unit/TestScriptEditorDialog.cpp
+    unit/TestLuaScriptProtocol.cpp
+    unit/TestProtocolConfigSchema.cpp
+    unit/TestProtocolConfigEditor.cpp
+    unit/TestProtocolDiagnostics.cpp
+    unit/TestProtocolRegistry.cpp
+    unit/TestMainWindowCommunicationController.cpp
+    unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
+    unit/TestMainWindowProtocolState.cpp
+    unit/TestMainWindowPlotDataRouter.cpp
+    unit/TestMainWindowSessionCoordinator.cpp
 )
 
 # 创建测试可执行文件
@@ -39,20 +59,43 @@ add_executable(ComAssistant_tests
     ${TEST_SOURCES}
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/ICommunication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidWorker.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/LuaScriptProtocol.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/IProtocol.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolConfigSchema.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDescriptor.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptExecutionWorker.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterAnalysisService.h
 )
 
 # 包含目录
@@ -83,6 +126,7 @@ target_link_libraries(ComAssistant_tests PRIVATE
     Qt5::SerialPort
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    ${LUA_LIBRARIES}
 )
 
 if(WIN32)
@@ -101,7 +145,12 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterAnalysisService.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterStatisticsCalculator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterWindow.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/SpectrumWindow.cpp
@@ -115,18 +164,55 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/HidReportWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SerialSettingsWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/NetworkSettingsWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/QuickSendWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/SettingsDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ToolboxDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolConfigDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ProtocolDiagnosticsDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptEditorDialog.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/dialogs/ScriptExecutionWorker.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/ConfigManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/session/SessionManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/session/SessionSerializer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidDevice.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidWorker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/HidReportCodec.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/FrameParser.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/AsciiProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/HexProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ModbusProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CustomProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/EasyHexProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/TextProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/StampProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CsvProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/JustFloatProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/LuaScriptProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolConfigSchema.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp
 )
 

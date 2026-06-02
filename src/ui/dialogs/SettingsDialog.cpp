@@ -19,6 +19,55 @@
 
 namespace ComAssistant {
 
+namespace {
+
+constexpr int kSettingsDialogMinWidth = 620;
+constexpr int kSettingsDialogMinHeight = 540;
+constexpr int kSettingsDialogDefaultWidth = 680;
+constexpr int kSettingsDialogDefaultHeight = 600;
+constexpr int kSettingsFieldMinWidth = 180;
+constexpr int kSettingsFieldMinHeight = 34;
+
+/**
+ * @brief 配置设置窗口中的表单布局。
+ * @param layout 需要统一调整的表单布局。
+ *
+ * 设置页有较多中文标签和带后缀的数值框。字段列必须允许横向扩展，
+ * 否则窗口稍窄时 QSpinBox/QComboBox 会压缩到裁剪文字。
+ */
+void configureSettingsFormLayout(QFormLayout* layout)
+{
+    if (!layout) {
+        return;
+    }
+
+    layout->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    layout->setLabelAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    layout->setHorizontalSpacing(14);
+    layout->setVerticalSpacing(10);
+}
+
+/**
+ * @brief 为设置页输入控件设置稳定尺寸。
+ * @param widget 需要调整的输入控件。
+ *
+ * 暗色主题会给输入框增加边框和内边距；如果没有保底高度，Qt 5.12
+ * 在带单位后缀的 QSpinBox 中容易裁掉“行/MB/pt”等文字。
+ */
+void configureSettingsField(QWidget* widget)
+{
+    if (!widget) {
+        return;
+    }
+
+    widget->setMinimumWidth(kSettingsFieldMinWidth);
+    widget->setMinimumHeight(kSettingsFieldMinHeight);
+    widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+} // namespace
+
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent)
 {
@@ -29,10 +78,12 @@ SettingsDialog::SettingsDialog(QWidget* parent)
 void SettingsDialog::setupUi()
 {
     setWindowTitle(tr("设置"));
-    setMinimumSize(500, 450);
-    resize(550, 500);
+    setMinimumSize(kSettingsDialogMinWidth, kSettingsDialogMinHeight);
+    resize(kSettingsDialogDefaultWidth, kSettingsDialogDefaultHeight);
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(18, 18, 18, 14);
+    mainLayout->setSpacing(12);
 
     // 标签页
     m_tabWidget = new QTabWidget;
@@ -42,7 +93,11 @@ void SettingsDialog::setupUi()
     mainLayout->addWidget(m_tabWidget);
 
     // 按钮
-    QHBoxLayout* buttonLayout = new QHBoxLayout;
+    QWidget* footerWidget = new QWidget(this);
+    footerWidget->setObjectName(QStringLiteral("dialogFooter"));
+    QHBoxLayout* buttonLayout = new QHBoxLayout(footerWidget);
+    buttonLayout->setContentsMargins(0, 10, 0, 0);
+    buttonLayout->setSpacing(8);
     m_resetBtn = new QPushButton(tr("恢复默认"));
     m_okBtn = new QPushButton(tr("确定"));
     m_cancelBtn = new QPushButton(tr("取消"));
@@ -56,7 +111,7 @@ void SettingsDialog::setupUi()
     buttonLayout->addWidget(m_cancelBtn);
     buttonLayout->addWidget(m_applyBtn);
 
-    mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(footerWidget);
 
     // 连接信号
     connect(m_okBtn, &QPushButton::clicked, this, &SettingsDialog::onOkClicked);
@@ -73,11 +128,13 @@ void SettingsDialog::setupGeneralTab()
     // 自动保存组
     m_autoSaveGroup = new QGroupBox(tr("自动保存"));
     m_autoSaveLayout = new QFormLayout(m_autoSaveGroup);
+    configureSettingsFormLayout(m_autoSaveLayout);
 
     m_autoSaveCheck = new QCheckBox(tr("启用自动保存"));
     m_autoSaveLayout->addRow(m_autoSaveCheck);
 
     m_autoSaveIntervalSpin = new QSpinBox;
+    configureSettingsField(m_autoSaveIntervalSpin);
     m_autoSaveIntervalSpin->setRange(10, 600);
     m_autoSaveIntervalSpin->setSuffix(tr(" 秒"));
     m_autoSaveIntervalSpin->setValue(30);
@@ -91,6 +148,7 @@ void SettingsDialog::setupGeneralTab()
     // 窗口组
     m_windowGroup = new QGroupBox(tr("窗口"));
     QFormLayout* windowLayout = new QFormLayout(m_windowGroup);
+    configureSettingsFormLayout(windowLayout);
 
     m_rememberWindowCheck = new QCheckBox(tr("记住窗口位置和大小"));
     windowLayout->addRow(m_rememberWindowCheck);
@@ -100,8 +158,10 @@ void SettingsDialog::setupGeneralTab()
     // 语言组
     m_langGroup = new QGroupBox(tr("语言"));
     m_langLayout = new QFormLayout(m_langGroup);
+    configureSettingsFormLayout(m_langLayout);
 
     m_languageCombo = new QComboBox;
+    configureSettingsField(m_languageCombo);
     m_languageCombo->addItem(tr("简体中文"), "zh_CN");
     m_languageCombo->addItem(tr("English"), "en_US");
     m_langLayout->addRow(tr("界面语言:"), m_languageCombo);
@@ -120,24 +180,29 @@ void SettingsDialog::setupSerialTab()
     // 默认参数组
     m_defaultSerialGroup = new QGroupBox(tr("默认串口参数"));
     m_defaultSerialLayout = new QFormLayout(m_defaultSerialGroup);
+    configureSettingsFormLayout(m_defaultSerialLayout);
 
     m_defaultBaudCombo = new QComboBox;
+    configureSettingsField(m_defaultBaudCombo);
     m_defaultBaudCombo->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     m_defaultBaudCombo->setCurrentText("115200");
     m_defaultSerialLayout->addRow(tr("波特率:"), m_defaultBaudCombo);
 
     m_defaultDataBitsCombo = new QComboBox;
+    configureSettingsField(m_defaultDataBitsCombo);
     m_defaultDataBitsCombo->addItems({"5", "6", "7", "8"});
     m_defaultDataBitsCombo->setCurrentText("8");
     m_defaultSerialLayout->addRow(tr("数据位:"), m_defaultDataBitsCombo);
 
     m_defaultParityCombo = new QComboBox;
+    configureSettingsField(m_defaultParityCombo);
     m_defaultParityCombo->addItem(tr("无"), static_cast<int>(Parity::None));
     m_defaultParityCombo->addItem(tr("奇校验"), static_cast<int>(Parity::Odd));
     m_defaultParityCombo->addItem(tr("偶校验"), static_cast<int>(Parity::Even));
     m_defaultSerialLayout->addRow(tr("校验位:"), m_defaultParityCombo);
 
     m_defaultStopBitsCombo = new QComboBox;
+    configureSettingsField(m_defaultStopBitsCombo);
     m_defaultStopBitsCombo->addItem("1", static_cast<int>(StopBits::One));
     m_defaultStopBitsCombo->addItem("1.5", static_cast<int>(StopBits::OnePointFive));
     m_defaultStopBitsCombo->addItem("2", static_cast<int>(StopBits::Two));
@@ -148,11 +213,13 @@ void SettingsDialog::setupSerialTab()
     // 重连组
     m_reconnectGroup = new QGroupBox(tr("自动重连"));
     m_reconnectLayout = new QFormLayout(m_reconnectGroup);
+    configureSettingsFormLayout(m_reconnectLayout);
 
     m_autoReconnectCheck = new QCheckBox(tr("断开时自动重连"));
     m_reconnectLayout->addRow(m_autoReconnectCheck);
 
     m_reconnectIntervalSpin = new QSpinBox;
+    configureSettingsField(m_reconnectIntervalSpin);
     m_reconnectIntervalSpin->setRange(1, 60);
     m_reconnectIntervalSpin->setSuffix(tr(" 秒"));
     m_reconnectIntervalSpin->setValue(3);
@@ -172,12 +239,15 @@ void SettingsDialog::setupDisplayTab()
     // 字体组
     m_fontGroup = new QGroupBox(tr("字体"));
     m_fontLayout = new QFormLayout(m_fontGroup);
+    configureSettingsFormLayout(m_fontLayout);
 
     m_fontCombo = new QFontComboBox;
+    configureSettingsField(m_fontCombo);
     m_fontCombo->setCurrentFont(QFont("Consolas"));
     m_fontLayout->addRow(tr("字体:"), m_fontCombo);
 
     m_fontSizeSpin = new QSpinBox;
+    configureSettingsField(m_fontSizeSpin);
     m_fontSizeSpin->setRange(8, 24);
     m_fontSizeSpin->setValue(10);
     m_fontSizeSpin->setSuffix(tr(" pt"));
@@ -188,8 +258,10 @@ void SettingsDialog::setupDisplayTab()
     // 显示组
     m_displayGroup = new QGroupBox(tr("显示"));
     m_displayLayout = new QFormLayout(m_displayGroup);
+    configureSettingsFormLayout(m_displayLayout);
 
     m_maxLinesSpin = new QSpinBox;
+    configureSettingsField(m_maxLinesSpin);
     m_maxLinesSpin->setRange(100, 100000);
     m_maxLinesSpin->setSingleStep(1000);
     m_maxLinesSpin->setValue(10000);
@@ -197,6 +269,7 @@ void SettingsDialog::setupDisplayTab()
     m_displayLayout->addRow(tr("最大行数:"), m_maxLinesSpin);
 
     m_hexBufferSpin = new QSpinBox;
+    configureSettingsField(m_hexBufferSpin);
     m_hexBufferSpin->setRange(1, kMaxRecommendedHexBufferMb);
     m_hexBufferSpin->setSingleStep(1);
     m_hexBufferSpin->setValue(kDefaultHexBufferMb);
@@ -211,6 +284,7 @@ void SettingsDialog::setupDisplayTab()
     m_displayLayout->addRow(m_autoScrollCheck);
 
     m_newlineCombo = new QComboBox;
+    configureSettingsField(m_newlineCombo);
     m_newlineCombo->addItem("\\r\\n (CRLF)", "\r\n");
     m_newlineCombo->addItem("\\n (LF)", "\n");
     m_newlineCombo->addItem("\\r (CR)", "\r");

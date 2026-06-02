@@ -28,9 +28,12 @@
 #include <memory>
 
 #include "communication/ICommunication.h"
-#include "communication/CommunicationFactory.h"
 #include "protocol/IProtocol.h"
 #include "config/AppConfig.h"
+#include "ui/MainWindowCommunicationWorkspaceCoordinator.h"
+#include "ui/MainWindowProtocolState.h"
+#include "ui/MainWindowPlotDataRouter.h"
+#include "ui/MainWindowSessionCoordinator.h"
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
@@ -82,6 +85,7 @@ class SerialModeWidget;
 class TerminalModeWidget;
 class FrameModeWidget;
 class DebugModeWidget;
+class MainWindowCommunicationController;
 
 /**
  * @brief 主窗口类
@@ -138,6 +142,8 @@ private slots:
     void onModbusAnalyzer();
     void onDataSearch();
     void onDataWindowConfig();  ///< 数据分窗配置
+    void onProtocolConfig();  ///< 打开当前协议的 Schema 配置对话框
+    void onProtocolDiagnostics();  ///< 打开当前协议的只读诊断导出对话框
     void onControlPanelToggled();  ///< 控件面板显示切换
     void onDataTableToggled();  ///< 数据表格视图切换
 
@@ -198,6 +204,15 @@ private:
     void syncCurrentWorkspaceToConfig();        ///< 打开连接前从当前工作台同步配置
     CommunicationWorkspaceWidget* currentCommunicationWorkspace() const; ///< 当前非串口工作台
     void applySessionDataToUi(const SessionData& session);  ///< 将会话数据应用到主窗口和子控件
+    void switchCurrentProtocolById(const QString& protocolId,
+                                   const QVariantMap& config = QVariantMap(),
+                                   bool syncPlotAction = true); ///< 按稳定协议 ID 切换当前接收协议
+    void switchCurrentProtocolByLegacyType(ProtocolType type,
+                                           const QVariantMap& config = QVariantMap(),
+                                           bool syncPlotAction = true); ///< 按旧版枚举切换绘图协议
+    void syncProtocolActionCheckedState(); ///< 同步绘图协议菜单的选中状态
+    void syncReceiveProtocolActionCheckedState(); ///< 同步接收协议菜单的选中状态
+    QString currentProtocolDisplayName() const; ///< 当前协议用于表格和日志显示的名称
 
     // 应用更新
     void scheduleAutoUpdateCheck();
@@ -213,7 +228,9 @@ private:
 
 private:
     // 通信相关
-    std::unique_ptr<ICommunication> m_communication;
+    MainWindowCommunicationController* m_commController = nullptr; ///< 通信生命周期控制器，负责创建、打开、关闭和发送
+    MainWindowCommunicationWorkspaceCoordinator m_workspaceCoordinator; ///< 通信工作台配置协调器
+    MainWindowSessionCoordinator m_sessionCoordinator; ///< 会话恢复协调器，负责配置和轻量 UI 状态回填。
     CommType m_currentCommType = CommType::Serial;
     bool m_connected = false;
 
@@ -297,11 +314,11 @@ private:
     ControlPanel* m_controlPanel = nullptr;  ///< 控件面板
     DataTableWidget* m_dataTableWidget = nullptr;  ///< 数据表格视图
 
-    // 绘图协议相关
-    std::unique_ptr<IProtocol> m_currentProtocol;
-    ProtocolType m_currentProtocolType = ProtocolType::Raw;
-    QByteArray m_plotDataBuffer;  ///< 绘图数据缓冲（按行处理）
+    // 接收协议相关
+    MainWindowProtocolState m_protocolState; ///< 稳定协议 ID 与旧版绘图枚举的当前事实源
+    MainWindowPlotDataRouter m_plotDataRouter; ///< 绘图协议接收路由器，维护按行解析缓冲和路由结果。
     PlotProtocolDetector* m_plotDetector = nullptr;  ///< 绘图协议自动检测器
+    QActionGroup* m_receiveProtocolActionGroup = nullptr; ///< 稳定 ID 接收协议菜单项组
     QActionGroup* m_protocolActionGroup = nullptr;   ///< 协议菜单项组（用于同步选中状态）
 
     // 显示模式

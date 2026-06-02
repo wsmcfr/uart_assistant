@@ -19,20 +19,110 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QPalette>
+#include <QScrollArea>
+#include <QSizePolicy>
 
 namespace ComAssistant {
+
+namespace {
+
+constexpr int kToolboxDialogMinWidth = 720;
+constexpr int kToolboxDialogMinHeight = 620;
+constexpr int kToolboxDialogDefaultWidth = 800;
+constexpr int kToolboxDialogDefaultHeight = 720;
+constexpr int kToolboxLineEditMinHeight = 34;
+constexpr int kToolboxComboMinWidth = 180;
+constexpr int kToolboxButtonMinWidth = 96;
+constexpr int kToolboxTextMinHeight = 64;
+constexpr int kToolboxTextMaxHeight = 96;
+
+/**
+ * @brief 配置工具箱里的单行输入控件尺寸。
+ * @param widget 需要设置尺寸策略的控件。
+ *
+ * 工具箱弹窗在暗色主题下会给输入框加边框和内边距。这里给单行控件
+ * 保留稳定高度，避免中文标签、单位和下拉箭头在紧凑窗口中被裁剪。
+ */
+void configureToolboxLineControl(QWidget* widget)
+{
+    if (!widget) {
+        return;
+    }
+
+    widget->setMinimumHeight(kToolboxLineEditMinHeight);
+    widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+/**
+ * @brief 配置工具箱里的多行文本控件尺寸。
+ * @param editor 需要设置尺寸策略的文本编辑器。
+ *
+ * QTextEdit 只设置 maximumHeight 时会在父布局空间不足时继续向下压缩，
+ * 这正是截图里底部编码转换区域互相遮挡的根因之一。这里同时设置
+ * minimumHeight，让控件宁可触发滚动区滚动，也不压到不可读。
+ */
+void configureToolboxTextEdit(QTextEdit* editor)
+{
+    if (!editor) {
+        return;
+    }
+
+    editor->setMinimumHeight(kToolboxTextMinHeight);
+    editor->setMaximumHeight(kToolboxTextMaxHeight);
+    editor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+/**
+ * @brief 配置工具箱里的下拉框尺寸。
+ * @param combo 需要设置尺寸策略的下拉框。
+ *
+ * 编码名称包含 UTF-8、GBK 等短文本，但不同语言和字体缩放下仍需要
+ * 足够宽度展示当前值和下拉箭头，避免被右侧按钮挤压。
+ */
+void configureToolboxCombo(QComboBox* combo)
+{
+    if (!combo) {
+        return;
+    }
+
+    combo->setMinimumWidth(kToolboxComboMinWidth);
+    configureToolboxLineControl(combo);
+}
+
+/**
+ * @brief 配置工具箱里的操作按钮尺寸。
+ * @param button 需要设置尺寸策略的按钮。
+ *
+ * 按钮在主题样式中会有额外 padding。保留固定方向的最小宽高，
+ * 可以保证“编码”“解码”“转换”等文案始终完整显示。
+ */
+void configureToolboxButton(QPushButton* button)
+{
+    if (!button) {
+        return;
+    }
+
+    button->setMinimumWidth(kToolboxButtonMinWidth);
+    button->setMinimumHeight(kToolboxLineEditMinHeight);
+    button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+}
+
+} // namespace
 
 ToolboxDialog::ToolboxDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("工具箱"));
-    setMinimumSize(600, 500);
+    setMinimumSize(kToolboxDialogMinWidth, kToolboxDialogMinHeight);
+    resize(kToolboxDialogDefaultWidth, kToolboxDialogDefaultHeight);
     setupUi();
 }
 
 void ToolboxDialog::setupUi()
 {
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 14);
+    mainLayout->setSpacing(10);
 
     m_tabWidget = new QTabWidget;
     mainLayout->addWidget(m_tabWidget);
@@ -42,12 +132,17 @@ void ToolboxDialog::setupUi()
     setupEncodingTab();
 
     // 关闭按钮
-    QHBoxLayout* buttonLayout = new QHBoxLayout;
+    QWidget* footerWidget = new QWidget(this);
+    footerWidget->setObjectName(QStringLiteral("dialogFooter"));
+    QHBoxLayout* buttonLayout = new QHBoxLayout(footerWidget);
+    buttonLayout->setContentsMargins(0, 10, 0, 0);
+    buttonLayout->setSpacing(8);
     buttonLayout->addStretch();
     QPushButton* closeBtn = new QPushButton(tr("关闭"));
+    closeBtn->setDefault(true);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     buttonLayout->addWidget(closeBtn);
-    mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(footerWidget);
 
     applyThemeAwareStyles();
 }
@@ -226,27 +321,53 @@ void ToolboxDialog::setupConversionTab()
 void ToolboxDialog::setupEncodingTab()
 {
     m_encodingTab = new QWidget;
-    QVBoxLayout* layout = new QVBoxLayout(m_encodingTab);
+    QVBoxLayout* outerLayout = new QVBoxLayout(m_encodingTab);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
+
+    /*
+     * 编码页包含四个工具分组。窗口高度不足时，如果直接让 QVBoxLayout
+     * 压缩这些分组，底部“字符编码转换”会出现截图中的控件遮挡。
+     * 使用滚动区域后，每个分组可以保持可读高度，小窗口通过滚动查看。
+     */
+    QScrollArea* scrollArea = new QScrollArea(m_encodingTab);
+    scrollArea->setObjectName(QStringLiteral("encodingScrollArea"));
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    QWidget* contentWidget = new QWidget(scrollArea);
+    QVBoxLayout* layout = new QVBoxLayout(contentWidget);
+    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(12);
 
     // Base64编码
     QGroupBox* base64Group = new QGroupBox(tr("Base64 编码"));
     QGridLayout* base64Layout = new QGridLayout(base64Group);
+    base64Layout->setHorizontalSpacing(10);
+    base64Layout->setVerticalSpacing(10);
+    base64Layout->setColumnStretch(1, 1);
+    base64Layout->setColumnStretch(4, 1);
 
     base64Layout->addWidget(new QLabel(tr("原文:")), 0, 0);
     m_base64Input = new QTextEdit;
-    m_base64Input->setMaximumHeight(60);
+    configureToolboxTextEdit(m_base64Input);
     base64Layout->addWidget(m_base64Input, 0, 1);
 
     QPushButton* toBase64Btn = new QPushButton(tr("编码 →"));
     QPushButton* fromBase64Btn = new QPushButton(tr("← 解码"));
+    configureToolboxButton(toBase64Btn);
+    configureToolboxButton(fromBase64Btn);
     QVBoxLayout* base64BtnLayout = new QVBoxLayout;
+    base64BtnLayout->setSpacing(8);
     base64BtnLayout->addWidget(toBase64Btn);
     base64BtnLayout->addWidget(fromBase64Btn);
+    base64BtnLayout->addStretch();
     base64Layout->addLayout(base64BtnLayout, 0, 2);
 
     base64Layout->addWidget(new QLabel(tr("Base64:")), 0, 3);
     m_base64Output = new QTextEdit;
-    m_base64Output->setMaximumHeight(60);
+    configureToolboxTextEdit(m_base64Output);
     base64Layout->addWidget(m_base64Output, 0, 4);
 
     connect(toBase64Btn, &QPushButton::clicked, [this]() {
@@ -264,18 +385,25 @@ void ToolboxDialog::setupEncodingTab()
     // URL编码
     QGroupBox* urlGroup = new QGroupBox(tr("URL 编码"));
     QGridLayout* urlLayout = new QGridLayout(urlGroup);
+    urlLayout->setHorizontalSpacing(10);
+    urlLayout->setVerticalSpacing(8);
+    urlLayout->setColumnStretch(1, 1);
 
     urlLayout->addWidget(new QLabel(tr("原文:")), 0, 0);
     m_urlInput = new QLineEdit;
+    configureToolboxLineControl(m_urlInput);
     urlLayout->addWidget(m_urlInput, 0, 1);
 
     QPushButton* toUrlBtn = new QPushButton(tr("编码 →"));
     QPushButton* fromUrlBtn = new QPushButton(tr("← 解码"));
+    configureToolboxButton(toUrlBtn);
+    configureToolboxButton(fromUrlBtn);
     urlLayout->addWidget(toUrlBtn, 0, 2);
     urlLayout->addWidget(fromUrlBtn, 0, 3);
 
     urlLayout->addWidget(new QLabel(tr("URL:")), 1, 0);
     m_urlOutput = new QLineEdit;
+    configureToolboxLineControl(m_urlOutput);
     urlLayout->addWidget(m_urlOutput, 1, 1, 1, 3);
 
     connect(toUrlBtn, &QPushButton::clicked, [this]() {
@@ -290,20 +418,27 @@ void ToolboxDialog::setupEncodingTab()
     // 转义序列
     QGroupBox* escapeGroup = new QGroupBox(tr("转义序列"));
     QGridLayout* escapeLayout = new QGridLayout(escapeGroup);
+    escapeLayout->setHorizontalSpacing(10);
+    escapeLayout->setVerticalSpacing(8);
+    escapeLayout->setColumnStretch(1, 1);
 
     escapeLayout->addWidget(new QLabel(tr("带转义:")), 0, 0);
     m_escapeInput = new QLineEdit;
     m_escapeInput->setPlaceholderText(tr("如: Hello\\nWorld\\x00"));
+    configureToolboxLineControl(m_escapeInput);
     escapeLayout->addWidget(m_escapeInput, 0, 1);
 
     QPushButton* processEscapeBtn = new QPushButton(tr("处理 →"));
     QPushButton* toEscapeBtn = new QPushButton(tr("← 转义"));
+    configureToolboxButton(processEscapeBtn);
+    configureToolboxButton(toEscapeBtn);
     escapeLayout->addWidget(processEscapeBtn, 0, 2);
     escapeLayout->addWidget(toEscapeBtn, 0, 3);
 
     escapeLayout->addWidget(new QLabel(tr("HEX:")), 1, 0);
     m_escapeOutput = new QLineEdit;
     m_escapeOutput->setReadOnly(true);
+    configureToolboxLineControl(m_escapeOutput);
     escapeLayout->addWidget(m_escapeOutput, 1, 1, 1, 3);
 
     connect(processEscapeBtn, &QPushButton::clicked, [this]() {
@@ -320,14 +455,20 @@ void ToolboxDialog::setupEncodingTab()
     // 字符编码转换
     QGroupBox* codecGroup = new QGroupBox(tr("字符编码转换"));
     QGridLayout* codecLayout = new QGridLayout(codecGroup);
+    codecLayout->setHorizontalSpacing(10);
+    codecLayout->setVerticalSpacing(10);
+    codecLayout->setColumnStretch(1, 1);
 
     codecLayout->addWidget(new QLabel(tr("输入:")), 0, 0);
     m_encodingInput = new QTextEdit;
-    m_encodingInput->setMaximumHeight(60);
-    codecLayout->addWidget(m_encodingInput, 0, 1, 1, 2);
+    m_encodingInput->setObjectName(QStringLiteral("encodingInputEdit"));
+    configureToolboxTextEdit(m_encodingInput);
+    codecLayout->addWidget(m_encodingInput, 0, 1, 1, 5);
 
     codecLayout->addWidget(new QLabel(tr("从:")), 1, 0);
     m_encodingFromCombo = new QComboBox;
+    m_encodingFromCombo->setObjectName(QStringLiteral("encodingFromCombo"));
+    configureToolboxCombo(m_encodingFromCombo);
     for (const QString& codec : EncodingUtils::supportedCodecs()) {
         m_encodingFromCombo->addItem(codec);
     }
@@ -335,6 +476,8 @@ void ToolboxDialog::setupEncodingTab()
 
     codecLayout->addWidget(new QLabel(tr("到:")), 1, 2);
     m_encodingToCombo = new QComboBox;
+    m_encodingToCombo->setObjectName(QStringLiteral("encodingToCombo"));
+    configureToolboxCombo(m_encodingToCombo);
     for (const QString& codec : EncodingUtils::supportedCodecs()) {
         m_encodingToCombo->addItem(codec);
     }
@@ -342,17 +485,23 @@ void ToolboxDialog::setupEncodingTab()
     codecLayout->addWidget(m_encodingToCombo, 1, 3);
 
     QPushButton* convertEncodingBtn = new QPushButton(tr("转换"));
+    convertEncodingBtn->setObjectName(QStringLiteral("encodingConvertButton"));
+    configureToolboxButton(convertEncodingBtn);
     connect(convertEncodingBtn, &QPushButton::clicked, this, &ToolboxDialog::onConvertEncoding);
-    codecLayout->addWidget(convertEncodingBtn, 1, 4);
+    codecLayout->addWidget(convertEncodingBtn, 1, 4, 1, 2);
 
     codecLayout->addWidget(new QLabel(tr("输出 (HEX):")), 2, 0);
     m_encodingOutput = new QTextEdit;
-    m_encodingOutput->setMaximumHeight(60);
+    m_encodingOutput->setObjectName(QStringLiteral("encodingOutputEdit"));
+    configureToolboxTextEdit(m_encodingOutput);
     m_encodingOutput->setReadOnly(true);
-    codecLayout->addWidget(m_encodingOutput, 2, 1, 1, 4);
+    codecLayout->addWidget(m_encodingOutput, 2, 1, 1, 5);
 
     layout->addWidget(codecGroup);
     layout->addStretch();
+
+    scrollArea->setWidget(contentWidget);
+    outerLayout->addWidget(scrollArea);
 
     m_tabWidget->addTab(m_encodingTab, tr("编码转换"));
 }

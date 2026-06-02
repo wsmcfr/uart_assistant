@@ -8,6 +8,9 @@
 #include "PlotterWindow.h"
 #include "PlotterManager.h"
 #include "PlotRenderQuality.h"
+#include "PlotterRenderCoordinator.h"
+#include "PlotterAnalysisService.h"
+#include "PlotterStatisticsCalculator.h"
 #include "SpectrumWindow.h"
 #include "RealTimeFFTWindow.h"
 #include "dialogs/FFTSettingsDialog.h"
@@ -914,12 +917,10 @@ void PlotterWindow::ensureCurveExists(int index)
     bool curveAdded = false;
     while (m_plot->graphCount() <= index) {
         int newIndex = m_plot->graphCount();
-        const bool highQuality = (m_renderQualityMode == RenderQualityMode::HighQuality);
         QCPGraph* graph = m_plot->addGraph();
         graph->setName(tr("曲线 %1").arg(newIndex + 1));
         graph->setPen(createCurvePen(getDefaultColor(newIndex), 1.7));
-        graph->setAntialiased(highQuality);
-        graph->setAdaptiveSampling(true);  // 启用自适应采样（自动降采样远处数据）
+        PlotterRenderCoordinator::applyGraphDefaults(graph, m_renderQualityMode);
         curveAdded = true;
     }
 
@@ -930,14 +931,12 @@ void PlotterWindow::ensureCurveExists(int index)
 
 void PlotterWindow::addCurve(const QString& curveName, const QColor& color)
 {
-    const bool highQuality = (m_renderQualityMode == RenderQualityMode::HighQuality);
     QCPGraph* graph = m_plot->addGraph();
     graph->setName(curveName);
 
     QColor curveColor = color.isValid() ? color : getDefaultColor(m_plot->graphCount() - 1);
     graph->setPen(createCurvePen(curveColor, 1.7));
-    graph->setAntialiased(highQuality);
-    graph->setAdaptiveSampling(true);  // 启用自适应采样
+    PlotterRenderCoordinator::applyGraphDefaults(graph, m_renderQualityMode);
     if (m_controlPanel) {
         m_controlPanel->updateCurveList();
     }
@@ -1251,10 +1250,13 @@ void PlotterWindow::trimData()
 
         if (dataSize > m_maxDataPoints) {
             // 移除最早的数据，保留 90% 的最大点数以避免频繁裁剪
-            int targetSize = m_maxDataPoints * 9 / 10;  // 保留90%
-            int removeCount = dataSize - targetSize;
+            const PlotterDataPolicy::TrimPlan trimPlan =
+                PlotterDataPolicy::makeTrimPlan(dataSize, m_maxDataPoints);
+            if (!trimPlan.shouldTrim) {
+                continue;
+            }
 
-            if (removeCount >= dataSize) {
+            if (trimPlan.removeCount >= dataSize) {
                 m_totalDataPoints -= dataSize;
                 graph->data()->clear();
                 continue;
@@ -1262,13 +1264,13 @@ void PlotterWindow::trimData()
 
             // 使用真实边界 key 进行裁剪，避免非等步长 X 轴时的删除误差
             auto boundaryIt = graph->data()->constBegin();
-            for (int step = 0; step < removeCount && boundaryIt != graph->data()->constEnd(); ++step) {
+            for (int step = 0; step < trimPlan.removeCount && boundaryIt != graph->data()->constEnd(); ++step) {
                 ++boundaryIt;
             }
 
             if (boundaryIt != graph->data()->constEnd()) {
                 graph->data()->removeBefore(boundaryIt->key);
-                m_totalDataPoints -= removeCount;
+                m_totalDataPoints -= trimPlan.removeCount;
             } else {
                 m_totalDataPoints -= dataSize;
                 graph->data()->clear();
@@ -1845,6 +1847,7 @@ void PlotterWindow::setOpenGLEnabled(bool enabled)
     }
     if (m_controlPanel) {
         m_controlPanel->setOpenGLEnabled(actualEnabled);
+        m_controlPanel->setOpenGLAvailable(m_openGLAvailable || !enabled);
     }
     m_openGLEnabled = actualEnabled;
     applyRenderQualityMode();
@@ -1898,6 +1901,20 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
         return false;
     }
 
+    if (!validateOpenGlRenderedFrame()) {
+        /*
+         * 部分 Windows/Qt 5.12/OpenGL 驱动组合会出现“后端开启成功但合成帧全白”。
+         * 这种情况下继续保持 OpenGL 只会让用户看到白屏，因此立即销毁 FBO 后端，
+         * 回到软件绘制，并把本次环境标记为不可用，避免菜单状态误导用户。
+         */
+        m_plot->setOpenGl(false);
+        m_plot->replot(QCustomPlot::rpImmediateRefresh);
+        m_openGLEnabled = false;
+        m_openGLAvailable = false;
+        trimProcessMemoryIfPossible();
+        return false;
+    }
+
     m_openGLEnabled = true;
     m_openGLAvailable = true;
     return true;
@@ -1907,6 +1924,71 @@ bool PlotterWindow::trySetOpenGLEnabled(bool enabled)
     m_openGLAvailable = false;
     return false;
 #endif
+}
+
+bool PlotterWindow::validateOpenGlRenderedFrame()
+{
+    /*
+     * 这里验证的是“实际可见帧”，不是 OpenGL context 是否能创建。
+     * 用户反馈的问题正是 context/FBO 看似成功，但 QWidget 最终合成出来是白屏。
+     */
+    if (!m_plot || !m_plot->openGl()) {
+        return false;
+    }
+
+    const int frameWidth = m_plot->width();
+    const int frameHeight = m_plot->height();
+    if (frameWidth < 32 || frameHeight < 32) {
+        /*
+         * 窗口尚未完成布局时，过小截图没有足够像素判断是否白屏。
+         * 这类场景不应直接禁用 OpenGL，否则启动阶段可能被误判。
+         */
+        LOG_WARN(QString("OpenGL frame validation skipped for plot window '%1': widget size is %2x%3")
+                 .arg(m_windowId)
+                 .arg(frameWidth)
+                 .arg(frameHeight));
+        return true;
+    }
+
+    /*
+     * 强制同步绘制一帧，然后优先抓取 QWidget 当前可见画面。
+     * 用户看到的白屏发生在窗口合成结果上，grab() 比导出路径更贴近真实症状；
+     * 若当前平台暂时抓不到有效 backing store，再退回 toPixmap 做兜底诊断。
+     */
+    m_plot->replot(QCustomPlot::rpImmediateRefresh);
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents, 10);
+
+    QPixmap framePixmap = m_plot->grab();
+    if (framePixmap.isNull()) {
+        framePixmap = m_plot->toPixmap(frameWidth, frameHeight, 1.0);
+    }
+
+    const PlotFrameInkAnalysis analysis = analyzePlotFrameInk(
+        framePixmap.toImage(),
+        palette().color(QPalette::Base),
+        0.001);
+
+    if (!analysis.valid) {
+        /*
+         * 无效截图多发生在窗口还没拿到有效 backing store 时。
+         * 此时保守放行，避免把一次不可诊断的截图误认为硬件不兼容。
+         */
+        LOG_WARN(QString("OpenGL frame validation skipped for plot window '%1': captured frame is invalid")
+                 .arg(m_windowId));
+        return true;
+    }
+
+    if (analysis.likelyBlank) {
+        LOG_WARN(QString("OpenGL rendered a blank frame for plot window '%1' "
+                         "(sampled=%2, ink=%3, ratio=%4), fallback to software rendering")
+                 .arg(m_windowId)
+                 .arg(analysis.sampledPixels)
+                 .arg(analysis.inkPixels)
+                 .arg(analysis.inkRatio, 0, 'f', 6));
+        return false;
+    }
+
+    return true;
 }
 
 void PlotterWindow::resetTransientPlotState(bool releaseCapacity)
@@ -2071,77 +2153,49 @@ void PlotterWindow::setRenderQualityMode(RenderQualityMode mode)
 
 void PlotterWindow::applyRenderQualityMode()
 {
-    if (!m_plot) {
+    PlotterRenderCoordinator::State state;
+    state.openGlRequested = m_openGLEnabled;
+    state.openGlActive = m_plot ? m_plot->openGl() : false;
+    state.throttleAutoRangeUpdates = m_throttleAutoRangeUpdates;
+    state.valuePanelUpdateEvery = m_valuePanelUpdateEvery;
+
+    const PlotterRenderCoordinator::Result result =
+        PlotterRenderCoordinator::applyQualityProfile(
+            m_plot,
+            m_updateTimer,
+            m_renderQualityMode,
+            [this](bool enabled) {
+                return trySetOpenGLEnabled(enabled);
+            },
+            &state,
+            m_xyCurve);
+
+    if (!result.applied) {
         return;
     }
 
-    const RenderQualityProfile profile = makeRenderQualityProfile(m_renderQualityMode);
-    const bool highQuality = profile.antialiasPlottables;
-
-    m_throttleAutoRangeUpdates = profile.throttleAutoRangeUpdates;
-    m_valuePanelUpdateEvery = qMax(1, profile.valuePanelUpdateEvery);
-
-    QCP::AntialiasedElements notAntialiased = QCP::aeGrid | QCP::aeAxes | QCP::aeLegend | QCP::aeLegendItems;
-    QCP::AntialiasedElements antialiased = QCP::aeItems;
-    if (profile.antialiasPlottables) {
-        antialiased = antialiased | QCP::aePlottables;
-    } else {
-        notAntialiased = notAntialiased | QCP::aePlottables;
-    }
-
-    QCP::PlottingHints hints = QCP::phCacheLabels;
-    if (profile.useFastPolylines) {
-        hints = hints | QCP::phFastPolylines;
-    }
-
-    m_plot->setNotAntialiasedElements(notAntialiased);
-    m_plot->setAntialiasedElements(antialiased);
-    m_plot->setNoAntialiasingOnDrag(profile.noAntialiasingOnDrag);
-    m_plot->setPlottingHints(hints);
-    if (m_updateTimer) {
-        m_updateTimer->setInterval(profile.updateIntervalMs);
-    }
-
-    if (m_openGLEnabled) {
-        trySetOpenGLEnabled(true);
-    } else {
-        m_plot->setOpenGl(false);
-    }
-
-    for (int i = 0; i < m_plot->graphCount(); ++i) {
-        if (QCPGraph* graph = m_plot->graph(i)) {
-            graph->setAntialiased(highQuality);
-            graph->setAdaptiveSampling(true);
-        }
-    }
-
-    if (m_xyCurve) {
-        m_xyCurve->setAntialiased(highQuality);
-    }
+    /*
+     * 渲染协调器只负责把策略落到 QCustomPlot。窗口层保留这些成员，
+     * 因为 updatePlot、控制面板和日志仍需要读取当前运行状态。
+     */
+    m_openGLEnabled = result.openGlEnabled;
+    m_throttleAutoRangeUpdates = state.throttleAutoRangeUpdates;
+    m_valuePanelUpdateEvery = state.valuePanelUpdateEvery;
 
     m_plot->replot(QCustomPlot::rpQueuedReplot);
 }
 
 void PlotterWindow::setDecimationRatio(DecimationRatio ratio)
 {
-    m_decimationRatio = ratio;
-    m_decimationCounter = 0;
+    m_dataPolicy.setDecimationRatio(ratio);
     LOG_INFO(QString("Decimation ratio set to 1:%1 for window '%2'")
         .arg(static_cast<int>(ratio)).arg(m_windowId));
 }
 
 bool PlotterWindow::shouldDecimate()
 {
-    if (m_decimationRatio == DecimationRatio::None) {
-        return false;  // 不抽稀，保留所有数据
-    }
-
-    m_decimationCounter++;
-    if (m_decimationCounter >= static_cast<int>(m_decimationRatio)) {
-        m_decimationCounter = 0;
-        return false;  // 保留这个点
-    }
-    return true;  // 抽稀这个点
+    // 抽稀状态机已经下沉到 PlotterDataPolicy，窗口只使用其跳过决策。
+    return m_dataPolicy.shouldSkipNextPoint();
 }
 
 void PlotterWindow::setCurveLineWidth(int curveIndex, double width)
@@ -2244,32 +2298,27 @@ void PlotterWindow::onFFTAnalysisClicked()
         return;
     }
 
-    // 获取选择的曲线和配置
+    // 获取选择的曲线和配置。曲线数据抽取交给分析服务，避免窗口重复遍历容器。
     int curveIndex = curveCombo->currentData().toInt();
-    QString curveName = m_plot->graph(curveIndex)->name();
-    FFTConfig config = settingsDialog->getConfig();
+    const FFTConfig selectedConfig = settingsDialog->getConfig();
+    const PlotterAnalysisService::FftInput fftInput =
+        PlotterAnalysisService::prepareFftInput(m_plot, curveIndex, selectedConfig.sampleRate, selectedConfig);
 
-    // 获取曲线数据
-    QCPGraph* graph = m_plot->graph(curveIndex);
-    if (graph->data()->isEmpty()) {
+    if (fftInput.error == PlotterAnalysisService::FftInputError::EmptyCurve) {
+        QMessageBox::warning(this, tr("错误"), tr("所选曲线没有数据"));
+        return;
+    }
+    if (fftInput.error == PlotterAnalysisService::FftInputError::TooFewSamples) {
+        QMessageBox::warning(this, tr("错误"), tr("数据点数太少（至少需要8个点）"));
+        return;
+    }
+    if (!fftInput.valid) {
         QMessageBox::warning(this, tr("错误"), tr("所选曲线没有数据"));
         return;
     }
 
-    // 提取Y值数据
-    QVector<double> yData;
-    auto dataContainer = graph->data();
-    for (auto it = dataContainer->constBegin(); it != dataContainer->constEnd(); ++it) {
-        yData.append(it->value);
-    }
-
-    if (yData.size() < 8) {
-        QMessageBox::warning(this, tr("错误"), tr("数据点数太少（至少需要8个点）"));
-        return;
-    }
-
     // 使用配置执行 FFT 分析
-    FFTResult result = FFTUtils::analyzeWithConfig(yData, config);
+    FFTResult result = FFTUtils::analyzeWithConfig(fftInput.samples, fftInput.config);
 
     // 如果启用峰值检测，执行峰值检测
     if (settingsDialog->peakDetectionEnabled()) {
@@ -2279,16 +2328,16 @@ void PlotterWindow::onFFTAnalysisClicked()
     // 创建并显示频谱窗口
     SpectrumWindow* spectrumWin = new SpectrumWindow(this);
     spectrumWin->setAttribute(Qt::WA_DeleteOnClose);
-    spectrumWin->setSampleRate(config.sampleRate);
-    spectrumWin->setFFTResult(result, curveName);
+    spectrumWin->setSampleRate(fftInput.config.sampleRate);
+    spectrumWin->setFFTResult(result, fftInput.curveName);
     spectrumWin->show();
 
     // 更新本窗口的采样率设置
-    m_sampleRate = config.sampleRate;
+    m_sampleRate = fftInput.config.sampleRate;
 
     LOG_INFO(QString("FFT analysis performed on curve '%1' with %2 points, FFT size %3, sample rate %4 Hz, window %5")
-        .arg(curveName).arg(yData.size()).arg(result.fftSize).arg(config.sampleRate)
-        .arg(FFTUtils::getWindowName(config.windowType)));
+        .arg(fftInput.curveName).arg(fftInput.samples.size()).arg(result.fftSize).arg(fftInput.config.sampleRate)
+        .arg(FFTUtils::getWindowName(fftInput.config.windowType)));
 }
 
 void PlotterWindow::onScrollModeToggled(bool checked)
@@ -2704,35 +2753,16 @@ void PlotterWindow::calculateStatistics(int curveIndex, double& minVal, double& 
 {
     minVal = maxVal = avg = stddev = 0;
 
-    if (curveIndex < 0 || curveIndex >= m_plot->graphCount()) return;
-
-    QCPGraph* graph = m_plot->graph(curveIndex);
-    if (graph->data()->isEmpty()) return;
-
-    double sum = 0;
-    double sumSq = 0;
-    int count = 0;
-    bool first = true;
-
-    for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
-        double v = it->value;
-        if (first) {
-            minVal = maxVal = v;
-            first = false;
-        } else {
-            minVal = qMin(minVal, v);
-            maxVal = qMax(maxVal, v);
-        }
-        sum += v;
-        sumSq += v * v;
-        count++;
-    }
-
-    if (count > 0) {
-        avg = sum / count;
-        double variance = (sumSq / count) - (avg * avg);
-        stddev = std::sqrt(qMax(0.0, variance));
-    }
+    /*
+     * 基础统计的数据抽取和公式都下沉到 PlotterAnalysisService。
+     * 窗口保留该旧接口，方便现有对话框与外部调用方不受重构影响。
+     */
+    const PlotterStatisticsCalculator::BasicStatistics stats =
+        PlotterAnalysisService::calculateBasic(m_plot, curveIndex);
+    minVal = stats.minValue;
+    maxVal = stats.maxValue;
+    avg = stats.average;
+    stddev = stats.stdDev;
 }
 
 void PlotterWindow::calculatePIDMetrics(int curveIndex, double setpoint,
@@ -2744,86 +2774,13 @@ void PlotterWindow::calculatePIDMetrics(int curveIndex, double setpoint,
     riseTime = 0;
     steadyError = 0;
 
-    if (curveIndex < 0 || curveIndex >= m_plot->graphCount()) return;
-
-    QCPGraph* graph = m_plot->graph(curveIndex);
-    if (graph->data()->size() < 10) return;
-
-    // 收集数据
-    QVector<double> values;
-    for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
-        values.append(it->value);
-    }
-
-    // 假设初始值为第一个数据点
-    double initialValue = values.first();
-    double responseRange = setpoint - initialValue;
-
-    if (qAbs(responseRange) < 0.001) {
-        steadyError = 0;
-        return;
-    }
-
-    // 计算上升时间 (10% -> 90%)
-    double thresh10 = initialValue + responseRange * 0.1;
-    double thresh90 = initialValue + responseRange * 0.9;
-    int idx10 = -1, idx90 = -1;
-
-    for (int i = 0; i < values.size(); ++i) {
-        if (idx10 < 0 && ((responseRange > 0 && values[i] >= thresh10) ||
-                          (responseRange < 0 && values[i] <= thresh10))) {
-            idx10 = i;
-        }
-        if (idx90 < 0 && ((responseRange > 0 && values[i] >= thresh90) ||
-                          (responseRange < 0 && values[i] <= thresh90))) {
-            idx90 = i;
-            break;
-        }
-    }
-
-    if (idx10 >= 0 && idx90 >= 0) {
-        riseTime = idx90 - idx10;
-    }
-
-    // 计算超调量
-    double peakValue = values.first();
-    for (double v : values) {
-        if (responseRange > 0) {
-            peakValue = qMax(peakValue, v);
-        } else {
-            peakValue = qMin(peakValue, v);
-        }
-    }
-
-    if (qAbs(responseRange) > 0.001) {
-        overshoot = qAbs(peakValue - setpoint) / qAbs(responseRange) * 100.0;
-        if ((responseRange > 0 && peakValue <= setpoint) ||
-            (responseRange < 0 && peakValue >= setpoint)) {
-            overshoot = 0;  // 没有超调
-        }
-    }
-
-    // 计算稳态误差（使用最后10%数据的平均值）
-    int steadyStart = values.size() * 9 / 10;
-    double steadySum = 0;
-    int steadyCount = 0;
-    for (int i = steadyStart; i < values.size(); ++i) {
-        steadySum += values[i];
-        steadyCount++;
-    }
-    double steadyAvg = steadyCount > 0 ? steadySum / steadyCount : values.last();
-    steadyError = setpoint - steadyAvg;
-
-    // 计算调节时间（±2%范围内稳定）
-    double tolerance = qAbs(responseRange) * 0.02;
-    settlingTime = values.size() - 1;
-
-    for (int i = values.size() - 1; i >= 0; --i) {
-        if (qAbs(values[i] - setpoint) > tolerance) {
-            settlingTime = i + 1;
-            break;
-        }
-    }
+    // 曲线抽取与 PID 公式都由分析服务处理，窗口只回填旧输出参数。
+    const PlotterStatisticsCalculator::PidMetrics metrics =
+        PlotterAnalysisService::calculatePid(m_plot, curveIndex, setpoint);
+    overshoot = metrics.overshoot;
+    settlingTime = metrics.settlingTime;
+    riseTime = metrics.riseTime;
+    steadyError = metrics.steadyError;
 }
 
 void PlotterWindow::onPIDAnalysisClicked()
@@ -3025,8 +2982,7 @@ void PlotterWindow::onShowDifferenceClicked()
         };
         QColor color = diffColors[m_diffCurves.size() % diffColors.size()];
         info.graph->setPen(createCurvePen(color, 1.7, Qt::DashLine));
-        info.graph->setAntialiased(m_renderQualityMode == RenderQualityMode::HighQuality);
-        info.graph->setAdaptiveSampling(true);
+        PlotterRenderCoordinator::applyGraphDefaults(info.graph, m_renderQualityMode);
 
         // 计算历史数据的差值
         QCPGraph* g1 = m_plot->graph(idx1);
@@ -3979,8 +3935,7 @@ void PlotterWindow::onFilterCurveClicked()
         // 确保颜色有足够对比度
         newColor.setAlpha(255);
         newGraph->setPen(createCurvePen(newColor, 2.0, Qt::DashLine));  // 线宽2.0更明显
-        newGraph->setAntialiased(m_renderQualityMode == RenderQualityMode::HighQuality);
-        newGraph->setAdaptiveSampling(true);
+        PlotterRenderCoordinator::applyGraphDefaults(newGraph, m_renderQualityMode);
 
         for (int i = 0; i < xData.size(); ++i) {
             newGraph->addData(xData[i], filteredData[i]);
@@ -4600,95 +4555,10 @@ void PlotterWindow::updatePeakAnnotations()
 
 CurveStatistics PlotterWindow::calculateAdvancedStatistics(int curveIndex, double rangeStart, double rangeEnd)
 {
-    CurveStatistics stats;
-
-    if (curveIndex < 0 || curveIndex >= m_plot->graphCount()) {
-        return stats;
-    }
-
-    QCPGraph* graph = m_plot->graph(curveIndex);
-    if (graph->data()->isEmpty()) {
-        return stats;
-    }
-
-    // 收集数据
-    QVector<double> xData, yData;
-    double firstX = 0, lastX = 0;
-    bool first = true;
-
-    for (auto it = graph->data()->constBegin(); it != graph->data()->constEnd(); ++it) {
-        double x = it->key;
-        double y = it->value;
-
-        // 检查是否在范围内
-        if (rangeStart >= 0 && rangeEnd > rangeStart) {
-            if (x < rangeStart || x > rangeEnd) {
-                continue;
-            }
-            stats.isRangeStats = true;
-            stats.rangeStart = rangeStart;
-            stats.rangeEnd = rangeEnd;
-        }
-
-        xData.append(x);
-        yData.append(y);
-
-        if (first) {
-            firstX = x;
-            first = false;
-        }
-        lastX = x;
-    }
-
-    if (yData.isEmpty()) {
-        return stats;
-    }
-
-    stats.dataCount = yData.size();
-
-    // 计算基本统计
-    double sum = 0;
-    double sumSq = 0;
-    stats.minValue = yData[0];
-    stats.maxValue = yData[0];
-
-    for (double v : yData) {
-        sum += v;
-        sumSq += v * v;
-        stats.minValue = qMin(stats.minValue, v);
-        stats.maxValue = qMax(stats.maxValue, v);
-    }
-
-    stats.average = sum / stats.dataCount;
-    double variance = (sumSq / stats.dataCount) - (stats.average * stats.average);
-    stats.stdDev = std::sqrt(qMax(0.0, variance));
-
-    // 峰峰值
-    stats.peakToPeak = stats.maxValue - stats.minValue;
-
-    // RMS（均方根值）
-    stats.rms = std::sqrt(sumSq / stats.dataCount);
-
-    // 波峰因子 (Crest Factor = Peak / RMS)
-    double peakAbs = qMax(qAbs(stats.maxValue), qAbs(stats.minValue));
-    stats.crestFactor = (stats.rms > 0) ? (peakAbs / stats.rms) : 0;
-
-    // 中位数
-    QVector<double> sortedData = yData;
-    std::sort(sortedData.begin(), sortedData.end());
-    if (stats.dataCount % 2 == 0) {
-        stats.median = (sortedData[stats.dataCount / 2 - 1] + sortedData[stats.dataCount / 2]) / 2.0;
-    } else {
-        stats.median = sortedData[stats.dataCount / 2];
-    }
-
-    // 时长和采样率
-    stats.duration = lastX - firstX;
-    if (stats.duration > 0 && stats.dataCount > 1) {
-        stats.sampleRate = (stats.dataCount - 1) / stats.duration;
-    }
-
-    return stats;
+    /*
+     * 增强统计统一走分析服务，避免窗口类继续直接遍历 QCustomPlot 数据容器。
+     */
+    return PlotterAnalysisService::calculateAdvanced(m_plot, curveIndex, rangeStart, rangeEnd);
 }
 
 void PlotterWindow::onAdvancedStatsClicked()
@@ -6016,7 +5886,7 @@ void PlotterWindow::updateXYView()
         m_xyCurve->setName(tr("XY: %1 vs %2").arg(graphX->name()).arg(graphY->name()));
         m_xyCurve->setPen(createCurvePen(QColor(31, 119, 180), 1.7));
         m_xyCurve->setScatterStyle(QCPScatterStyle(QCPScatterStyle::ssCircle, 4));
-        m_xyCurve->setAntialiased(m_renderQualityMode == RenderQualityMode::HighQuality);
+        PlotterRenderCoordinator::applyCurveDefaults(m_xyCurve, m_renderQualityMode);
     }
 
     // 获取数据（取两个通道数据点数的最小值），并在大数据量下抽样以提升流畅度

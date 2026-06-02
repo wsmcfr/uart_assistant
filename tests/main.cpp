@@ -9,6 +9,8 @@
 #include <QTest>
 #include <QDebug>
 
+#include "transfer/FileTransfer.h"
+
 // 包含测试头文件
 #include "unit/TestChecksumUtils.h"
 #include "unit/TestConversionUtils.h"
@@ -17,7 +19,11 @@
 #include "unit/TestFFTUtils.h"
 #include "unit/TestFilterUtils.h"
 #include "unit/TestDisplaySettingsPolicy.h"
+#include "unit/TestPlotterDataPolicy.h"
 #include "unit/TestPlotRenderQuality.h"
+#include "unit/TestPlotterRenderCoordinator.h"
+#include "unit/TestPlotterAnalysisService.h"
+#include "unit/TestPlotterStatisticsCalculator.h"
 #include "unit/TestPlotterManagerLifecycle.h"
 #include "unit/TestTabbedReceiveWidget.h"
 #include "unit/TestTerminalModeWidget.h"
@@ -25,8 +31,24 @@
 #include "unit/TestHidCommunication.h"
 #include "unit/TestCommunicationWorkspaces.h"
 #include "unit/TestReleaseMetadata.h"
+#include "unit/TestThemeCoverage.h"
+#include "unit/TestSettingsDialogLayout.h"
+#include "unit/TestToolboxDialogLayout.h"
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
+#include "unit/TestSendQueue.h"
+#include "unit/TestLuaSandbox.h"
+#include "unit/TestScriptEditorDialog.h"
+#include "unit/TestLuaScriptProtocol.h"
+#include "unit/TestProtocolConfigSchema.h"
+#include "unit/TestProtocolConfigEditor.h"
+#include "unit/TestProtocolDiagnostics.h"
+#include "unit/TestProtocolRegistry.h"
+#include "unit/TestMainWindowCommunicationController.h"
+#include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
+#include "unit/TestMainWindowProtocolState.h"
+#include "unit/TestMainWindowPlotDataRouter.h"
+#include "unit/TestMainWindowSessionCoordinator.h"
 
 int main(int argc, char *argv[])
 {
@@ -36,6 +58,15 @@ int main(int argc, char *argv[])
      */
     QApplication app(argc, argv);
     app.setApplicationName("ComAssistant_tests");
+
+    /*
+     * FileTransfer::stateChanged 使用命名空间内的枚举类型。这里在测试入口
+     * 注册元类型，保证 QSignalSpy 能稳定捕获并还原 TransferState 参数。
+     * Qt 5.12 的 moc 会把同命名空间信号参数规范化为短名 TransferState，
+     * 因此短名和全名都注册，避免不同编译器下 QSignalSpy 解析差异。
+     */
+    qRegisterMetaType<ComAssistant::TransferState>("ComAssistant::TransferState");
+    qRegisterMetaType<ComAssistant::TransferState>("TransferState");
 
     int status = 0;
 
@@ -94,8 +125,28 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] PlotterDataPolicy";
+        TestPlotterDataPolicy test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] PlotRenderQuality";
         TestPlotRenderQuality test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterRenderCoordinator";
+        TestPlotterRenderCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterAnalysisService";
+        TestPlotterAnalysisService test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] PlotterStatisticsCalculator";
+        TestPlotterStatisticsCalculator test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
@@ -134,6 +185,21 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] ThemeCoverage";
+        TestThemeCoverage test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] SettingsDialogLayout";
+        TestSettingsDialogLayout test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ToolboxDialogLayout";
+        TestToolboxDialogLayout test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] FileTransfer";
         TestFileTransfer test;
         status |= QTest::qExec(&test, filteredArgs);
@@ -141,6 +207,71 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] DocumentationLinks";
         TestDocumentationLinks test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] SendQueue";
+        TestSendQueue test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] LuaSandbox";
+        TestLuaSandbox test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ScriptEditorDialog";
+        TestScriptEditorDialog test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] LuaScriptProtocol";
+        TestLuaScriptProtocol test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ProtocolConfigSchema";
+        TestProtocolConfigSchema test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ProtocolConfigEditor";
+        TestProtocolConfigEditor test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ProtocolDiagnostics";
+        TestProtocolDiagnostics test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ProtocolRegistry";
+        TestProtocolRegistry test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowCommunicationController";
+        TestMainWindowCommunicationController test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowCommunicationWorkspaceCoordinator";
+        TestMainWindowCommunicationWorkspaceCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowProtocolState";
+        TestMainWindowProtocolState test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowPlotDataRouter";
+        TestMainWindowPlotDataRouter test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowSessionCoordinator";
+        TestMainWindowSessionCoordinator test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

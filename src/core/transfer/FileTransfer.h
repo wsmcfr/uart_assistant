@@ -15,6 +15,7 @@
 #include <QElapsedTimer>
 #include <QString>
 #include <QStringList>
+#include <QMetaType>
 #include <QVector>
 #include <functional>
 
@@ -45,13 +46,22 @@ enum class TransferDirection {
  * @brief 传输状态
  */
 enum class TransferState {
-    Idle,           ///< 空闲
-    WaitingStart,   ///< 等待开始
-    Transferring,   ///< 传输中
-    Completing,     ///< 完成中
+    Idle,           ///< 空闲，尚未启动任何传输
+    WaitingStart,   ///< 等待设备端起始握手，主要用于 X/YMODEM
+    Running,        ///< 正在传输，Raw/OTA/X/YMODEM 的统一运行态
+    Paused,         ///< 已暂停，文件句柄和当前位置保留，等待继续
+    Completing,     ///< 完成中，协议正在收尾或等待最后确认
     Completed,      ///< 已完成
+    Cancelling,     ///< 正在取消并释放资源，随后进入 Cancelled
     Cancelled,      ///< 已取消
-    Error           ///< 错误
+    Failed,         ///< 失败，progress.errorMessage 保存失败原因
+
+    /*
+     * 兼容旧代码和历史测试中的状态命名。枚举别名让 X/YMODEM 等旧路径
+     * 可以逐步迁移，同时对外已经暴露新的 Running/Failed 语义。
+     */
+    Transferring = Running, ///< 兼容旧名：传输中
+    Error = Failed          ///< 兼容旧名：错误
 };
 
 /**
@@ -103,6 +113,17 @@ public:
      * @brief 处理接收的数据
      */
     virtual void processReceivedData(const QByteArray& data) = 0;
+
+    /**
+     * @brief 通知本地发送队列处理结果。
+     * @param success true 表示主窗口发送队列已接受/写出当前包。
+     * @param errorMessage success 为 false 时携带本地发送失败原因。
+     *
+     * Raw/OTA 流式发送会在发出当前包后等待该通知，再决定是否读取和发送
+     * 下一块。默认实现为空，供 X/YMODEM 等仍由对端 ACK 驱动的协议保持
+     * 兼容。
+     */
+    virtual void notifyLocalSendResult(bool success, const QString& errorMessage);
 
     /**
      * @brief 获取当前状态
@@ -246,6 +267,13 @@ public:
     void processReceivedData(const QByteArray& data) override;
 
     /**
+     * @brief 接收主窗口发送队列对当前块的本地处理结果
+     * @param success 当前块是否已被本地发送管道接受。
+     * @param errorMessage 失败原因。
+     */
+    void notifyLocalSendResult(bool success, const QString& errorMessage) override;
+
+    /**
      * @brief 获取协议类型
      * @return TransferProtocol::RawStream。
      */
@@ -277,6 +305,7 @@ public:
 
 private:
     void sendNextChunk();
+    void continueAfterCurrentChunkAccepted();
     void finishSuccessfully();
     void failWithMessage(const QString& message);
     void refreshSpeed();
@@ -286,7 +315,9 @@ private:
     QFile* m_file = nullptr;
     QTimer* m_sendTimer = nullptr;
     QElapsedTimer m_elapsedTimer;
+    QByteArray m_pendingChunk;
     bool m_paused = false;
+    bool m_waitingLocalSendResult = false;
 };
 
 /**
@@ -333,6 +364,13 @@ public:
      * @param data 串口接收到的数据。
      */
     void processReceivedData(const QByteArray& data) override;
+
+    /**
+     * @brief 接收主窗口发送队列对当前 OTA 包的本地处理结果
+     * @param success 当前包是否已被本地发送管道接受。
+     * @param errorMessage 失败原因。
+     */
+    void notifyLocalSendResult(bool success, const QString& errorMessage) override;
 
     /**
      * @brief 获取协议类型
@@ -397,6 +435,7 @@ private:
     void sendHeaderPacket();
     void sendNextDataPacket();
     void sendEndPacket();
+    void continueAfterLocalSendAccepted();
     void scheduleNextDataPacket();
     void waitForAck(OtaStage stage);
     void handleAck(OtaStage stage);
@@ -414,8 +453,11 @@ private:
     QByteArray m_pendingPacket;
     quint32 m_fileCrc32 = 0;
     quint32 m_currentBlock = 0;
+    qint64 m_pendingPayloadBytes = 0;
     int m_retryCount = 0;
     bool m_paused = false;
+    bool m_waitingLocalSendResult = false;
+    OtaStage m_pendingLocalSendStage = OtaStage::Idle;
     OtaStage m_waitingAckFor = OtaStage::Idle;
 };
 
@@ -555,5 +597,7 @@ public:
 };
 
 } // namespace ComAssistant
+
+Q_DECLARE_METATYPE(ComAssistant::TransferState)
 
 #endif // COMASSISTANT_FILETRANSFER_H

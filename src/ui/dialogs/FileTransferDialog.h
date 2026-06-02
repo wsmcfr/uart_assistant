@@ -51,6 +51,13 @@ public:
      */
     void setIAPMode(bool iapMode);
 
+    /**
+     * @brief 通知当前文件传输对象本地发送结果。
+     * @param success 当前包是否已进入/写出主窗口发送队列。
+     * @param errorMessage 失败原因。
+     */
+    void notifyLocalSendResult(bool success, const QString& errorMessage);
+
 signals:
     /**
      * @brief 请求发送数据

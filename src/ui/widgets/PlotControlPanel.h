@@ -62,6 +62,12 @@ public:
      */
     void setOpenGLEnabled(bool enabled);
 
+    /**
+     * @brief 同步 OpenGL 开关可用状态
+     * @param available 当前环境是否允许继续尝试启用 OpenGL
+     */
+    void setOpenGLAvailable(bool available);
+
 signals:
     /**
      * @brief 曲线可见性改变

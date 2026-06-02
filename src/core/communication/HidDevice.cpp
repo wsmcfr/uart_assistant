@@ -9,21 +9,28 @@
 #include "HidReportCodec.h"
 #include "utils/Logger.h"
 
+#include <QMetaObject>
 #include <QtGlobal>
+
+#ifdef COMASSISTANT_ENABLE_HIDAPI
+#include <hidapi/hidapi.h>
+#endif
 
 namespace ComAssistant {
 
 namespace {
 
+#ifdef COMASSISTANT_ENABLE_HIDAPI
 /**
- * @brief HID 轮询间隔，兼顾实时性和 UI 线程负载。
+ * @brief 从 hidapi 返回的宽字符串构造 QString。
+ * @param text hidapi 宽字符串指针，可为空。
+ * @return 转换后的 QString。
  */
-constexpr int kPollIntervalMs = 10;
-
-/**
- * @brief HID 报告长度兜底值。
- */
-constexpr int kDefaultReportLength = 64;
+QString hidWideStringToQString(const wchar_t* text)
+{
+    return text ? QString::fromWCharArray(text) : QString();
+}
+#endif
 
 } // namespace
 
@@ -32,14 +39,12 @@ HidDevice::HidDevice(const HidConfig& config, QObject* parent)
     , m_config(config)
 {
     m_bufferSize = 65536;
-    m_pollTimer = new QTimer(this);
-    m_pollTimer->setInterval(kPollIntervalMs);
-    connect(m_pollTimer, &QTimer::timeout, this, &HidDevice::pollInputReport);
+    startWorkerThread();
 }
 
 HidDevice::~HidDevice()
 {
-    close();
+    stopWorkerThread();
 }
 
 bool HidDevice::open()
@@ -48,73 +53,49 @@ bool HidDevice::open()
         return true;
     }
 
-#ifndef COMASSISTANT_ENABLE_HIDAPI
-    m_lastError = tr("HID backend is not enabled in this build.");
-    emit errorOccurred(m_lastError);
-    return false;
-#else
     if (m_config.path.isEmpty() && (m_config.vendorId == 0 || m_config.productId == 0)) {
         m_lastError = tr("HID device path or VID/PID is required.");
         emit errorOccurred(m_lastError);
         return false;
     }
 
-    if (hid_init() != 0) {
-        m_lastError = tr("Failed to initialize HID backend.");
+    bool opened = false;
+    QString errorMessage;
+    invokeWorkerBlocking([&]() {
+        opened = m_worker && m_worker->open(m_config, errorMessage);
+    });
+    if (!opened) {
+        m_lastError = errorMessage.isEmpty()
+            ? tr("Failed to open HID device: %1").arg(displayName())
+            : errorMessage;
         emit errorOccurred(m_lastError);
         return false;
     }
 
-    if (!m_config.path.isEmpty()) {
-        const QByteArray pathBytes = m_config.path.toLocal8Bit();
-        m_device = hid_open_path(pathBytes.constData());
-    } else {
-        m_device = hid_open(m_config.vendorId, m_config.productId, nullptr);
-    }
-
-    if (!m_device) {
-        m_lastError = tr("Failed to open HID device: %1")
-                          .arg(displayName());
-        emit errorOccurred(m_lastError);
-        return false;
-    }
-
-    hid_set_nonblocking(m_device, 1);
+    m_open = true;
     m_readBuffer.clear();
-    m_pollTimer->start();
-
     LOG_INFO(QString("HID device opened: %1").arg(displayName()));
     emit connectionStatusChanged(true);
     return true;
-#endif
 }
 
 void HidDevice::close()
 {
-#ifdef COMASSISTANT_ENABLE_HIDAPI
-    if (m_pollTimer) {
-        m_pollTimer->stop();
+    if (!m_worker || !m_open) {
+        return;
     }
-    if (m_device) {
-        hid_close(m_device);
-        m_device = nullptr;
-        LOG_INFO(QString("HID device closed: %1").arg(displayName()));
-        emit connectionStatusChanged(false);
-    }
-#else
-    if (m_pollTimer) {
-        m_pollTimer->stop();
-    }
-#endif
+
+    invokeWorkerBlocking([&]() {
+        m_worker->close();
+    });
+    m_open = false;
+    LOG_INFO(QString("HID device closed: %1").arg(displayName()));
+    emit connectionStatusChanged(false);
 }
 
 bool HidDevice::isOpen() const
 {
-#ifdef COMASSISTANT_ENABLE_HIDAPI
-    return m_device != nullptr;
-#else
-    return false;
-#endif
+    return m_open;
 }
 
 qint64 HidDevice::write(const QByteArray& data)
@@ -124,18 +105,15 @@ qint64 HidDevice::write(const QByteArray& data)
         return -1;
     }
 
-#ifndef COMASSISTANT_ENABLE_HIDAPI
-    Q_UNUSED(data)
-    return -1;
-#else
     const QByteArray report = buildOutputReport(data);
-    const int written = hid_write(
-        m_device,
-        reinterpret_cast<const unsigned char*>(report.constData()),
-        static_cast<size_t>(report.size()));
+    int written = -1;
+    QString errorMessage;
+    invokeWorkerBlocking([&]() {
+        written = m_worker ? m_worker->writeOutputReport(report, errorMessage) : -1;
+    });
 
     if (written < 0) {
-        m_lastError = tr("Failed to write HID report.");
+        m_lastError = errorMessage.isEmpty() ? tr("Failed to write HID report.") : errorMessage;
         emit errorOccurred(m_lastError);
         return -1;
     }
@@ -146,7 +124,6 @@ qint64 HidDevice::write(const QByteArray& data)
      */
     emit dataSent(data);
     return data.size();
-#endif
 }
 
 QByteArray HidDevice::readAll()
@@ -224,22 +201,19 @@ bool HidDevice::sendFeatureReport(const QByteArray& report)
         return false;
     }
 
-#ifndef COMASSISTANT_ENABLE_HIDAPI
-    Q_UNUSED(report)
-    return false;
-#else
-    const int written = hid_send_feature_report(
-        m_device,
-        reinterpret_cast<const unsigned char*>(report.constData()),
-        static_cast<size_t>(report.size()));
-
-    if (written < 0) {
-        m_lastError = tr("Failed to send HID feature report.");
+    bool sent = false;
+    QString errorMessage;
+    invokeWorkerBlocking([&]() {
+        sent = m_worker && m_worker->sendFeatureReport(report, errorMessage);
+    });
+    if (!sent) {
+        m_lastError = errorMessage.isEmpty()
+            ? tr("Failed to send HID feature report.")
+            : errorMessage;
         emit errorOccurred(m_lastError);
         return false;
     }
     return true;
-#endif
 }
 
 QByteArray HidDevice::getFeatureReport(const QByteArray& requestReport)
@@ -249,27 +223,22 @@ QByteArray HidDevice::getFeatureReport(const QByteArray& requestReport)
         return QByteArray();
     }
 
-#ifndef COMASSISTANT_ENABLE_HIDAPI
-    Q_UNUSED(requestReport)
-    return QByteArray();
-#else
     QByteArray report = requestReport;
     if (report.isEmpty()) {
         report = QByteArray(qMax(1, m_config.featureReportLength), '\0');
     }
 
-    const int bytesRead = hid_get_feature_report(
-        m_device,
-        reinterpret_cast<unsigned char*>(report.data()),
-        static_cast<size_t>(report.size()));
-
-    if (bytesRead < 0) {
-        m_lastError = tr("Failed to get HID feature report.");
+    QByteArray result;
+    QString errorMessage;
+    invokeWorkerBlocking([&]() {
+        result = m_worker ? m_worker->getFeatureReport(report, errorMessage) : QByteArray();
+    });
+    if (result.isEmpty() && !errorMessage.isEmpty()) {
+        m_lastError = errorMessage;
         emit errorOccurred(m_lastError);
         return QByteArray();
     }
-    return report.left(bytesRead);
-#endif
+    return result;
 }
 
 QList<HidDeviceInfo> HidDevice::availableDevices()
@@ -291,8 +260,8 @@ QList<HidDeviceInfo> HidDevice::availableDevices()
         info.usagePage = static_cast<quint16>(item->usage_page);
         info.usage = static_cast<quint16>(item->usage);
 
-        const QString manufacturer = fromWideString(item->manufacturer_string);
-        const QString product = fromWideString(item->product_string);
+        const QString manufacturer = hidWideStringToQString(item->manufacturer_string);
+        const QString product = hidWideStringToQString(item->product_string);
         if (!manufacturer.isEmpty() || !product.isEmpty()) {
             info.name = QStringLiteral("%1 %2").arg(manufacturer, product).trimmed();
         }
@@ -320,44 +289,6 @@ bool HidDevice::backendAvailable()
 #endif
 }
 
-void HidDevice::pollInputReport()
-{
-#ifdef COMASSISTANT_ENABLE_HIDAPI
-    if (!m_device) {
-        return;
-    }
-
-    const int reportLength = qMax(kDefaultReportLength, m_config.inputReportLength);
-    QByteArray report(reportLength, Qt::Uninitialized);
-
-    while (true) {
-        const int bytesRead = hid_read_timeout(
-            m_device,
-            reinterpret_cast<unsigned char*>(report.data()),
-            static_cast<size_t>(report.size()),
-            0);
-
-        if (bytesRead > 0) {
-            const QByteArray payload = normalizeInputReport(report.left(bytesRead));
-            if (!payload.isEmpty()) {
-                m_readBuffer.append(payload);
-                if (m_bufferSize > 0 && m_readBuffer.size() > m_bufferSize) {
-                    m_readBuffer = m_readBuffer.right(m_bufferSize);
-                }
-                emit dataReceived(payload);
-            }
-            continue;
-        }
-
-        if (bytesRead < 0) {
-            m_lastError = tr("Failed to read HID report.");
-            emit errorOccurred(m_lastError);
-        }
-        break;
-    }
-#endif
-}
-
 QByteArray HidDevice::buildOutputReport(const QByteArray& data) const
 {
     return HidReportCodec::buildOutputReport(m_config, data);
@@ -382,11 +313,86 @@ QString HidDevice::displayName() const
     return m_config.path.isEmpty() ? tr("Unselected HID device") : m_config.path;
 }
 
-#ifdef COMASSISTANT_ENABLE_HIDAPI
-QString HidDevice::fromWideString(const wchar_t* text)
+void HidDevice::handleInputReport(const QByteArray& report)
 {
-    return text ? QString::fromWCharArray(text) : QString();
+    /*
+     * worker 返回完整 Input Report，HidDevice 负责按用户配置移除 Report ID
+     * 并维护 readAll() 缓冲，保持上层通信接口行为不变。
+     */
+    const QByteArray payload = normalizeInputReport(report);
+    if (payload.isEmpty()) {
+        return;
+    }
+
+    m_readBuffer.append(payload);
+    if (m_bufferSize > 0 && m_readBuffer.size() > m_bufferSize) {
+        m_readBuffer = m_readBuffer.right(m_bufferSize);
+    }
+    emit dataReceived(payload);
 }
-#endif
+
+void HidDevice::handleWorkerError(const QString& errorMessage)
+{
+    m_lastError = errorMessage;
+    emit errorOccurred(errorMessage);
+}
+
+void HidDevice::startWorkerThread()
+{
+    /*
+     * worker 没有设置 Qt 父对象，便于 moveToThread。线程结束时由
+     * deleteLater 清理，HidDevice 只持有非拥有指针。
+     */
+    m_workerThread = new QThread(this);
+    m_worker = new HidWorker();
+    m_worker->moveToThread(m_workerThread);
+
+    connect(m_workerThread, &QThread::finished, m_worker, &QObject::deleteLater);
+    connect(m_worker, &HidWorker::inputReportReady,
+            this, &HidDevice::handleInputReport, Qt::QueuedConnection);
+    connect(m_worker, &HidWorker::errorOccurred,
+            this, &HidDevice::handleWorkerError, Qt::QueuedConnection);
+
+    m_workerThread->start();
+}
+
+void HidDevice::stopWorkerThread()
+{
+    if (!m_workerThread) {
+        return;
+    }
+
+    if (m_worker && m_workerThread->isRunning()) {
+        invokeWorkerBlocking([&]() {
+            m_worker->close();
+        });
+    }
+    m_open = false;
+
+    m_workerThread->quit();
+    m_workerThread->wait();
+    delete m_workerThread;
+    m_worker = nullptr;
+    m_workerThread = nullptr;
+}
+
+void HidDevice::invokeWorkerBlocking(const std::function<void()>& operation) const
+{
+    if (!m_worker) {
+        return;
+    }
+
+    if (QThread::currentThread() == m_workerThread) {
+        operation();
+        return;
+    }
+
+    QMetaObject::invokeMethod(
+        m_worker,
+        [operation]() {
+            operation();
+        },
+        Qt::BlockingQueuedConnection);
+}
 
 } // namespace ComAssistant
