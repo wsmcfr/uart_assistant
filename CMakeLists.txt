@@ -146,6 +146,7 @@ set(CORE_SOURCES
     src/core/utils/EncodingUtils.cpp
     src/core/utils/MemoryUtils.cpp
     src/core/script/LuaEngine.cpp
+    src/core/script/LuaSandbox.cpp
     src/core/theme/ThemeManager.cpp
     src/core/session/SessionSerializer.cpp
     src/core/session/SessionManager.cpp
@@ -171,6 +172,7 @@ set(CORE_HEADERS
     src/core/utils/EncodingUtils.h
     src/core/utils/MemoryUtils.h
     src/core/script/LuaEngine.h
+    src/core/script/LuaSandbox.h
     src/core/theme/ThemeManager.h
     src/core/session/SessionData.h
     src/core/session/SessionSerializer.h

@@ -115,6 +115,7 @@ target_link_libraries(ComAssistant_tests PRIVATE
     Qt5::SerialPort
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    ${LUA_LIBRARIES}
 )
 
 if(WIN32)
@@ -133,6 +134,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotRenderQuality.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.cpp
