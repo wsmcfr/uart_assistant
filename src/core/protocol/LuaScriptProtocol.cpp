@@ -419,12 +419,19 @@ QString LuaScriptProtocol::description() const
     return tr("Lua script protocol parser");
 }
 
+QString LuaScriptProtocol::recentError() const
+{
+    return m_recentError;
+}
+
 FrameResult LuaScriptProtocol::parse(const QByteArray& data)
 {
     FrameResult result;
     const LuaScriptProtocolOptions options = readOptions(m_config);
     if (options.scriptSource.trimmed().isEmpty()) {
         result.errorMessage = QStringLiteral("Lua protocol script source is empty");
+        m_recentError = result.errorMessage;
+        emit parseError(result.errorMessage);
         return result;
     }
 
@@ -434,13 +441,21 @@ FrameResult LuaScriptProtocol::parse(const QByteArray& data)
 
     if (!sandboxResult.success) {
         result.errorMessage = sandboxResult.errorMessage;
+        m_recentError = result.errorMessage;
+        emit parseError(result.errorMessage);
         return result;
     }
 
     result = parseFrameResultOutput(sandboxResult.outputLines, data.size());
     if (result.valid) {
+        /*
+         * 有效帧解析成功说明当前脚本和资源边界已经恢复正常。清空最近错误，
+         * 避免诊断包继续显示用户已经修复过的旧失败。
+         */
+        m_recentError.clear();
         emit frameReceived(result);
     } else if (!result.errorMessage.isEmpty()) {
+        m_recentError = result.errorMessage;
         emit parseError(result.errorMessage);
     }
     return result;
@@ -477,6 +492,7 @@ QByteArray LuaScriptProtocol::calculateChecksum(const QByteArray& data)
 void LuaScriptProtocol::reset()
 {
     m_buffer.clear();
+    m_recentError.clear();
 }
 
 } // namespace ComAssistant

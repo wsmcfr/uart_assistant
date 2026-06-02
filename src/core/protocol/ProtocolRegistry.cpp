@@ -268,9 +268,9 @@ ProtocolConfigSchema makeEasyHexSchema()
  * @brief 创建 Lua 脚本协议配置 Schema
  * @return Lua 协议第一版默认配置和字段定义
  *
- * 4.9 只把 Lua 协议登记到 descriptor/schema/diagnostics 事实源，不执行脚本、
- * 不加载外部文件，也不开放接收 API。这里的字段用于后续协议解析器接入前
- * 先稳定配置键名、默认值和诊断输出。
+ * Lua 协议当前会执行内联 scriptSource 中的 process(data, context) 入口。
+ * 外部脚本文件加载和 serial.receive(timeout) 仍未开放，因此 schema 继续
+ * 保留这些配置键名和安全边界说明，便于会话保存和诊断导出保持稳定。
  */
 ProtocolConfigSchema makeLuaScriptSchema()
 {
@@ -280,7 +280,7 @@ ProtocolConfigSchema makeLuaScriptSchema()
         QStringLiteral("scriptSource"),
         QStringLiteral("脚本源码"),
         QString(),
-        QStringLiteral("内联 Lua 脚本文本；当前阶段仅保存和诊断，不执行")));
+        QStringLiteral("内联 Lua 脚本文本，解析器会调用 process(data, context)")));
     schema.fields.append(ProtocolConfigField::string(
         QStringLiteral("scriptPath"),
         QStringLiteral("脚本路径"),
@@ -290,7 +290,7 @@ ProtocolConfigSchema makeLuaScriptSchema()
         QStringLiteral("entryFunction"),
         QStringLiteral("入口函数"),
         QStringLiteral("process"),
-        QStringLiteral("后续协议解析器调用的入口函数名称")));
+        QStringLiteral("Lua 协议解析器调用的入口函数名称")));
     schema.fields.append(ProtocolConfigField::integer(
         QStringLiteral("timeoutMs"),
         QStringLiteral("执行超时"),

@@ -49,6 +49,16 @@ public:
     QString description() const override;
 
     /**
+     * @brief 读取最近一次 Lua 协议运行错误。
+     * @return 最近错误文本；为空表示当前没有需要诊断展示的错误。
+     *
+     * 该状态用于 MainWindow 状态栏和协议诊断 JSON。它只记录脚本为空、
+     * 沙箱失败、wrapper 结果缺失或脚本显式返回错误等真实失败，不把
+     * “当前半包未完成”当作错误。
+     */
+    QString recentError() const;
+
+    /**
      * @brief 调用 Lua process(data, context) 解析当前输入。
      * @param data 本次传入的接收缓冲快照。
      * @return Lua table 映射出的帧解析结果。
@@ -85,6 +95,9 @@ public:
      * 或调用方复用实例时留下旧数据。
      */
     void reset() override;
+
+private:
+    QString m_recentError; ///< 最近一次 Lua 协议运行错误，用于 UI 和诊断导出。
 };
 
 } // namespace ComAssistant
