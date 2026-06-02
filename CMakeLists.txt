@@ -274,6 +274,7 @@ set(UI_SOURCES
     src/ui/RealTimeFFTWindow.cpp
     src/ui/dialogs/ToolboxDialog.cpp
     src/ui/dialogs/ScriptEditorDialog.cpp
+    src/ui/dialogs/ScriptExecutionWorker.cpp
     src/ui/dialogs/ExportDialog.cpp
     src/ui/dialogs/RecoveryDialog.cpp
     src/ui/dialogs/SettingsDialog.cpp
@@ -336,6 +337,7 @@ set(UI_HEADERS
     src/ui/RealTimeFFTWindow.h
     src/ui/dialogs/ToolboxDialog.h
     src/ui/dialogs/ScriptEditorDialog.h
+    src/ui/dialogs/ScriptExecutionWorker.h
     src/ui/dialogs/ExportDialog.h
     src/ui/dialogs/RecoveryDialog.h
     src/ui/dialogs/SettingsDialog.h
