@@ -226,6 +226,7 @@ set(PROTOCOL_SOURCES
     src/core/protocol/TextProtocol.cpp
     src/core/protocol/StampProtocol.cpp
     src/core/protocol/CsvProtocol.cpp
+    src/core/protocol/LuaScriptProtocol.cpp
     src/core/protocol/ProtocolConfigSchema.cpp
     src/core/protocol/ProtocolDiagnostics.cpp
     src/core/protocol/ProtocolRegistry.cpp
@@ -245,6 +246,7 @@ set(PROTOCOL_HEADERS
     src/core/protocol/TextProtocol.h
     src/core/protocol/StampProtocol.h
     src/core/protocol/CsvProtocol.h
+    src/core/protocol/LuaScriptProtocol.h
     src/core/protocol/ProtocolConfigSchema.h
     src/core/protocol/ProtocolDiagnostics.h
     src/core/protocol/ProtocolDescriptor.h

@@ -197,6 +197,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/StampProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CsvProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/JustFloatProtocol.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/LuaScriptProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolConfigSchema.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.cpp
