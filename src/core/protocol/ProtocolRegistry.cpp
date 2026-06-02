@@ -94,12 +94,12 @@ void ProtocolRegistry::registerBuiltinProtocols()
 {
     /*
      * 内置协议按旧版 supportedTypes() 顺序注册，保证能力列表和旧 UI 顺序稳定。
+     * 这里不能因为注册表已经有外部协议就直接返回：后续插件或脚本协议可能
+     * 先登记自己的能力，然后再补齐内置协议。重复的内置 ID 会被 registerProtocol()
+     * 拒绝并跳过，缺失的内置协议则继续注册。
+     *
      * Raw 代表无协议，因此登记描述但不提供创建器。
      */
-    if (!m_orderedIds.isEmpty()) {
-        return;
-    }
-
     registerProtocol(
         makeDescriptor(QStringLiteral("raw"),
                        QStringLiteral("Raw"),

@@ -167,3 +167,33 @@ void TestProtocolRegistry::filtersDescriptorsByCategory()
         QCOMPARE(descriptor.category, ProtocolCategory::Plot);
     }
 }
+
+void TestProtocolRegistry::builtinRegistrationKeepsExistingProtocols()
+{
+    /*
+     * 后续插件、脚本协议会先向同一个注册中心登记自有能力。
+     * registerBuiltinProtocols() 必须只跳过已存在的内置 ID，而不能因为注册表非空
+     * 就直接返回，否则“先插件后内置”的初始化顺序会丢失全部内置协议。
+     */
+    ProtocolRegistry registry;
+
+    ProtocolDescriptor externalDescriptor;
+    externalDescriptor.id = QStringLiteral("external.echo");
+    externalDescriptor.displayName = QStringLiteral("External Echo");
+    externalDescriptor.description = QStringLiteral("测试用外部协议");
+    externalDescriptor.category = ProtocolCategory::Custom;
+    externalDescriptor.legacyType = ProtocolType::Custom;
+    externalDescriptor.builtin = false;
+    externalDescriptor.frameBuilder = true;
+
+    QVERIFY(registry.registerProtocol(
+        externalDescriptor,
+        [](QObject* parent) -> IProtocol* { return new AsciiProtocol(parent); }));
+
+    registry.registerBuiltinProtocols();
+
+    QVERIFY(registry.contains(QStringLiteral("external.echo")));
+    QVERIFY(registry.contains(QStringLiteral("raw")));
+    QVERIFY(registry.contains(QStringLiteral("ascii")));
+    QCOMPARE(registry.descriptors().size(), 11);
+}

@@ -68,6 +68,13 @@ private slots:
      * 分类筛选为后续协议 UI 分组、诊断包和插件管理视图提供基础能力。
      */
     void filtersDescriptorsByCategory();
+
+    /**
+     * @brief 验证已有外部注册项时仍可补齐内置协议
+     *
+     * 注册中心后续会承载插件或脚本协议，补注册内置协议时不能因为已有条目就提前退出。
+     */
+    void builtinRegistrationKeepsExistingProtocols();
 };
 
 #endif // TESTPROTOCOLREGISTRY_H
