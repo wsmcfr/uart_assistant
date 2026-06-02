@@ -44,6 +44,8 @@ public:
     struct ApplyResult
     {
         ProtocolType restoredProtocolType = ProtocolType::Raw; ///< 校验后的协议类型。
+        QString restoredProtocolId = QStringLiteral("raw");    ///< 校验后的稳定协议 ID。
+        QVariantMap restoredProtocolConfig;                    ///< Schema 校验后的协议配置。
     };
 
     /**
@@ -105,6 +107,14 @@ public:
      * @return 支持的协议类型；非法值回退 Raw。
      */
     static ProtocolType sanitizeProtocolType(int protocolValue);
+
+    /**
+     * @brief 校验会话稳定协议 ID。
+     * @param protocolId 会话文件中的稳定协议 ID。
+     * @param protocolValue 会话文件中的旧版协议枚举整数，用于旧文件迁移。
+     * @return 当前版本支持的稳定协议 ID；未知 ID 回退 raw。
+     */
+    static QString sanitizeProtocolId(const QString& protocolId, int protocolValue);
 
 private:
     /**

@@ -132,7 +132,23 @@ MainWindowSessionCoordinator::ApplyResult MainWindowSessionCoordinator::applySes
         }
     }
 
-    result.restoredProtocolType = sanitizeProtocolType(session.protocolType);
+    result.restoredProtocolId = sanitizeProtocolId(session.protocolId, session.protocolType);
+    const ProtocolDescriptor restoredDescriptor =
+        ProtocolFactory::registry().descriptor(result.restoredProtocolId);
+    result.restoredProtocolType = restoredDescriptor.id.isEmpty()
+        ? ProtocolType::Raw
+        : restoredDescriptor.legacyType;
+
+    /*
+     * SessionData::fromJson() 已经按 Schema 做过默认值补齐和校验；这里再次
+     * 轻量校验是为了兼容单元测试或内存中直接构造的 SessionData，确保
+     * MainWindow 拿到的是当前协议 ID 对应的规范化配置。
+     */
+    const ProtocolConfigValidationResult validation =
+        restoredDescriptor.configSchema.validate(session.protocolConfig);
+    result.restoredProtocolConfig = validation.valid
+        ? validation.normalizedConfig
+        : restoredDescriptor.defaultConfig;
     return result;
 }
 
@@ -187,6 +203,29 @@ ProtocolType MainWindowSessionCoordinator::sanitizeProtocolType(int protocolValu
         default:
             return ProtocolType::Raw;
     }
+}
+
+QString MainWindowSessionCoordinator::sanitizeProtocolId(const QString& protocolId,
+                                                         int protocolValue)
+{
+    const QString trimmedProtocolId = protocolId.trimmed();
+    if (!trimmedProtocolId.isEmpty()) {
+        /*
+         * 显式 protocolId 是新会话事实源。当前版本不认识时必须回退 raw，
+         * 不能再相信旧 protocolType，否则未来协议或损坏文件可能误进旧链路。
+         */
+        return ProtocolFactory::registry().contains(trimmedProtocolId)
+            ? trimmedProtocolId
+            : QStringLiteral("raw");
+    }
+
+    /*
+     * 旧会话没有 protocolId，只能按旧枚举迁移到注册中心 ID。非法枚举会
+     * 先由 sanitizeProtocolType() 回退 Raw，再映射为 raw。
+     */
+    const ProtocolType restoredProtocolType = sanitizeProtocolType(protocolValue);
+    const QString restoredProtocolId = ProtocolFactory::typeId(restoredProtocolType);
+    return restoredProtocolId.isEmpty() ? QStringLiteral("raw") : restoredProtocolId;
 }
 
 void MainWindowSessionCoordinator::applyNetworkToolbar(
