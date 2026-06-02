@@ -39,6 +39,7 @@ set(TEST_SOURCES
     unit/TestSendQueue.cpp
     unit/TestProtocolConfigSchema.cpp
     unit/TestProtocolConfigEditor.cpp
+    unit/TestProtocolDiagnostics.cpp
     unit/TestProtocolRegistry.cpp
     unit/TestMainWindowCommunicationController.cpp
     unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
@@ -62,6 +63,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/UdpSocket.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/IProtocol.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolConfigSchema.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDescriptor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.h
@@ -181,6 +183,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/CsvProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/JustFloatProtocol.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolConfigSchema.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolDiagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolRegistry.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp

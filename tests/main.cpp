@@ -36,6 +36,7 @@
 #include "unit/TestSendQueue.h"
 #include "unit/TestProtocolConfigSchema.h"
 #include "unit/TestProtocolConfigEditor.h"
+#include "unit/TestProtocolDiagnostics.h"
 #include "unit/TestProtocolRegistry.h"
 #include "unit/TestMainWindowCommunicationController.h"
 #include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
@@ -199,6 +200,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] ProtocolConfigEditor";
         TestProtocolConfigEditor test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ProtocolDiagnostics";
+        TestProtocolDiagnostics test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

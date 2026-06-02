@@ -225,6 +225,7 @@ set(PROTOCOL_SOURCES
     src/core/protocol/StampProtocol.cpp
     src/core/protocol/CsvProtocol.cpp
     src/core/protocol/ProtocolConfigSchema.cpp
+    src/core/protocol/ProtocolDiagnostics.cpp
     src/core/protocol/ProtocolRegistry.cpp
     src/core/protocol/ProtocolFactory.cpp
     src/core/protocol/EasyHexProtocol.cpp
@@ -243,6 +244,7 @@ set(PROTOCOL_HEADERS
     src/core/protocol/StampProtocol.h
     src/core/protocol/CsvProtocol.h
     src/core/protocol/ProtocolConfigSchema.h
+    src/core/protocol/ProtocolDiagnostics.h
     src/core/protocol/ProtocolDescriptor.h
     src/core/protocol/ProtocolRegistry.h
     src/core/protocol/ProtocolFactory.h
