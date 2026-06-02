@@ -24,6 +24,7 @@ private slots:
     void loadsAndReadsConfig();
     void restoresDefaults();
     void reportsValidationErrors();
+    void dialogAcceptsNormalizedConfig();
 };
 
 #endif // TESTPROTOCOLCONFIGEDITOR_H

@@ -5,7 +5,9 @@
 
 #include "TestProtocolConfigEditor.h"
 
+#include "core/protocol/ProtocolDescriptor.h"
 #include "core/protocol/ProtocolConfigSchema.h"
+#include "ui/dialogs/ProtocolConfigDialog.h"
 #include "ui/widgets/ProtocolConfigEditor.h"
 
 #include <QCheckBox>
@@ -147,4 +149,28 @@ void TestProtocolConfigEditor::reportsValidationErrors()
     QVERIFY(!result.valid);
     QVERIFY(result.errors.join(QStringLiteral("\n")).contains(QStringLiteral("frameHeader")));
     QVERIFY(!editor.errorText().isEmpty());
+}
+
+void TestProtocolConfigEditor::dialogAcceptsNormalizedConfig()
+{
+    /*
+     * 对话框确认时应返回 Schema 规范化后的配置，而不是直接返回控件原文。
+     * 这能保证主窗口应用到协议实例前拿到稳定的配置表示。
+     */
+    ProtocolDescriptor descriptor;
+    descriptor.id = QStringLiteral("easyhex");
+    descriptor.displayName = QStringLiteral("EasyHEX");
+    descriptor.description = QStringLiteral("EasyHEX test descriptor");
+    descriptor.configSchema = makeEditorTestSchema();
+    descriptor.configVersion = descriptor.configSchema.version;
+    descriptor.defaultConfig = descriptor.configSchema.defaults();
+
+    ProtocolConfigDialog dialog(descriptor, descriptor.defaultConfig);
+
+    QLineEdit* hexEdit = dialog.findChild<QLineEdit*>(QStringLiteral("protocolConfig_frameHeader"));
+    QVERIFY(hexEdit != nullptr);
+    hexEdit->setText(QStringLiteral("aa-55"));
+
+    QVERIFY(dialog.acceptConfig());
+    QCOMPARE(dialog.normalizedConfig().value(QStringLiteral("frameHeader")).toString(), QStringLiteral("AA 55"));
 }

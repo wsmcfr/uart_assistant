@@ -276,6 +276,7 @@ set(UI_SOURCES
     src/ui/dialogs/FFTSettingsDialog.cpp
     src/ui/dialogs/FileTransferDialog.cpp
     src/ui/dialogs/DataWindowConfigDialog.cpp
+    src/ui/dialogs/ProtocolConfigDialog.cpp
     src/ui/syntax/LuaSyntaxHighlighter.cpp
     src/ui/widgets/SerialSettingsWidget.cpp
     src/ui/widgets/NetworkSettingsWidget.cpp
@@ -336,6 +337,7 @@ set(UI_HEADERS
     src/ui/dialogs/FFTSettingsDialog.h
     src/ui/dialogs/FileTransferDialog.h
     src/ui/dialogs/DataWindowConfigDialog.h
+    src/ui/dialogs/ProtocolConfigDialog.h
     src/ui/syntax/LuaSyntaxHighlighter.h
     src/ui/widgets/SerialSettingsWidget.h
     src/ui/widgets/NetworkSettingsWidget.h
