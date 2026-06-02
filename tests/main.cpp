@@ -36,6 +36,7 @@
 #include "unit/TestSendQueue.h"
 #include "unit/TestLuaSandbox.h"
 #include "unit/TestScriptEditorDialog.h"
+#include "unit/TestLuaScriptProtocol.h"
 #include "unit/TestProtocolConfigSchema.h"
 #include "unit/TestProtocolConfigEditor.h"
 #include "unit/TestProtocolDiagnostics.h"
@@ -202,6 +203,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] ScriptEditorDialog";
         TestScriptEditorDialog test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] LuaScriptProtocol";
+        TestLuaScriptProtocol test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

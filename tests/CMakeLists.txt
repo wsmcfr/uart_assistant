@@ -39,6 +39,7 @@ set(TEST_SOURCES
     unit/TestSendQueue.cpp
     unit/TestLuaSandbox.cpp
     unit/TestScriptEditorDialog.cpp
+    unit/TestLuaScriptProtocol.cpp
     unit/TestProtocolConfigSchema.cpp
     unit/TestProtocolConfigEditor.cpp
     unit/TestProtocolDiagnostics.cpp
@@ -59,6 +60,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendQueue.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SendDispatcher.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/LuaScriptProtocol.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/CommunicationFactory.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/SerialPort.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/communication/TcpClient.h
