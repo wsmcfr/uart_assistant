@@ -162,6 +162,7 @@ void TestTranslationCompleteness::testMainWindowHamburgerMenuTranslations()
             {QStringLiteral("Modbus分析..."), QStringLiteral("Modbus Analyzer...")},
             {QStringLiteral("数据分窗..."), QStringLiteral("Data Window Layout...")},
             {QStringLiteral("协议配置..."), QStringLiteral("Protocol Config...")},
+            {QStringLiteral("协议诊断..."), QStringLiteral("Protocol Diagnostics...")},
             {QStringLiteral("控件面板..."), QStringLiteral("Control Panel...")},
             {QStringLiteral("数据表格..."), QStringLiteral("Data Table...")},
             {QStringLiteral("设置..."), QStringLiteral("Settings...")},

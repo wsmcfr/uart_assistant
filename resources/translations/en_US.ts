@@ -2637,6 +2637,10 @@ Time spent: % 4</translation>
         <translation>Protocol Config...</translation>
     </message>
     <message>
+        <source>协议诊断...</source>
+        <translation>Protocol Diagnostics...</translation>
+    </message>
+    <message>
         <source>控件面板...</source>
         <translation>Control Panel...</translation>
     </message>

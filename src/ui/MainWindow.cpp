@@ -33,6 +33,7 @@
 #include "widgets/DataWindowManager.h"
 #include "dialogs/DataWindowConfigDialog.h"
 #include "dialogs/ProtocolConfigDialog.h"
+#include "dialogs/ProtocolDiagnosticsDialog.h"
 #include "controls/ControlPanel.h"
 #include "widgets/DataTableWidget.h"
 #include "widgets/SideNavigationBar.h"
@@ -46,6 +47,7 @@
 #include "communication/TcpServer.h"
 #include "communication/UdpSocket.h"
 #include "communication/HidDevice.h"
+#include "protocol/ProtocolDiagnostics.h"
 #include "protocol/ProtocolFactory.h"
 #include "macro/MacroRecorder.h"
 #include "communication/MultiPortManager.h"
@@ -1844,6 +1846,7 @@ void MainWindow::populateHamburgerMenu()
     toolsMenu->addAction(tr("Modbus分析..."), this, &MainWindow::onModbusAnalyzer);
     toolsMenu->addAction(tr("数据分窗..."), this, &MainWindow::onDataWindowConfig);
     toolsMenu->addAction(tr("协议配置..."), this, &MainWindow::onProtocolConfig);
+    toolsMenu->addAction(tr("协议诊断..."), this, &MainWindow::onProtocolDiagnostics);
     toolsMenu->addAction(tr("控件面板..."), this, &MainWindow::onControlPanelToggled);
     toolsMenu->addAction(tr("数据表格..."), this, &MainWindow::onDataTableToggled);
     toolsMenu->addSeparator();
@@ -2594,6 +2597,26 @@ void MainWindow::onProtocolConfig()
 
     statusBar()->showMessage(tr("协议配置已应用"), 3000);
     LOG_INFO(QString("Protocol config applied for: %1").arg(descriptor.id));
+}
+
+void MainWindow::onProtocolDiagnostics()
+{
+    /*
+     * 诊断入口只读取当前协议状态，不修改配置，也不强行创建 Raw 协议实例。
+     * 这样用户可以安全导出当前事实源，用于 Issue 或后续 Lua/插件排障。
+     */
+    const ProtocolDescriptor descriptor = ProtocolFactory::descriptor(m_currentProtocolType);
+    QVariantMap currentConfig = m_currentProtocol
+        ? m_currentProtocol->config()
+        : descriptor.defaultConfig;
+    if (currentConfig.isEmpty()) {
+        currentConfig = descriptor.defaultConfig;
+    }
+
+    ProtocolDiagnosticsDialog dialog(
+        ProtocolDiagnosticsBuilder::build(descriptor, currentConfig),
+        this);
+    dialog.exec();
 }
 
 void MainWindow::onControlPanelToggled()
