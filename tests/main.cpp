@@ -43,6 +43,7 @@
 #include "unit/TestProtocolRegistry.h"
 #include "unit/TestMainWindowCommunicationController.h"
 #include "unit/TestMainWindowCommunicationWorkspaceCoordinator.h"
+#include "unit/TestMainWindowProtocolState.h"
 #include "unit/TestMainWindowPlotDataRouter.h"
 #include "unit/TestMainWindowSessionCoordinator.h"
 
@@ -238,6 +239,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] MainWindowCommunicationWorkspaceCoordinator";
         TestMainWindowCommunicationWorkspaceCoordinator test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowProtocolState";
+        TestMainWindowProtocolState test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

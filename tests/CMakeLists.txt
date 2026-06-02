@@ -46,6 +46,7 @@ set(TEST_SOURCES
     unit/TestProtocolRegistry.cpp
     unit/TestMainWindowCommunicationController.cpp
     unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
+    unit/TestMainWindowProtocolState.cpp
     unit/TestMainWindowPlotDataRouter.cpp
     unit/TestMainWindowSessionCoordinator.cpp
 )
@@ -87,6 +88,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterRenderCoordinator.h
@@ -174,6 +176,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/syntax/LuaSyntaxHighlighter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowCommunicationWorkspaceCoordinator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowProtocolState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowPlotDataRouter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/MainWindowSessionCoordinator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FFTUtils.cpp
