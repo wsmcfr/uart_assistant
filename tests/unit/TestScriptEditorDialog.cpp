@@ -37,6 +37,16 @@ QPushButton* runButton(ScriptEditorDialog& dialog)
     return dialog.findChild<QPushButton*>(QStringLiteral("runScriptBtn"));
 }
 
+/**
+ * @brief 查找停止按钮。
+ * @param dialog 被测脚本编辑器对话框。
+ * @return 停止 QPushButton 指针，未找到时返回 nullptr。
+ */
+QPushButton* stopButton(ScriptEditorDialog& dialog)
+{
+    return dialog.findChild<QPushButton*>(QStringLiteral("stopScriptBtn"));
+}
+
 } // namespace
 
 /**
@@ -97,4 +107,92 @@ void TestScriptEditorDialog::runScriptShowsLuaErrors()
     QVERIFY(output.contains(QStringLiteral("bad script")));
     QVERIFY(output.contains(QStringLiteral("错误"))
             || output.contains(QStringLiteral("error"), Qt::CaseInsensitive));
+}
+
+/**
+ * @brief 验证长脚本运行后 UI 立即返回事件循环。
+ *
+ * 后台执行的关键合约是 onRunScript() 不能等 Lua timeout 才返回；
+ * 因此点击运行后应立即看到运行按钮禁用、停止按钮启用，并可继续点击停止。
+ */
+void TestScriptEditorDialog::runScriptReturnsControlBeforeLongScriptFinishes()
+{
+    ScriptEditorDialog dialog;
+    dialog.setScript(QStringLiteral("while true do end"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(stopButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QVERIFY(!runButton(dialog)->isEnabled());
+    QVERIFY(stopButton(dialog)->isEnabled());
+    QVERIFY(outputArea(dialog)->toPlainText().contains(QStringLiteral("开始执行脚本")));
+
+    stopButton(dialog)->click();
+    QTRY_VERIFY_WITH_TIMEOUT(runButton(dialog)->isEnabled(), 1000);
+}
+
+/**
+ * @brief 验证停止按钮能请求取消正在运行的沙箱脚本。
+ *
+ * 该用例覆盖 UI 停止按钮到 LuaSandbox interruptCallback 的完整链路，
+ * 最终输出必须是“脚本已取消”，而不是旧版本的“等待超时保护”提示。
+ */
+void TestScriptEditorDialog::stopScriptCancelsRunningSandbox()
+{
+    ScriptEditorDialog dialog;
+    dialog.setScript(QStringLiteral("while true do end"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(stopButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+    QVERIFY(stopButton(dialog)->isEnabled());
+    stopButton(dialog)->click();
+
+    QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("脚本已取消")), 1000);
+    QVERIFY(runButton(dialog)->isEnabled());
+    QVERIFY(!stopButton(dialog)->isEnabled());
+}
+
+/**
+ * @brief 验证后台线程中的 serial.send 仍回到对话框发送信号。
+ *
+ * worker 线程不能直接触碰主窗口通信对象；这里要求发送请求仍由
+ * ScriptEditorDialog 在 UI 线程转发为 sendData(QByteArray)。
+ */
+void TestScriptEditorDialog::runScriptEmitsSendDataFromWorkerThread()
+{
+    ScriptEditorDialog dialog;
+    QSignalSpy sendSpy(&dialog, SIGNAL(sendData(QByteArray)));
+    dialog.setScript(QStringLiteral("serial.send('AT\\r\\n')"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QTRY_COMPARE_WITH_TIMEOUT(sendSpy.count(), 1, 1000);
+    QCOMPARE(sendSpy.takeFirst().at(0).toByteArray(), QByteArray("AT\r\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("[发送]")), 1000);
+}
+
+/**
+ * @brief 验证脚本错误后运行按钮和停止按钮恢复到空闲状态。
+ *
+ * 后台执行完成、失败或被取消都必须统一收敛回 Idle 状态，避免用户无法再次运行脚本。
+ */
+void TestScriptEditorDialog::runScriptRestoresButtonsAfterError()
+{
+    ScriptEditorDialog dialog;
+    dialog.setScript(QStringLiteral("error('bad script')"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(stopButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("bad script")), 1000);
+    QVERIFY(runButton(dialog)->isEnabled());
+    QVERIFY(!stopButton(dialog)->isEnabled());
 }

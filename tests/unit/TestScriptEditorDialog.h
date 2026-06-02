@@ -23,6 +23,10 @@ private slots:
     void runScriptUsesLuaSandboxPrintOutput();
     void runScriptEmitsSendDataFromSerialSend();
     void runScriptShowsLuaErrors();
+    void runScriptReturnsControlBeforeLongScriptFinishes();
+    void stopScriptCancelsRunningSandbox();
+    void runScriptEmitsSendDataFromWorkerThread();
+    void runScriptRestoresButtonsAfterError();
 };
 
 #endif // TESTSCRIPTEDITORDIALOG_H
