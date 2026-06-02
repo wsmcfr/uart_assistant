@@ -240,6 +240,75 @@ int sandboxCrc32(lua_State* L)
 }
 
 /**
+ * @brief 沙箱版 serial.send。
+ * @param L Lua 状态。
+ * @return Lua 返回值数量；发送失败时通过 luaL_error 抛出 Lua 错误。
+ *
+ * 该函数只负责把 Lua 字符串按原始字节转给调用方提供的受控回调。
+ * 真正的串口队列、连接状态和线程归属由 UI/通信层继续处理，避免沙箱直接持有串口对象。
+ */
+int sandboxSerialSend(lua_State* L)
+{
+    SandboxContext* context = contextFromState(L);
+    if (!context || !context->options.sendCallback) {
+        return luaL_error(L, "serial.send unavailable");
+    }
+
+    size_t length = 0;
+    const char* data = luaL_checklstring(L, 1, &length);
+    const QByteArray bytes(data, static_cast<int>(length));
+    if (!context->options.sendCallback(bytes)) {
+        return luaL_error(L, "serial.send failed");
+    }
+
+    return 0;
+}
+
+/**
+ * @brief 沙箱版 serial.sendHex。
+ * @param L Lua 状态。
+ * @return Lua 返回值数量；转换或发送失败时通过 luaL_error 抛出 Lua 错误。
+ *
+ * 十六进制文本转换复用项目既有 ConversionUtils 语义，保持与工具箱和旧脚本引擎一致：
+ * 空格等分隔符会被忽略，奇数字符会自动补齐。
+ */
+int sandboxSerialSendHex(lua_State* L)
+{
+    SandboxContext* context = contextFromState(L);
+    if (!context || !context->options.sendCallback) {
+        return luaL_error(L, "serial.sendHex unavailable");
+    }
+
+    const char* hex = luaL_checkstring(L, 1);
+    const QByteArray bytes = ConversionUtils::hexStringToBytes(QString::fromUtf8(hex));
+    if (!context->options.sendCallback(bytes)) {
+        return luaL_error(L, "serial.sendHex failed");
+    }
+
+    return 0;
+}
+
+/**
+ * @brief 沙箱版 serial.isOpen。
+ * @param L Lua 状态。
+ * @return Lua 返回值数量，栈顶返回布尔值。
+ *
+ * 如果调用方提供连接状态回调，则使用真实状态；否则在 serial API 已注册时返回 true，
+ * 表示调用方显式允许通信能力，但暂未提供更细的连接状态查询。
+ */
+int sandboxSerialIsOpen(lua_State* L)
+{
+    SandboxContext* context = contextFromState(L);
+    bool isOpen = true;
+    if (context && context->options.isOpenCallback) {
+        isOpen = context->options.isOpenCallback();
+    }
+
+    lua_pushboolean(L, isOpen ? 1 : 0);
+    return 1;
+}
+
+/**
  * @brief Lua hook，用于周期性检查超时。
  *
  * Lua 没有安全的抢占式中断机制；hook 是第一版同步执行中最可控的边界。
@@ -337,6 +406,29 @@ void registerSafeFunctions(lua_State* L)
     lua_setglobal(L, "crc32");
 }
 
+/**
+ * @brief 注册受控 serial 通信 API。
+ * @param L Lua 状态。
+ *
+ * 该函数只注册发送和连接状态查询能力，不暴露接收、端口对象或队列控制。
+ * 能力边界由 LuaSandbox::execute() 中的 allowCommunicationApi 和 sendCallback 双重条件控制。
+ */
+void registerSerialApi(lua_State* L)
+{
+    lua_newtable(L);
+
+    lua_pushcfunction(L, sandboxSerialSend);
+    lua_setfield(L, -2, "send");
+
+    lua_pushcfunction(L, sandboxSerialSendHex);
+    lua_setfield(L, -2, "sendHex");
+
+    lua_pushcfunction(L, sandboxSerialIsOpen);
+    lua_setfield(L, -2, "isOpen");
+
+    lua_setglobal(L, "serial");
+}
+
 } // namespace
 
 LuaSandboxResult LuaSandbox::execute(const QString& script,
@@ -364,6 +456,9 @@ LuaSandboxResult LuaSandbox::execute(const QString& script,
     storeContext(L, &context);
     openSafeLibraries(L);
     registerSafeFunctions(L);
+    if (options.allowCommunicationApi && options.sendCallback) {
+        registerSerialApi(L);
+    }
     lua_sethook(L, sandboxHook, LUA_MASKCOUNT, kHookInstructionInterval);
 
     const QByteArray scriptData = script.toUtf8();
