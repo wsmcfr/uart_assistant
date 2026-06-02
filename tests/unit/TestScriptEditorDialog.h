@@ -27,6 +27,9 @@ private slots:
     void stopScriptCancelsRunningSandbox();
     void runScriptEmitsSendDataFromWorkerThread();
     void runScriptRestoresButtonsAfterError();
+    void serialIsOpenReflectsInjectedConnectionState();
+    void serialSendRejectsWhenConnectionClosed();
+    void serialSendReportsHandlerFailureReason();
 };
 
 #endif // TESTSCRIPTEDITORDIALOG_H

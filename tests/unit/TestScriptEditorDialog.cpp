@@ -47,6 +47,25 @@ QPushButton* stopButton(ScriptEditorDialog& dialog)
     return dialog.findChild<QPushButton*>(QStringLiteral("stopScriptBtn"));
 }
 
+/**
+ * @brief 为脚本编辑器注入成功发送能力。
+ * @param dialog 被测对话框。
+ *
+ * 4.8 后脚本发送必须显式注入连接状态和发送 handler。测试中使用
+ * 最小 handler，避免依赖真实 MainWindow 或通信对象。
+ */
+void enableAcceptedScriptSend(ScriptEditorDialog& dialog)
+{
+    dialog.setConnectionStateProvider([]() {
+        return true;
+    });
+    dialog.setSendDataHandler([](const QByteArray&) {
+        ScriptSendResult result;
+        result.accepted = true;
+        return result;
+    });
+}
+
 } // namespace
 
 /**
@@ -78,6 +97,7 @@ void TestScriptEditorDialog::runScriptUsesLuaSandboxPrintOutput()
 void TestScriptEditorDialog::runScriptEmitsSendDataFromSerialSend()
 {
     ScriptEditorDialog dialog;
+    enableAcceptedScriptSend(dialog);
     QSignalSpy sendSpy(&dialog, SIGNAL(sendData(QByteArray)));
     dialog.setScript(QStringLiteral("serial.send('AT\\r\\n')"));
 
@@ -170,6 +190,7 @@ void TestScriptEditorDialog::stopScriptCancelsRunningSandbox()
 void TestScriptEditorDialog::runScriptEmitsSendDataFromWorkerThread()
 {
     ScriptEditorDialog dialog;
+    enableAcceptedScriptSend(dialog);
     QSignalSpy sendSpy(&dialog, SIGNAL(sendData(QByteArray)));
     dialog.setScript(QStringLiteral("serial.send('AT\\r\\n')"));
 
@@ -200,4 +221,95 @@ void TestScriptEditorDialog::runScriptRestoresButtonsAfterError()
     QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("bad script")), 1000);
     QVERIFY(runButton(dialog)->isEnabled());
     QVERIFY(!stopButton(dialog)->isEnabled());
+}
+
+/**
+ * @brief 验证 serial.isOpen() 使用注入的真实连接状态。
+ *
+ * 4.7 的 worker 固定返回 true；4.8 要求脚本查询主窗口当前连接状态，
+ * 因此测试注入 false 后输出也必须为 false。
+ */
+void TestScriptEditorDialog::serialIsOpenReflectsInjectedConnectionState()
+{
+    ScriptEditorDialog dialog;
+    dialog.setConnectionStateProvider([]() {
+        return false;
+    });
+    dialog.setSendDataHandler([](const QByteArray&) {
+        ScriptSendResult result;
+        result.accepted = true;
+        return result;
+    });
+    dialog.setScript(QStringLiteral("print(serial.isOpen())"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("false")),
+                             1000);
+}
+
+/**
+ * @brief 验证未连接时脚本发送被拒绝且不发出发送信号。
+ *
+ * 该用例保护发送侧真实状态语义：未连接时 Lua 应拿到稳定错误，
+ * 而不是先发出 sendData 信号再让主窗口异步失败。
+ */
+void TestScriptEditorDialog::serialSendRejectsWhenConnectionClosed()
+{
+    ScriptEditorDialog dialog;
+    bool handlerCalled = false;
+    dialog.setConnectionStateProvider([]() {
+        return false;
+    });
+    dialog.setSendDataHandler([&handlerCalled](const QByteArray&) {
+        handlerCalled = true;
+        ScriptSendResult result;
+        result.accepted = true;
+        return result;
+    });
+    QSignalSpy sendSpy(&dialog, SIGNAL(sendData(QByteArray)));
+    dialog.setScript(QStringLiteral("serial.send('AT')"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QTRY_VERIFY_WITH_TIMEOUT(
+        outputArea(dialog)->toPlainText().contains(QStringLiteral("当前连接未打开")),
+        1000);
+    QCOMPARE(sendSpy.count(), 0);
+    QVERIFY(!handlerCalled);
+}
+
+/**
+ * @brief 验证发送 handler 拒绝时具体失败原因能显示给用户。
+ *
+ * 主窗口发送队列拒绝、底层写入失败或连接中途断开时，handler 会提供
+ * 具体错误文本；脚本编辑器必须把它传入 Lua 错误并显示在输出区域。
+ */
+void TestScriptEditorDialog::serialSendReportsHandlerFailureReason()
+{
+    ScriptEditorDialog dialog;
+    dialog.setConnectionStateProvider([]() {
+        return true;
+    });
+    dialog.setSendDataHandler([](const QByteArray&) {
+        ScriptSendResult result;
+        result.accepted = false;
+        result.error = QStringLiteral("queue rejected for script test");
+        return result;
+    });
+    QSignalSpy sendSpy(&dialog, SIGNAL(sendData(QByteArray)));
+    dialog.setScript(QStringLiteral("serial.send('AT')"));
+
+    QVERIFY(runButton(dialog));
+    QVERIFY(outputArea(dialog));
+    runButton(dialog)->click();
+
+    QTRY_VERIFY_WITH_TIMEOUT(
+        outputArea(dialog)->toPlainText().contains(QStringLiteral("queue rejected for script test")),
+        1000);
+    QCOMPARE(sendSpy.count(), 0);
 }
