@@ -5,7 +5,13 @@
 
 #include "TestProtocolConfigSchema.h"
 
+#include "core/protocol/AsciiProtocol.h"
+#include "core/protocol/EasyHexProtocol.h"
+#include "core/protocol/IProtocol.h"
 #include "core/protocol/ProtocolConfigSchema.h"
+#include "core/protocol/ProtocolFactory.h"
+
+#include <memory>
 
 using namespace ComAssistant;
 
@@ -93,4 +99,49 @@ void TestProtocolConfigSchema::normalizesHexBytes()
 
     QVERIFY(result.valid);
     QCOMPARE(result.normalizedConfig.value(QStringLiteral("frameHeader")).toString(), QStringLiteral("AA 55"));
+}
+
+void TestProtocolConfigSchema::factoryAppliesValidatedAsciiConfig()
+{
+    /*
+     * 工厂入口要负责把外部传入的配置先交给 Schema 校验和补全，
+     * 再应用到真实协议实例。这里通过 ASCII 协议的行结束符和保存配置
+     * 同时验证结构体状态与 QVariantMap 状态保持一致。
+     */
+    QVariantMap config;
+    config.insert(QStringLiteral("lineEnding"), QStringLiteral("LF"));
+    config.insert(QStringLiteral("appendLineEnding"), true);
+    config.insert(QStringLiteral("timeoutMs"), 250);
+    config.insert(QStringLiteral("encoding"), QStringLiteral("UTF-8"));
+
+    std::unique_ptr<IProtocol> protocol(ProtocolFactory::create(ProtocolType::Ascii, config));
+    QVERIFY(protocol != nullptr);
+
+    auto* ascii = dynamic_cast<AsciiProtocol*>(protocol.get());
+    QVERIFY(ascii != nullptr);
+    QCOMPARE(ascii->lineEnding(), LineEnding::LF);
+    QCOMPARE(protocol->config().value(QStringLiteral("timeoutMs")).toInt(), 250);
+}
+
+void TestProtocolConfigSchema::factoryAppliesValidatedEasyHexConfig()
+{
+    /*
+     * EasyHEX 的十六进制字段需要被 Schema 规范化为大写空格分隔文本，
+     * 然后再转换为协议内部使用的 QByteArray 和枚举配置。
+     */
+    QVariantMap config;
+    config.insert(QStringLiteral("frameHeader"), QStringLiteral("55 aa"));
+    config.insert(QStringLiteral("frameTail"), QStringLiteral(""));
+    config.insert(QStringLiteral("useChecksum"), true);
+    config.insert(QStringLiteral("checksumType"), QStringLiteral("XOR8"));
+    config.insert(QStringLiteral("lengthFieldOffset"), 2);
+    config.insert(QStringLiteral("lengthFieldSize"), 1);
+
+    std::unique_ptr<IProtocol> protocol(ProtocolFactory::create(ProtocolType::EasyHex, config));
+    QVERIFY(protocol != nullptr);
+
+    auto* easyhex = dynamic_cast<EasyHexProtocol*>(protocol.get());
+    QVERIFY(easyhex != nullptr);
+    QCOMPARE(EasyHexProtocol::toHexString(easyhex->easyHexConfig().frameHeader), QStringLiteral("55 AA"));
+    QCOMPARE(easyhex->easyHexConfig().checksumType, EasyHexConfig::XOR8);
 }

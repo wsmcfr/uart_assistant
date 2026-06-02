@@ -23,6 +23,8 @@ private slots:
     void fillsMissingDefaults();
     void rejectsInvalidValues();
     void normalizesHexBytes();
+    void factoryAppliesValidatedAsciiConfig();
+    void factoryAppliesValidatedEasyHexConfig();
 };
 
 #endif // TESTPROTOCOLCONFIGSCHEMA_H

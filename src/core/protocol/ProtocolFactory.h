@@ -83,6 +83,17 @@ public:
      */
     static std::unique_ptr<IProtocol> create(ProtocolType type);
 
+    /**
+     * @brief 根据类型和配置创建协议
+     * @param type 旧版协议枚举
+     * @param config 外部传入的协议配置，会通过协议 Schema 校验和规范化
+     * @return 已应用有效配置的协议实例；未知类型返回空指针
+     *
+     * 该入口用于会话恢复、后续配置 UI 和脚本入口，保证外部配置不会绕过
+     * ProtocolRegistry 中声明的默认值、类型和范围约束。
+     */
+    static std::unique_ptr<IProtocol> create(ProtocolType type, const QVariantMap& config);
+
     //=========================================================================
     // Qt父子对象管理版本
     //=========================================================================
@@ -97,6 +108,18 @@ public:
     static EasyHexProtocol* createEasyHex(QObject* parent);
     static JustFloatProtocol* createJustFloat(QObject* parent);
     static IProtocol* create(ProtocolType type, QObject* parent);
+
+    /**
+     * @brief 根据类型、配置和 Qt 父对象创建协议
+     * @param type 旧版协议枚举
+     * @param config 外部传入的协议配置，会通过协议 Schema 校验和规范化
+     * @param parent Qt 父对象；非空时协议对象交由 Qt 父子关系释放
+     * @return 已应用有效配置的协议实例；未知类型返回 nullptr
+     *
+     * 该重载保留 Qt 对象树管理方式，同时让 MainWindow 等调用方可以一次性完成
+     * 创建、配置校验、默认值补全和配置应用。
+     */
+    static IProtocol* create(ProtocolType type, const QVariantMap& config, QObject* parent);
 
     //=========================================================================
     // 工具方法

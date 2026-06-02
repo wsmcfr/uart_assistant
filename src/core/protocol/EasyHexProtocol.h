@@ -57,6 +57,15 @@ public:
     bool validate(const QByteArray& frame) override;
     QByteArray calculateChecksum(const QByteArray& data) override;
 
+    /**
+     * @brief 设置协议配置表
+     * @param config 已经通过 Schema 校验并补全默认值的配置表
+     *
+     * 该重载把统一配置表转换为 EasyHEX 的内部结构，例如十六进制文本转字节、
+     * 校验算法文本转枚举，并保留配置表便于会话持久化。
+     */
+    void setConfig(const QVariantMap& config) override;
+
     void reset() override;
 
     //=========================================================================
