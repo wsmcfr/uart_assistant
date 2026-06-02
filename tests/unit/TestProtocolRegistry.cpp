@@ -241,9 +241,8 @@ void TestProtocolRegistry::defaultConfigMatchesSchema()
 void TestProtocolRegistry::registersLuaScriptProtocolDescriptor()
 {
     /*
-     * 4.9 的最小闭环不是立刻执行 Lua 协议，而是先让 Lua 协议能力进入
-     * 注册中心、Schema 和诊断事实源。该描述必须清楚标记“脚本协议、
-     * 不可创建实例、也不参与旧版枚举兼容链路”。
+     * 4.10 将 Lua 协议推进为可创建的最小解析器。它必须继续清楚标记
+     * “脚本协议、不参与旧版枚举兼容链路”，同时允许注册中心创建实例。
      */
     ProtocolRegistry registry;
     registry.registerBuiltinProtocols();
@@ -255,7 +254,7 @@ void TestProtocolRegistry::registersLuaScriptProtocolDescriptor()
     QCOMPARE(descriptor.displayName, QStringLiteral("Lua Script"));
     QCOMPARE(descriptor.category, ProtocolCategory::Custom);
     QVERIFY(descriptor.scriptProtocol);
-    QVERIFY(!descriptor.creatable);
+    QVERIFY(descriptor.creatable);
     QVERIFY(!descriptor.legacyCompatible);
     QVERIFY(!descriptor.builtin);
     QVERIFY(!descriptor.plotProtocol);
@@ -267,7 +266,10 @@ void TestProtocolRegistry::registersLuaScriptProtocolDescriptor()
     QCOMPARE(descriptor.defaultConfig.value(QStringLiteral("entryFunction")).toString(),
              QStringLiteral("process"));
 
-    QVERIFY(registry.create(QStringLiteral("lua.script")) == nullptr);
+    std::unique_ptr<IProtocol> protocol(registry.create(QStringLiteral("lua.script")));
+    QVERIFY(protocol != nullptr);
+    QCOMPARE(protocol->name(), QStringLiteral("Lua Script"));
+    QCOMPARE(protocol->type(), ProtocolType::Raw);
 }
 
 void TestProtocolRegistry::factoryLegacyListIgnoresLuaDescriptor()

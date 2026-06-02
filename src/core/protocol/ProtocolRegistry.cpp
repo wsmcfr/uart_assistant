@@ -11,6 +11,7 @@
 #include "EasyHexProtocol.h"
 #include "HexProtocol.h"
 #include "JustFloatProtocol.h"
+#include "LuaScriptProtocol.h"
 #include "ModbusProtocol.h"
 #include "StampProtocol.h"
 #include "TextProtocol.h"
@@ -321,21 +322,21 @@ ProtocolConfigSchema makeLuaScriptSchema()
 
 /**
  * @brief 创建 Lua 脚本协议描述
- * @return 当前阶段只可配置和诊断、不可创建实例的 Lua 协议描述
+ * @return 可创建最小解析器、但不参与旧版枚举链路的 Lua 协议描述
  */
 ProtocolDescriptor makeLuaScriptDescriptor()
 {
     ProtocolDescriptor descriptor;
     descriptor.id = QStringLiteral("lua.script");
     descriptor.displayName = QStringLiteral("Lua Script");
-    descriptor.description = QStringLiteral("Lua 脚本协议（当前仅登记配置和诊断元数据）");
+    descriptor.description = QStringLiteral("Lua 脚本协议解析器（process(data, context) 最小原型）");
     descriptor.category = ProtocolCategory::Custom;
     descriptor.legacyType = ProtocolType::Raw;
     descriptor.builtin = false;
     descriptor.plotProtocol = false;
     descriptor.frameBuilder = false;
     descriptor.scriptProtocol = true;
-    descriptor.creatable = false;
+    descriptor.creatable = true;
     descriptor.legacyCompatible = false;
     descriptor.configSchema = makeLuaScriptSchema();
     descriptor.configVersion = descriptor.configSchema.version;
@@ -501,11 +502,13 @@ void ProtocolRegistry::registerBuiltinProtocols()
         [](QObject* parent) -> IProtocol* { return new JustFloatProtocol(parent); });
 
     /*
-     * Lua 脚本协议当前只登记元数据、配置 Schema 和诊断能力，不创建 IProtocol。
-     * 这让后续 Lua 协议解析器可以复用稳定 ID 与配置键，同时避免 4.9 提前
-     * 承诺未设计好的接收缓冲、超时语义和线程边界。
+     * Lua 脚本协议在 4.10 进入可创建的最小解析器阶段。它仍不参与
+     * 旧版 ProtocolType 工作流，也不开放 serial.receive(timeout)，
+     * 因此旧绘图协议菜单和旧会话枚举恢复链路不会被 Lua 协议污染。
      */
-    registerProtocol(makeLuaScriptDescriptor(), ProtocolCreator());
+    registerProtocol(
+        makeLuaScriptDescriptor(),
+        [](QObject* parent) -> IProtocol* { return new LuaScriptProtocol(parent); });
 }
 
 bool ProtocolRegistry::contains(const QString& id) const

@@ -93,8 +93,8 @@ private slots:
     /**
      * @brief 验证 Lua 脚本协议元数据已登记。
      *
-     * 4.9 先让 Lua 协议进入 descriptor/schema/diagnostics 事实源，
-     * 但当前阶段不创建真实协议实例。
+     * 4.10 起 Lua 协议从配置/诊断事实源推进为可创建的最小解析器，
+     * 但仍不参与旧版 ProtocolType 工作流。
      */
     void registersLuaScriptProtocolDescriptor();
 

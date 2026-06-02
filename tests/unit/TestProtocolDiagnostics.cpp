@@ -135,7 +135,7 @@ void TestProtocolDiagnostics::exportsRawProtocolWithoutFields()
 void TestProtocolDiagnostics::exportsLuaProtocolDiagnostics()
 {
     /*
-     * 4.9 让 Lua 脚本协议先进入诊断事实源。这里不执行脚本，只验证
+     * 4.10 让 Lua 脚本协议进入可创建最小解析器阶段。这里不执行脚本，只验证
      * JSON 能导出沙箱预算、通信 API 开关、接收 API 未开放状态和最近错误。
      */
     const ProtocolDescriptor descriptor =
@@ -155,7 +155,7 @@ void TestProtocolDiagnostics::exportsLuaProtocolDiagnostics()
 
     const QJsonObject lua = json.value(QStringLiteral("luaProtocol")).toObject();
     QVERIFY(lua.value(QStringLiteral("enabled")).toBool());
-    QVERIFY(!lua.value(QStringLiteral("creatable")).toBool());
+    QVERIFY(lua.value(QStringLiteral("creatable")).toBool());
     QVERIFY(!lua.value(QStringLiteral("receiveApiAvailable")).toBool());
     QCOMPARE(lua.value(QStringLiteral("lastError")).toString(), QStringLiteral("last lua error"));
 
