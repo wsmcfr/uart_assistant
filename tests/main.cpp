@@ -34,6 +34,7 @@
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
 #include "unit/TestSendQueue.h"
+#include "unit/TestLuaSandbox.h"
 #include "unit/TestProtocolConfigSchema.h"
 #include "unit/TestProtocolConfigEditor.h"
 #include "unit/TestProtocolDiagnostics.h"
@@ -190,6 +191,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] SendQueue";
         TestSendQueue test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] LuaSandbox";
+        TestLuaSandbox test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
