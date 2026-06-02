@@ -56,8 +56,15 @@ private:
     void clearOutput();
     QString scriptsDirectory() const;
 
-    // 简单的Lua执行（不依赖外部Lua库）
-    void executeSimpleScript(const QString& script);
+    /**
+     * @brief 通过 LuaSandbox 执行脚本文本。
+     * @param script 用户在编辑器中编写的 Lua 脚本文本。
+     * @return 脚本是否执行成功；失败时错误已经写入输出区域。
+     *
+     * 脚本编辑器不直接持有串口对象，而是把 serial.send/serial.sendHex
+     * 转换成 sendData(QByteArray) 信号，继续复用主窗口现有发送队列。
+     */
+    bool executeSandboxScript(const QString& script);
 
 private:
     // UI组件

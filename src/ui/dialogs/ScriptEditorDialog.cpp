@@ -6,6 +6,7 @@
  */
 
 #include "ScriptEditorDialog.h"
+#include "core/script/LuaSandbox.h"
 #include "../syntax/LuaSyntaxHighlighter.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -18,9 +19,43 @@
 #include <QStandardPaths>
 #include <QScrollBar>
 #include <QTextBlock>
-#include <QRegularExpression>
 
 namespace ComAssistant {
+namespace {
+
+/**
+ * @brief 生成发送数据的输出预览文本。
+ * @param data 即将发送的原始字节。
+ * @return 适合显示在脚本输出区域的简短文本。
+ *
+ * 对可打印 ASCII 文本优先显示简化后的内容，便于用户确认 AT 指令等常见脚本；
+ * 对二进制数据只显示字节数，避免控制字符破坏输出区域的可读性。
+ */
+QString sentPayloadPreview(const QByteArray& data)
+{
+    bool printable = true;
+    for (char byte : data) {
+        const uchar value = static_cast<uchar>(byte);
+        if (value == '\r' || value == '\n' || value == '\t') {
+            continue;
+        }
+        if (value < 32 || value > 126) {
+            printable = false;
+            break;
+        }
+    }
+
+    if (printable) {
+        const QString text = QString::fromUtf8(data).simplified();
+        if (!text.isEmpty()) {
+            return text;
+        }
+    }
+
+    return QStringLiteral("%1 bytes").arg(data.size());
+}
+
+} // namespace
 
 ScriptEditorDialog::ScriptEditorDialog(QWidget* parent)
     : QDialog(parent)
@@ -33,31 +68,25 @@ ScriptEditorDialog::ScriptEditorDialog(QWidget* parent)
     loadScriptList();
 
     // 示例脚本
-    QString defaultScript = R"(-- 串口助手Lua脚本示例
--- 可用API:
---   serial.send(data)     - 发送字符串
---   serial.sendHex(hex)   - 发送十六进制
---   utils.crc16(data)     - 计算CRC16
---   utils.sleep(ms)       - 延时毫秒
---   ui.log(msg)           - 输出日志
+    QString defaultScript = R"(-- 串口助手 Lua 沙箱示例
+-- 可用 API:
+--   print(...)            - 输出日志
+--   serial.isOpen()       - 查询当前脚本发送通道是否可用
+--   serial.send(data)     - 发送字符串或原始字节
+--   serial.sendHex(hex)   - 发送十六进制文本
+--   hexToBytes(hex)       - 十六进制转字节
+--   bytesToHex(data)      - 字节转十六进制文本
+--   crc16(data) / crc32(data)
 
--- 示例: 发送AT指令
-function sendAT()
+print("脚本加载完成")
+
+if serial.isOpen() then
     serial.send("AT\r\n")
-    utils.sleep(100)
+    serial.sendHex("AA 55 01 02 03")
 end
 
--- 示例: 循环发送
-function loopSend(count, interval)
-    for i = 1, count do
-        serial.send("Hello " .. i .. "\r\n")
-        utils.sleep(interval)
-        ui.log("发送第 " .. i .. " 次")
-    end
-end
-
--- 运行示例
-ui.log("脚本加载完成")
+local request = hexToBytes("01 03 00 00 00 02")
+print("CRC16:", crc16(request))
 )";
     m_codeEditor->setPlainText(defaultScript);
 }
@@ -292,15 +321,17 @@ void ScriptEditorDialog::onRunScript()
 
     appendOutput(tr("[系统] 开始执行脚本..."), QColor(100, 149, 237));
 
-    // 执行脚本
+    // 脚本执行仍在当前版本同步完成，后续阶段再迁移到后台 worker 和强取消。
     QString script = m_codeEditor->toPlainText();
-    executeSimpleScript(script);
+    const bool success = executeSandboxScript(script);
 
     m_isRunning = false;
     m_runBtn->setEnabled(true);
     m_stopBtn->setEnabled(false);
 
-    appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
+    if (success) {
+        appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
+    }
 }
 
 void ScriptEditorDialog::onStopScript()
@@ -308,7 +339,8 @@ void ScriptEditorDialog::onStopScript()
     m_isRunning = false;
     m_runBtn->setEnabled(true);
     m_stopBtn->setEnabled(false);
-    appendOutput(tr("[系统] 脚本已停止"), QColor(255, 165, 0));
+    appendOutput(tr("[系统] 当前版本会在脚本超时保护触发后停止，后台取消将在后续版本提供"),
+                 QColor(255, 165, 0));
 }
 
 void ScriptEditorDialog::onScriptSelected(QListWidgetItem* item)
@@ -393,62 +425,49 @@ QString ScriptEditorDialog::scriptsDirectory() const
     return appData + "/scripts";
 }
 
-void ScriptEditorDialog::executeSimpleScript(const QString& script)
+bool ScriptEditorDialog::executeSandboxScript(const QString& script)
 {
-    // 简单的脚本解释器（不依赖Lua库）
-    // 仅支持基本的 ui.log() 调用演示
+    LuaSandboxOptions options;
+    options.timeoutMs = 3000;
+    options.memoryLimitKb = 2048;
+    options.maxOutputLines = 500;
+    options.allowCommunicationApi = true;
 
-    QStringList lines = script.split('\n');
-
-    for (const QString& line : lines) {
-        QString trimmed = line.trimmed();
-
-        // 跳过注释和空行
-        if (trimmed.isEmpty() || trimmed.startsWith("--")) {
-            continue;
+    /*
+     * serial.send/serial.sendHex 只负责发起发送请求。这里拒绝空数据，
+     * 是为了避免脚本误调用产生难以观察的空发送项，并让 LuaSandbox 返回明确错误。
+     */
+    options.sendCallback = [this](const QByteArray& bytes) {
+        if (bytes.isEmpty()) {
+            return false;
         }
 
-        // 解析 ui.log("message")
-        QRegularExpression logPattern(R"(ui\.log\s*\(\s*["'](.*)["']\s*\))");
-        QRegularExpressionMatch match = logPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString msg = match.captured(1);
-            appendOutput(msg, QColor(0, 255, 0));
-        }
+        emit sendData(bytes);
+        appendOutput(tr("[发送] %1").arg(sentPayloadPreview(bytes)), QColor(33, 150, 243));
+        return true;
+    };
 
-        // 解析 serial.send("data")
-        QRegularExpression sendPattern(R"(serial\.send\s*\(\s*["'](.*)["']\s*\))");
-        match = sendPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString data = match.captured(1);
-            // 处理转义字符
-            data.replace("\\r", "\r");
-            data.replace("\\n", "\n");
-            data.replace("\\t", "\t");
-            emit sendData(data.toUtf8());
-            appendOutput(tr("[发送] %1").arg(data.simplified()), QColor(33, 150, 243));
-        }
+    /*
+     * 4.6 只接入脚本编辑器到既有发送链路，暂不把主窗口连接状态传入对话框。
+     * 因此当通信 API 已显式启用时，脚本侧 isOpen() 返回 true。
+     */
+    options.isOpenCallback = []() {
+        return true;
+    };
 
-        // 解析 serial.sendHex("AA BB CC")
-        QRegularExpression sendHexPattern(R"(serial\.sendHex\s*\(\s*["'](.*)["']\s*\))");
-        match = sendHexPattern.match(trimmed);
-        if (match.hasMatch()) {
-            QString hexStr = match.captured(1);
-            QByteArray data;
-            QStringList hexParts = hexStr.split(QRegularExpression("[\\s,]+"), QString::SkipEmptyParts);
-            for (const QString& hex : hexParts) {
-                bool ok;
-                int value = hex.toInt(&ok, 16);
-                if (ok && value >= 0 && value <= 255) {
-                    data.append(static_cast<char>(value));
-                }
-            }
-            if (!data.isEmpty()) {
-                emit sendData(data);
-                appendOutput(tr("[发送HEX] %1").arg(hexStr), QColor(33, 150, 243));
-            }
-        }
+    LuaSandbox sandbox;
+    const LuaSandboxResult result = sandbox.execute(script, options);
+
+    for (const QString& line : result.outputLines) {
+        appendOutput(line, QColor(0, 180, 0));
     }
+
+    if (!result.success) {
+        appendOutput(tr("[错误] %1").arg(result.errorMessage), QColor(220, 20, 60));
+        return false;
+    }
+
+    return true;
 }
 
 } // namespace ComAssistant
