@@ -7,6 +7,7 @@
 
 #include "TestMainWindowProtocolState.h"
 
+#include "protocol/ProtocolFactory.h"
 #include "ui/MainWindowProtocolState.h"
 
 using namespace ComAssistant;
