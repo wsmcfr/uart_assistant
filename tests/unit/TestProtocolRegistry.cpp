@@ -5,6 +5,7 @@
 
 #include "TestProtocolRegistry.h"
 
+#include "core/protocol/AsciiProtocol.h"
 #include "core/protocol/ProtocolRegistry.h"
 
 using namespace ComAssistant;
@@ -39,4 +40,56 @@ void TestProtocolRegistry::builtinDescriptorsAreRegistered()
     QVERIFY(ascii.builtin);
     QVERIFY(ascii.frameBuilder);
     QVERIFY(!ascii.plotProtocol);
+}
+
+void TestProtocolRegistry::rejectsInvalidRegistrations()
+{
+    /*
+     * 注册中心是插件化入口，非法注册必须在入口被拒绝，
+     * 避免后续配置、诊断和 UI 看到不完整协议能力。
+     */
+    ProtocolRegistry registry;
+    QString errorMessage;
+
+    ProtocolDescriptor emptyId;
+    emptyId.displayName = QStringLiteral("Empty");
+    QVERIFY(!registry.registerProtocol(
+        emptyId,
+        [](QObject*) -> IProtocol* { return nullptr; },
+        &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+
+    ProtocolDescriptor ascii;
+    ascii.id = QStringLiteral("ascii");
+    ascii.displayName = QStringLiteral("ASCII");
+    ascii.legacyType = ProtocolType::Ascii;
+    QVERIFY(registry.registerProtocol(
+        ascii,
+        [](QObject* parent) -> IProtocol* { return new AsciiProtocol(parent); }));
+    QVERIFY(!registry.registerProtocol(
+        ascii,
+        [](QObject* parent) -> IProtocol* { return new AsciiProtocol(parent); },
+        &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+
+    ProtocolDescriptor noCreator;
+    noCreator.id = QStringLiteral("no.creator");
+    noCreator.displayName = QStringLiteral("No Creator");
+    noCreator.legacyType = ProtocolType::Custom;
+    QVERIFY(!registry.registerProtocol(noCreator, ProtocolCreator(), &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+}
+
+void TestProtocolRegistry::keepsRawCompatibility()
+{
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    const ProtocolDescriptor raw = registry.descriptor(QStringLiteral("raw"));
+    QCOMPARE(raw.id, QStringLiteral("raw"));
+    QCOMPARE(raw.legacyType, ProtocolType::Raw);
+    QVERIFY(raw.builtin);
+
+    IProtocol* protocol = registry.create(QStringLiteral("raw"));
+    QVERIFY(protocol == nullptr);
 }
