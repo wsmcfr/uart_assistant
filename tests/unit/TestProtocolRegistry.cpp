@@ -6,6 +6,7 @@
 #include "TestProtocolRegistry.h"
 
 #include "core/protocol/AsciiProtocol.h"
+#include "core/protocol/ProtocolConfigSchema.h"
 #include "core/protocol/ProtocolFactory.h"
 #include "core/protocol/ProtocolRegistry.h"
 
@@ -196,4 +197,43 @@ void TestProtocolRegistry::builtinRegistrationKeepsExistingProtocols()
     QVERIFY(registry.contains(QStringLiteral("raw")));
     QVERIFY(registry.contains(QStringLiteral("ascii")));
     QCOMPARE(registry.descriptors().size(), 11);
+}
+
+void TestProtocolRegistry::builtinDescriptorsExposeConfigSchema()
+{
+    /*
+     * 4.2 要求协议目录不仅说明能力，还要成为配置事实源。
+     * ASCII 和 EasyHEX 是第一批必须暴露字段级 Schema 的协议。
+     */
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    const ProtocolDescriptor ascii = registry.descriptor(QStringLiteral("ascii"));
+    QCOMPARE(ascii.configVersion, 1);
+    QVERIFY(ascii.configSchema.fields.size() >= 4);
+    QVERIFY(ascii.defaultConfig.contains(QStringLiteral("lineEnding")));
+    QCOMPARE(ascii.defaultConfig.value(QStringLiteral("lineEnding")).toString(), QStringLiteral("CRLF"));
+
+    const ProtocolDescriptor easyhex = registry.descriptor(QStringLiteral("easyhex"));
+    QVERIFY(easyhex.configSchema.fields.size() >= 5);
+    QCOMPARE(easyhex.defaultConfig.value(QStringLiteral("frameHeader")).toString(), QStringLiteral("AA 55"));
+}
+
+void TestProtocolRegistry::defaultConfigMatchesSchema()
+{
+    ProtocolRegistry registry;
+    registry.registerBuiltinProtocols();
+
+    /*
+     * 每个内置协议的默认配置都必须能被自己的 Schema 接受。
+     * 这是后续会话迁移和带配置创建协议实例的最基本自洽性检查。
+     */
+    for (const ProtocolDescriptor& descriptor : registry.descriptors()) {
+        const ProtocolConfigValidationResult result =
+            descriptor.configSchema.validate(descriptor.defaultConfig);
+        QVERIFY2(result.valid,
+                 qPrintable(QStringLiteral("默认配置校验失败: %1 %2")
+                            .arg(descriptor.id, result.errors.join(QStringLiteral("; ")))));
+        QCOMPARE(result.normalizedConfig, descriptor.defaultConfig);
+    }
 }

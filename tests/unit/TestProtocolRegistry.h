@@ -75,6 +75,20 @@ private slots:
      * 注册中心后续会承载插件或脚本协议，补注册内置协议时不能因为已有条目就提前退出。
      */
     void builtinRegistrationKeepsExistingProtocols();
+
+    /**
+     * @brief 验证内置协议描述暴露配置 Schema
+     *
+     * 4.2 要求协议注册中心成为配置默认值和字段定义的事实源。
+     */
+    void builtinDescriptorsExposeConfigSchema();
+
+    /**
+     * @brief 验证内置协议默认配置能通过自身 Schema
+     *
+     * 默认配置如果无法自洽，会导致会话迁移、后续 UI 和协议实例创建都不可靠。
+     */
+    void defaultConfigMatchesSchema();
 };
 
 #endif // TESTPROTOCOLREGISTRY_H

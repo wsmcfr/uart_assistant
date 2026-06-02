@@ -28,6 +28,7 @@ namespace {
  * @param legacyType 旧版协议枚举映射
  * @param plotProtocol 是否为绘图协议
  * @param frameBuilder 是否支持构帧
+ * @param configSchema 协议配置 Schema
  * @return 填充好的协议描述
  *
  * 内置协议注册时有大量重复字段，通过该辅助函数集中初始化，
@@ -39,7 +40,8 @@ ProtocolDescriptor makeDescriptor(const QString& id,
                                   ProtocolCategory category,
                                   ProtocolType legacyType,
                                   bool plotProtocol,
-                                  bool frameBuilder)
+                                  bool frameBuilder,
+                                  const ProtocolConfigSchema& configSchema)
 {
     ProtocolDescriptor descriptor;
     descriptor.id = id;
@@ -50,7 +52,212 @@ ProtocolDescriptor makeDescriptor(const QString& id,
     descriptor.builtin = true;
     descriptor.plotProtocol = plotProtocol;
     descriptor.frameBuilder = frameBuilder;
+    descriptor.configVersion = configSchema.version;
+    descriptor.configSchema = configSchema;
+    descriptor.defaultConfig = configSchema.defaults();
     return descriptor;
+}
+
+/**
+ * @brief 创建空配置 Schema
+ * @return 不包含字段的 Schema，适用于 Raw 和暂未暴露配置的绘图协议
+ */
+ProtocolConfigSchema makeEmptySchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    return schema;
+}
+
+/**
+ * @brief 创建 ASCII 协议配置 Schema
+ * @return ASCII 协议默认配置和字段定义
+ */
+ProtocolConfigSchema makeAsciiSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::enumeration(
+        QStringLiteral("lineEnding"),
+        QStringLiteral("行结束符"),
+        QStringLiteral("CRLF"),
+        QStringList{QStringLiteral("None"), QStringLiteral("CR"), QStringLiteral("LF"), QStringLiteral("CRLF")},
+        QStringLiteral("发送时追加的行结束符")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("appendLineEnding"),
+        QStringLiteral("追加行结束符"),
+        true,
+        QStringLiteral("发送文本时是否自动追加行结束符")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("timeoutMs"),
+        QStringLiteral("分帧超时"),
+        100,
+        1,
+        60000,
+        QStringLiteral("无行结束符时的分帧超时时间")));
+    schema.fields.append(ProtocolConfigField::string(
+        QStringLiteral("encoding"),
+        QStringLiteral("编码"),
+        QStringLiteral("UTF-8"),
+        QStringLiteral("文本编码")));
+    return schema;
+}
+
+/**
+ * @brief 创建 HEX 协议配置 Schema
+ * @return HEX 协议默认配置和字段定义
+ */
+ProtocolConfigSchema makeHexSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::bytesHex(
+        QStringLiteral("frameHead"),
+        QStringLiteral("帧头"),
+        QString(),
+        QStringLiteral("帧头字节")));
+    schema.fields.append(ProtocolConfigField::bytesHex(
+        QStringLiteral("frameTail"),
+        QStringLiteral("帧尾"),
+        QString(),
+        QStringLiteral("帧尾字节")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("lengthFieldOffset"),
+        QStringLiteral("长度字段偏移"),
+        -1,
+        -1,
+        65535,
+        QStringLiteral("长度字段在帧中的偏移，-1 表示不使用")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("lengthFieldSize"),
+        QStringLiteral("长度字段大小"),
+        1,
+        1,
+        4,
+        QStringLiteral("长度字段字节数")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("lengthBigEndian"),
+        QStringLiteral("长度大端序"),
+        true,
+        QStringLiteral("长度字段是否使用大端序")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("useChecksum"),
+        QStringLiteral("使用校验"),
+        false,
+        QStringLiteral("是否启用帧校验")));
+    schema.fields.append(ProtocolConfigField::enumeration(
+        QStringLiteral("checksumType"),
+        QStringLiteral("校验算法"),
+        QStringLiteral("Sum8"),
+        QStringList{QStringLiteral("Sum8"), QStringLiteral("Sum16"), QStringLiteral("XOR"), QStringLiteral("CRC8"), QStringLiteral("CRC16"), QStringLiteral("CRC32")},
+        QStringLiteral("校验和算法")));
+    return schema;
+}
+
+/**
+ * @brief 创建 Modbus 协议配置 Schema
+ * @return Modbus 协议默认配置和字段定义
+ */
+ProtocolConfigSchema makeModbusSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::enumeration(
+        QStringLiteral("mode"),
+        QStringLiteral("模式"),
+        QStringLiteral("RTU"),
+        QStringList{QStringLiteral("RTU"), QStringLiteral("ASCII")},
+        QStringLiteral("Modbus 帧格式")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("slaveAddress"),
+        QStringLiteral("从站地址"),
+        1,
+        1,
+        247,
+        QStringLiteral("默认从站地址")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("responseTimeoutMs"),
+        QStringLiteral("响应超时"),
+        1000,
+        1,
+        60000,
+        QStringLiteral("响应超时时间")));
+    return schema;
+}
+
+/**
+ * @brief 创建 Custom 协议配置 Schema
+ * @return Custom 协议默认配置和字段定义
+ */
+ProtocolConfigSchema makeCustomSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::enumeration(
+        QStringLiteral("delimiter"),
+        QStringLiteral("分帧方式"),
+        QStringLiteral("None"),
+        QStringList{QStringLiteral("None"), QStringLiteral("FixedLength"), QStringLiteral("Timeout"), QStringLiteral("StartEnd"), QStringLiteral("LengthField")},
+        QStringLiteral("通用帧解析方式")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("maxFrameSize"),
+        QStringLiteral("最大帧长度"),
+        65536,
+        1,
+        1048576,
+        QStringLiteral("允许的最大帧长度")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("useChecksum"),
+        QStringLiteral("使用校验"),
+        false,
+        QStringLiteral("是否启用校验")));
+    return schema;
+}
+
+/**
+ * @brief 创建 EasyHEX 协议配置 Schema
+ * @return EasyHEX 协议默认配置和字段定义
+ */
+ProtocolConfigSchema makeEasyHexSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::bytesHex(
+        QStringLiteral("frameHeader"),
+        QStringLiteral("帧头"),
+        QStringLiteral("AA 55"),
+        QStringLiteral("帧头字节")));
+    schema.fields.append(ProtocolConfigField::bytesHex(
+        QStringLiteral("frameTail"),
+        QStringLiteral("帧尾"),
+        QString(),
+        QStringLiteral("帧尾字节")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("useChecksum"),
+        QStringLiteral("使用校验"),
+        true,
+        QStringLiteral("是否启用校验")));
+    schema.fields.append(ProtocolConfigField::enumeration(
+        QStringLiteral("checksumType"),
+        QStringLiteral("校验算法"),
+        QStringLiteral("SUM8"),
+        QStringList{QStringLiteral("SUM8"), QStringLiteral("XOR8"), QStringLiteral("CRC8")},
+        QStringLiteral("校验算法")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("lengthFieldOffset"),
+        QStringLiteral("长度字段偏移"),
+        2,
+        -1,
+        65535,
+        QStringLiteral("长度字段在帧中的偏移，-1 表示不使用")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("lengthFieldSize"),
+        QStringLiteral("长度字段大小"),
+        1,
+        1,
+        2,
+        QStringLiteral("长度字段字节数")));
+    return schema;
 }
 
 } // namespace
@@ -107,7 +314,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Basic,
                        ProtocolType::Raw,
                        false,
-                       false),
+                       false,
+                       makeEmptySchema()),
         ProtocolCreator());
 
     registerProtocol(
@@ -117,7 +325,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Basic,
                        ProtocolType::Ascii,
                        false,
-                       true),
+                       true,
+                       makeAsciiSchema()),
         [](QObject* parent) -> IProtocol* { return new AsciiProtocol(parent); });
 
     registerProtocol(
@@ -127,7 +336,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Basic,
                        ProtocolType::Hex,
                        false,
-                       true),
+                       true,
+                       makeHexSchema()),
         [](QObject* parent) -> IProtocol* { return new HexProtocol(parent); });
 
     registerProtocol(
@@ -137,7 +347,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Industrial,
                        ProtocolType::Modbus,
                        false,
-                       true),
+                       true,
+                       makeModbusSchema()),
         [](QObject* parent) -> IProtocol* { return new ModbusProtocol(parent); });
 
     registerProtocol(
@@ -147,7 +358,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Custom,
                        ProtocolType::Custom,
                        false,
-                       true),
+                       true,
+                       makeCustomSchema()),
         [](QObject* parent) -> IProtocol* { return new CustomProtocol(parent); });
 
     registerProtocol(
@@ -157,7 +369,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Custom,
                        ProtocolType::EasyHex,
                        false,
-                       true),
+                       true,
+                       makeEasyHexSchema()),
         [](QObject* parent) -> IProtocol* { return new EasyHexProtocol(parent); });
 
     registerProtocol(
@@ -167,7 +380,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Plot,
                        ProtocolType::TextPlot,
                        true,
-                       true),
+                       true,
+                       makeEmptySchema()),
         [](QObject* parent) -> IProtocol* { return new TextProtocol(parent); });
 
     registerProtocol(
@@ -177,7 +391,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Plot,
                        ProtocolType::StampPlot,
                        true,
-                       true),
+                       true,
+                       makeEmptySchema()),
         [](QObject* parent) -> IProtocol* { return new StampProtocol(parent); });
 
     registerProtocol(
@@ -187,7 +402,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Plot,
                        ProtocolType::CsvPlot,
                        true,
-                       true),
+                       true,
+                       makeEmptySchema()),
         [](QObject* parent) -> IProtocol* { return new CsvProtocol(parent); });
 
     registerProtocol(
@@ -197,7 +413,8 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        ProtocolCategory::Plot,
                        ProtocolType::JustFloat,
                        true,
-                       true),
+                       true,
+                       makeEmptySchema()),
         [](QObject* parent) -> IProtocol* { return new JustFloatProtocol(parent); });
 }
 

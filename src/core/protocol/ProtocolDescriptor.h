@@ -7,6 +7,7 @@
 #define COMASSISTANT_PROTOCOLDESCRIPTOR_H
 
 #include "IProtocol.h"
+#include "ProtocolConfigSchema.h"
 
 #include <QMetaType>
 #include <QString>
@@ -43,6 +44,8 @@ struct ProtocolDescriptor
     bool builtin = true;                                  ///< 是否为内置协议
     bool plotProtocol = false;                            ///< 是否支持绘图数据解析
     bool frameBuilder = false;                            ///< 是否支持 payload 构建发送帧
+    int configVersion = 1;                                ///< 配置版本，第一版为 1
+    ProtocolConfigSchema configSchema;                    ///< 配置 Schema，用于默认值、校验和后续 UI 生成
     QVariantMap defaultConfig;                            ///< 默认配置，为后续 schema 扩展预留
 };
 
