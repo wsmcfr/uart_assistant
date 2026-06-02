@@ -41,6 +41,11 @@ private slots:
      * @brief 切回旧版绘图协议时应同步稳定 ID 和菜单用枚举。
      */
     void switchesPlotProtocolByLegacyType();
+
+    /**
+     * @brief 接收协议候选应包含 Lua 这类稳定 ID 协议。
+     */
+    void receiveProtocolChoicesIncludeLuaScript();
 };
 
 #endif // TESTMAINWINDOWPROTOCOLSTATE_H

@@ -108,3 +108,23 @@ void TestMainWindowProtocolState::switchesPlotProtocolByLegacyType()
     QVERIFY(state.protocol()->isPlotProtocol());
     QVERIFY(state.descriptor().plotProtocol);
 }
+
+void TestMainWindowProtocolState::receiveProtocolChoicesIncludeLuaScript()
+{
+    const QList<ProtocolDescriptor> choices =
+        MainWindowProtocolState::receiveProtocolChoices();
+    QStringList ids;
+    for (const ProtocolDescriptor& descriptor : choices) {
+        ids.append(descriptor.id);
+    }
+
+    QVERIFY(ids.contains(QStringLiteral("raw")));
+    QVERIFY(ids.contains(QStringLiteral("plot.text")));
+    QVERIFY(ids.contains(QStringLiteral("lua.script")));
+    QVERIFY(!ids.contains(QString()));
+
+    const int luaIndex = ids.indexOf(QStringLiteral("lua.script"));
+    QVERIFY(luaIndex >= 0);
+    QVERIFY(choices.at(luaIndex).scriptProtocol);
+    QVERIFY(choices.at(luaIndex).creatable);
+}
