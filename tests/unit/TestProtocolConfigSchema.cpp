@@ -10,7 +10,9 @@
 #include "core/protocol/IProtocol.h"
 #include "core/protocol/ProtocolConfigSchema.h"
 #include "core/protocol/ProtocolFactory.h"
+#include "core/session/SessionData.h"
 
+#include <QJsonObject>
 #include <memory>
 
 using namespace ComAssistant;
@@ -144,4 +146,42 @@ void TestProtocolConfigSchema::factoryAppliesValidatedEasyHexConfig()
     QVERIFY(easyhex != nullptr);
     QCOMPARE(EasyHexProtocol::toHexString(easyhex->easyHexConfig().frameHeader), QStringLiteral("55 AA"));
     QCOMPARE(easyhex->easyHexConfig().checksumType, EasyHexConfig::XOR8);
+}
+
+void TestProtocolConfigSchema::sessionPersistsProtocolIdAndConfig()
+{
+    /*
+     * 新会话文件应保存稳定协议 ID、配置版本和协议配置。
+     * 旧的 protocolType 继续保留，用于兼容已有恢复链路和旧文件。
+     */
+    SessionData session;
+    session.protocolType = static_cast<int>(ProtocolType::Ascii);
+    session.protocolId = QStringLiteral("ascii");
+    session.protocolConfigVersion = 1;
+    session.protocolConfig.insert(QStringLiteral("lineEnding"), QStringLiteral("LF"));
+    session.protocolConfig.insert(QStringLiteral("timeoutMs"), 250);
+
+    const QJsonObject json = session.toJson();
+    const SessionData restored = SessionData::fromJson(json);
+
+    QCOMPARE(restored.protocolId, QStringLiteral("ascii"));
+    QCOMPARE(restored.protocolConfigVersion, 1);
+    QCOMPARE(restored.protocolConfig.value(QStringLiteral("lineEnding")).toString(), QStringLiteral("LF"));
+    QCOMPARE(restored.protocolConfig.value(QStringLiteral("timeoutMs")).toInt(), 250);
+}
+
+void TestProtocolConfigSchema::sessionMigratesLegacyProtocolTypeToProtocolId()
+{
+    /*
+     * 旧会话只含 protocolType，没有稳定协议 ID 和配置表。
+     * 读取时应根据旧枚举迁移到内置协议描述，并补齐默认配置。
+     */
+    QJsonObject legacy;
+    legacy.insert(QStringLiteral("protocolType"), static_cast<int>(ProtocolType::Ascii));
+
+    const SessionData restored = SessionData::fromJson(legacy);
+
+    QCOMPARE(restored.protocolId, QStringLiteral("ascii"));
+    QCOMPARE(restored.protocolConfigVersion, 1);
+    QCOMPARE(restored.protocolConfig.value(QStringLiteral("lineEnding")).toString(), QStringLiteral("CRLF"));
 }

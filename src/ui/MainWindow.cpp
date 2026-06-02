@@ -1200,6 +1200,11 @@ void MainWindow::onSaveSession()
 
     // 协议和显示模式
     session.protocolType = static_cast<int>(m_currentProtocolType);
+    session.protocolId = ProtocolFactory::typeId(m_currentProtocolType);
+    session.protocolConfigVersion = ProtocolFactory::descriptor(m_currentProtocolType).configVersion;
+    session.protocolConfig = m_currentProtocol
+        ? m_currentProtocol->config()
+        : ProtocolFactory::descriptor(m_currentProtocolType).defaultConfig;
     session.displayMode = static_cast<int>(m_displayMode);
 
     // 快捷发送项
@@ -1285,6 +1290,13 @@ void MainWindow::applySessionDataToUi(const SessionData& session)
     m_sessionCoordinator.selectRestoredPort(m_currentCommType, m_serialConfig, m_hidConfig);
 
     onProtocolTypeChanged(applyResult.restoredProtocolType);
+    if (m_currentProtocol) {
+        /*
+         * SessionData::fromJson() 已经根据协议 Schema 完成迁移、默认值补全和校验。
+         * 这里在协议实例创建后应用配置，确保加载会话能恢复协议内部状态。
+         */
+        m_currentProtocol->setConfig(session.protocolConfig);
+    }
     if (m_protocolActionGroup) {
         for (QAction* action : m_protocolActionGroup->actions()) {
             if (action->data().toInt() == static_cast<int>(m_currentProtocolType)) {

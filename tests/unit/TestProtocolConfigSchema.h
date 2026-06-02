@@ -25,6 +25,8 @@ private slots:
     void normalizesHexBytes();
     void factoryAppliesValidatedAsciiConfig();
     void factoryAppliesValidatedEasyHexConfig();
+    void sessionPersistsProtocolIdAndConfig();
+    void sessionMigratesLegacyProtocolTypeToProtocolId();
 };
 
 #endif // TESTPROTOCOLCONFIGSCHEMA_H

@@ -15,9 +15,11 @@
 #include <QVector>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QVariantMap>
 
 #include "config/AppConfig.h"
 #include "communication/ICommunication.h"
+#include "protocol/ProtocolFactory.h"
 #include "ui/widgets/QuickSendWidget.h"
 
 namespace ComAssistant {
@@ -100,6 +102,9 @@ struct SessionData {
 
     // 协议配置
     int protocolType = 0;               ///< 协议类型
+    QString protocolId;                 ///< 稳定协议 ID，用于跨版本保存协议选择
+    int protocolConfigVersion = 1;      ///< 协议配置版本，对应 ProtocolDescriptor::configVersion
+    QVariantMap protocolConfig;         ///< 协议配置表，保存 Schema 校验后的规范化配置
     int displayMode = 0;                ///< 显示模式
 
     // 接收数据
@@ -180,6 +185,32 @@ struct SessionData {
 
         // 协议和显示模式
         obj["protocolType"] = protocolType;
+        /*
+         * 新会话同时写入稳定协议 ID 与协议配置，旧的 protocolType 仍保留。
+         * 这样当前恢复流程可继续按旧枚举工作，未来插件/脚本协议也能依赖稳定 ID。
+         */
+        const ProtocolType serializedProtocolType = static_cast<ProtocolType>(protocolType);
+        const QString serializedProtocolId = protocolId.isEmpty()
+            ? ProtocolFactory::typeId(serializedProtocolType)
+            : protocolId;
+        const ProtocolDescriptor serializedDescriptor = serializedProtocolId.isEmpty()
+            ? ProtocolDescriptor()
+            : ProtocolFactory::registry().descriptor(serializedProtocolId);
+        QVariantMap serializedConfig = protocolConfig;
+        if (serializedConfig.isEmpty()) {
+            serializedConfig = serializedDescriptor.defaultConfig;
+        } else {
+            const ProtocolConfigValidationResult validation =
+                serializedDescriptor.configSchema.validate(serializedConfig);
+            serializedConfig = validation.valid
+                ? validation.normalizedConfig
+                : serializedDescriptor.defaultConfig;
+        }
+        obj["protocolId"] = serializedProtocolId;
+        obj["protocolConfigVersion"] = serializedDescriptor.id.isEmpty()
+            ? protocolConfigVersion
+            : serializedDescriptor.configVersion;
+        obj["protocolConfig"] = QJsonObject::fromVariantMap(serializedConfig);
         obj["displayMode"] = displayMode;
 
         // 接收数据
@@ -273,6 +304,31 @@ struct SessionData {
 
         // 协议和显示模式
         data.protocolType = obj["protocolType"].toInt();
+        /*
+         * 兼容旧会话：旧文件只有 protocolType，没有 protocolId/protocolConfig。
+         * 读取时先按旧枚举推导稳定 ID，再使用注册中心描述补齐默认配置并校验。
+         */
+        const ProtocolType restoredProtocolType = static_cast<ProtocolType>(data.protocolType);
+        data.protocolId = obj["protocolId"].toString();
+        if (data.protocolId.isEmpty()) {
+            data.protocolId = ProtocolFactory::typeId(restoredProtocolType);
+        }
+
+        const ProtocolDescriptor restoredDescriptor = data.protocolId.isEmpty()
+            ? ProtocolDescriptor()
+            : ProtocolFactory::registry().descriptor(data.protocolId);
+        data.protocolConfigVersion = obj["protocolConfigVersion"].toInt(
+            restoredDescriptor.id.isEmpty() ? 1 : restoredDescriptor.configVersion);
+        data.protocolConfig = obj["protocolConfig"].toObject().toVariantMap();
+        if (data.protocolConfig.isEmpty()) {
+            data.protocolConfig = restoredDescriptor.defaultConfig;
+        } else {
+            const ProtocolConfigValidationResult validation =
+                restoredDescriptor.configSchema.validate(data.protocolConfig);
+            data.protocolConfig = validation.valid
+                ? validation.normalizedConfig
+                : restoredDescriptor.defaultConfig;
+        }
         data.displayMode = obj["displayMode"].toInt();
 
         // 接收数据
