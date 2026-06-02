@@ -44,6 +44,9 @@ struct ProtocolDescriptor
     bool builtin = true;                                  ///< 是否为内置协议
     bool plotProtocol = false;                            ///< 是否支持绘图数据解析
     bool frameBuilder = false;                            ///< 是否支持 payload 构建发送帧
+    bool scriptProtocol = false;                          ///< 是否为脚本协议能力，用于 Lua/插件脚本诊断分支
+    bool creatable = true;                                ///< 是否允许通过注册中心创建 IProtocol 实例
+    bool legacyCompatible = true;                         ///< 是否参与旧版 ProtocolType 列表和旧会话枚举映射
     int configVersion = 1;                                ///< 配置版本，第一版为 1
     ProtocolConfigSchema configSchema;                    ///< 配置 Schema，用于默认值、校验和后续 UI 生成
     QVariantMap defaultConfig;                            ///< 默认配置，为后续 schema 扩展预留

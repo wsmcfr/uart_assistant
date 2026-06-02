@@ -52,6 +52,9 @@ ProtocolDescriptor makeDescriptor(const QString& id,
     descriptor.builtin = true;
     descriptor.plotProtocol = plotProtocol;
     descriptor.frameBuilder = frameBuilder;
+    descriptor.scriptProtocol = false;
+    descriptor.creatable = legacyType != ProtocolType::Raw;
+    descriptor.legacyCompatible = true;
     descriptor.configVersion = configSchema.version;
     descriptor.configSchema = configSchema;
     descriptor.defaultConfig = configSchema.defaults();
@@ -260,6 +263,86 @@ ProtocolConfigSchema makeEasyHexSchema()
     return schema;
 }
 
+/**
+ * @brief 创建 Lua 脚本协议配置 Schema
+ * @return Lua 协议第一版默认配置和字段定义
+ *
+ * 4.9 只把 Lua 协议登记到 descriptor/schema/diagnostics 事实源，不执行脚本、
+ * 不加载外部文件，也不开放接收 API。这里的字段用于后续协议解析器接入前
+ * 先稳定配置键名、默认值和诊断输出。
+ */
+ProtocolConfigSchema makeLuaScriptSchema()
+{
+    ProtocolConfigSchema schema;
+    schema.version = 1;
+    schema.fields.append(ProtocolConfigField::string(
+        QStringLiteral("scriptSource"),
+        QStringLiteral("脚本源码"),
+        QString(),
+        QStringLiteral("内联 Lua 脚本文本；当前阶段仅保存和诊断，不执行")));
+    schema.fields.append(ProtocolConfigField::string(
+        QStringLiteral("scriptPath"),
+        QStringLiteral("脚本路径"),
+        QString(),
+        QStringLiteral("外部 Lua 脚本路径占位；当前阶段不加载文件")));
+    schema.fields.append(ProtocolConfigField::string(
+        QStringLiteral("entryFunction"),
+        QStringLiteral("入口函数"),
+        QStringLiteral("process"),
+        QStringLiteral("后续协议解析器调用的入口函数名称")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("timeoutMs"),
+        QStringLiteral("执行超时"),
+        1000,
+        1,
+        600000,
+        QStringLiteral("Lua 沙箱单次执行超时时间")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("memoryLimitKb"),
+        QStringLiteral("内存限制"),
+        1024,
+        64,
+        65536,
+        QStringLiteral("Lua state 内存预算，单位 KB")));
+    schema.fields.append(ProtocolConfigField::integer(
+        QStringLiteral("maxOutputLines"),
+        QStringLiteral("最大输出行数"),
+        200,
+        0,
+        10000,
+        QStringLiteral("脚本 print 输出最多保留的行数")));
+    schema.fields.append(ProtocolConfigField::boolean(
+        QStringLiteral("allowCommunicationApi"),
+        QStringLiteral("允许通信 API"),
+        false,
+        QStringLiteral("是否允许发送类通信 API；当前阶段仍不开放 serial.receive")));
+    return schema;
+}
+
+/**
+ * @brief 创建 Lua 脚本协议描述
+ * @return 当前阶段只可配置和诊断、不可创建实例的 Lua 协议描述
+ */
+ProtocolDescriptor makeLuaScriptDescriptor()
+{
+    ProtocolDescriptor descriptor;
+    descriptor.id = QStringLiteral("lua.script");
+    descriptor.displayName = QStringLiteral("Lua Script");
+    descriptor.description = QStringLiteral("Lua 脚本协议（当前仅登记配置和诊断元数据）");
+    descriptor.category = ProtocolCategory::Custom;
+    descriptor.legacyType = ProtocolType::Raw;
+    descriptor.builtin = false;
+    descriptor.plotProtocol = false;
+    descriptor.frameBuilder = false;
+    descriptor.scriptProtocol = true;
+    descriptor.creatable = false;
+    descriptor.legacyCompatible = false;
+    descriptor.configSchema = makeLuaScriptSchema();
+    descriptor.configVersion = descriptor.configSchema.version;
+    descriptor.defaultConfig = descriptor.configSchema.defaults();
+    return descriptor;
+}
+
 } // namespace
 
 bool ProtocolRegistry::registerProtocol(const ProtocolDescriptor& descriptor,
@@ -284,7 +367,7 @@ bool ProtocolRegistry::registerProtocol(const ProtocolDescriptor& descriptor,
         return false;
     }
 
-    if (!creator && descriptor.legacyType != ProtocolType::Raw) {
+    if (descriptor.creatable && !creator) {
         if (errorMessage) {
             *errorMessage = QStringLiteral("协议创建器不能为空: %1").arg(descriptor.id);
         }
@@ -416,6 +499,13 @@ void ProtocolRegistry::registerBuiltinProtocols()
                        true,
                        makeEmptySchema()),
         [](QObject* parent) -> IProtocol* { return new JustFloatProtocol(parent); });
+
+    /*
+     * Lua 脚本协议当前只登记元数据、配置 Schema 和诊断能力，不创建 IProtocol。
+     * 这让后续 Lua 协议解析器可以复用稳定 ID 与配置键，同时避免 4.9 提前
+     * 承诺未设计好的接收缓冲、超时语义和线程边界。
+     */
+    registerProtocol(makeLuaScriptDescriptor(), ProtocolCreator());
 }
 
 bool ProtocolRegistry::contains(const QString& id) const

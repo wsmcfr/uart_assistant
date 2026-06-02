@@ -24,7 +24,7 @@ void TestProtocolRegistry::builtinDescriptorsAreRegistered()
     registry.registerBuiltinProtocols();
 
     const QList<ProtocolDescriptor> descriptors = registry.descriptors();
-    QCOMPARE(descriptors.size(), 10);
+    QCOMPARE(descriptors.size(), 11);
 
     QVERIFY(registry.contains(QStringLiteral("raw")));
     QVERIFY(registry.contains(QStringLiteral("ascii")));
@@ -196,7 +196,7 @@ void TestProtocolRegistry::builtinRegistrationKeepsExistingProtocols()
     QVERIFY(registry.contains(QStringLiteral("external.echo")));
     QVERIFY(registry.contains(QStringLiteral("raw")));
     QVERIFY(registry.contains(QStringLiteral("ascii")));
-    QCOMPARE(registry.descriptors().size(), 11);
+    QCOMPARE(registry.descriptors().size(), 12);
 }
 
 void TestProtocolRegistry::builtinDescriptorsExposeConfigSchema()

@@ -210,6 +210,10 @@ QString ProtocolFactory::typeId(ProtocolType type)
      */
     const QList<ProtocolDescriptor> protocolDescriptors = sharedRegistry().descriptors();
     for (const ProtocolDescriptor& protocolDescriptor : protocolDescriptors) {
+        if (!protocolDescriptor.legacyCompatible) {
+            continue;
+        }
+
         if (protocolDescriptor.legacyType == type) {
             return protocolDescriptor.id;
         }
@@ -240,6 +244,10 @@ QList<ProtocolType> ProtocolFactory::supportedTypes()
     types.reserve(protocolDescriptors.size());
 
     for (const ProtocolDescriptor& protocolDescriptor : protocolDescriptors) {
+        if (!protocolDescriptor.legacyCompatible) {
+            continue;
+        }
+
         types.append(protocolDescriptor.legacyType);
     }
 
