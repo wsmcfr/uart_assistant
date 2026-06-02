@@ -286,6 +286,7 @@ set(UI_SOURCES
     src/ui/widgets/HidReportWorkspaceWidget.cpp
     src/ui/widgets/SendWidget.cpp
     src/ui/widgets/TabbedReceiveWidget.cpp
+    src/ui/widgets/ProtocolConfigEditor.cpp
     src/ui/widgets/DataStatistics.cpp
     src/ui/widgets/QuickSendWidget.cpp
     src/ui/widgets/WaterfallWidget.cpp
@@ -345,6 +346,7 @@ set(UI_HEADERS
     src/ui/widgets/HidReportWorkspaceWidget.h
     src/ui/widgets/SendWidget.h
     src/ui/widgets/TabbedReceiveWidget.h
+    src/ui/widgets/ProtocolConfigEditor.h
     src/ui/widgets/DataStatistics.h
     src/ui/widgets/QuickSendWidget.h
     src/ui/widgets/WaterfallWidget.h

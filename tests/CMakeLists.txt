@@ -38,6 +38,7 @@ set(TEST_SOURCES
     unit/TestDocumentationLinks.cpp
     unit/TestSendQueue.cpp
     unit/TestProtocolConfigSchema.cpp
+    unit/TestProtocolConfigEditor.cpp
     unit/TestProtocolRegistry.cpp
     unit/TestMainWindowCommunicationController.cpp
     unit/TestMainWindowCommunicationWorkspaceCoordinator.cpp
@@ -67,6 +68,7 @@ add_executable(ComAssistant_tests
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/IModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.h
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.h
@@ -143,6 +145,7 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/modes/TerminalModeWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TabbedReceiveWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/CommunicationWorkspaceWidget.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/ProtocolConfigEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpClientWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/TcpServerWorkspaceWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/UdpWorkspaceWidget.cpp
