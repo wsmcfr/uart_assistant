@@ -6,7 +6,7 @@
  */
 
 #include "ScriptEditorDialog.h"
-#include "core/script/LuaSandbox.h"
+#include "ScriptExecutionWorker.h"
 #include "../syntax/LuaSyntaxHighlighter.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -19,6 +19,9 @@
 #include <QStandardPaths>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QThread>
+
+#include <utility>
 
 namespace ComAssistant {
 namespace {
@@ -60,6 +63,8 @@ QString sentPayloadPreview(const QByteArray& data)
 ScriptEditorDialog::ScriptEditorDialog(QWidget* parent)
     : QDialog(parent)
 {
+    qRegisterMetaType<ComAssistant::LuaSandboxResult>("ComAssistant::LuaSandboxResult");
+
     setWindowTitle(tr("脚本编辑器"));
     setMinimumSize(900, 600);
     resize(1000, 700);
@@ -93,6 +98,26 @@ print("CRC16:", crc16(request))
 
 ScriptEditorDialog::~ScriptEditorDialog()
 {
+    /*
+     * 对话框关闭时不能直接销毁仍在运行的 QThread。这里先请求 Lua hook 取消，
+     * 再等待一个短窗口；绝大多数 Lua 循环会立即退出。若极端脚本仍未结束，
+     * 则解除线程父对象并让既有 finished 连接完成自清理，避免 UI 对象被跨线程访问。
+     */
+    if (m_scriptThread) {
+        requestWorkerCancellation();
+        m_scriptThread->quit();
+        if (m_scriptThread->wait(1000)) {
+            cleanupWorkerThread();
+        } else {
+            if (m_scriptWorker) {
+                m_scriptWorker->disconnect(this);
+            }
+            m_scriptThread->disconnect(this);
+            m_scriptThread->setParent(nullptr);
+            connect(m_scriptThread, &QThread::finished,
+                    m_scriptThread, &QObject::deleteLater);
+        }
+    }
 }
 
 void ScriptEditorDialog::setupUi()
@@ -313,34 +338,31 @@ void ScriptEditorDialog::onSaveAsScript()
 
 void ScriptEditorDialog::onRunScript()
 {
-    if (m_isRunning) return;
-
-    m_isRunning = true;
-    m_runBtn->setEnabled(false);
-    m_stopBtn->setEnabled(true);
+    /*
+     * 运行按钮只在空闲状态响应，避免用户重复启动多个 worker。
+     * 真正的脚本执行会由 startWorkerExecution() 投递到后台线程。
+     */
+    if (m_runState != ScriptRunState::Idle) {
+        return;
+    }
 
     appendOutput(tr("[系统] 开始执行脚本..."), QColor(100, 149, 237));
-
-    // 脚本执行仍在当前版本同步完成，后续阶段再迁移到后台 worker 和强取消。
-    QString script = m_codeEditor->toPlainText();
-    const bool success = executeSandboxScript(script);
-
-    m_isRunning = false;
-    m_runBtn->setEnabled(true);
-    m_stopBtn->setEnabled(false);
-
-    if (success) {
-        appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
-    }
+    startWorkerExecution(m_codeEditor->toPlainText());
 }
 
 void ScriptEditorDialog::onStopScript()
 {
-    m_isRunning = false;
-    m_runBtn->setEnabled(true);
-    m_stopBtn->setEnabled(false);
-    appendOutput(tr("[系统] 当前版本会在脚本超时保护触发后停止，后台取消将在后续版本提供"),
-                 QColor(255, 165, 0));
+    /*
+     * 停止按钮只在 Running 状态有效。进入 Cancelling 后禁用按钮，
+     * 防止重复写取消标记和重复追加“正在请求停止”提示。
+     */
+    if (m_runState != ScriptRunState::Running) {
+        return;
+    }
+
+    requestWorkerCancellation();
+    appendOutput(tr("[系统] 正在请求停止脚本..."), QColor(255, 165, 0));
+    setRunState(ScriptRunState::Cancelling);
 }
 
 void ScriptEditorDialog::onScriptSelected(QListWidgetItem* item)
@@ -425,49 +447,140 @@ QString ScriptEditorDialog::scriptsDirectory() const
     return appData + "/scripts";
 }
 
-bool ScriptEditorDialog::executeSandboxScript(const QString& script)
+void ScriptEditorDialog::startWorkerExecution(const QString& script)
 {
-    LuaSandboxOptions options;
-    options.timeoutMs = 3000;
-    options.memoryLimitKb = 2048;
-    options.maxOutputLines = 500;
-    options.allowCommunicationApi = true;
+    /*
+     * 启动前清掉已结束的旧任务指针。若旧线程仍在运行，cleanupWorkerThread()
+     * 会保守返回；正常 UI 状态下这里不会发生并发启动。
+     */
+    cleanupWorkerThread();
+
+    m_cancelRequested = std::make_shared<std::atomic_bool>(false);
+    const std::weak_ptr<std::atomic_bool> cancelFlag = m_cancelRequested;
 
     /*
-     * serial.send/serial.sendHex 只负责发起发送请求。这里拒绝空数据，
-     * 是为了避免脚本误调用产生难以观察的空发送项，并让 LuaSandbox 返回明确错误。
+     * worker 持有的是 weak_ptr：如果对话框先析构，回调不会延长取消标记生命周期，
+     * 只会把脚本视为已请求取消，避免悬空访问 UI 对象。
      */
-    options.sendCallback = [this](const QByteArray& bytes) {
-        if (bytes.isEmpty()) {
-            return false;
-        }
-
-        emit sendData(bytes);
-        appendOutput(tr("[发送] %1").arg(sentPayloadPreview(bytes)), QColor(33, 150, 243));
-        return true;
+    auto interruptCallback = [cancelFlag]() {
+        const std::shared_ptr<std::atomic_bool> flag = cancelFlag.lock();
+        return !flag || flag->load();
     };
 
+    m_scriptThread = new QThread(this);
+    m_scriptWorker = new ScriptExecutionWorker(script, interruptCallback);
+    m_scriptWorker->moveToThread(m_scriptThread);
+    QThread* thread = m_scriptThread;
+    ScriptExecutionWorker* worker = m_scriptWorker;
+
+    connect(m_scriptThread, &QThread::started,
+            m_scriptWorker, &ScriptExecutionWorker::run);
+    connect(m_scriptWorker, &ScriptExecutionWorker::sendRequested,
+            this, &ScriptEditorDialog::handleWorkerSendRequested,
+            Qt::QueuedConnection);
+    connect(m_scriptWorker, &ScriptExecutionWorker::finished,
+            this, &ScriptEditorDialog::handleWorkerFinished,
+            Qt::QueuedConnection);
+    connect(m_scriptWorker, &ScriptExecutionWorker::finished,
+            m_scriptThread, &QThread::quit);
+    connect(m_scriptThread, &QThread::finished,
+            this, [this, thread, worker]() {
+                /*
+                 * 线程真正退出后再清空成员指针。这里校验捕获的 thread/worker 是否仍是当前任务，
+                 * 避免用户快速再次运行脚本时，旧线程收尾误清理新任务状态。
+                 */
+                if (m_scriptThread == thread) {
+                    m_scriptThread = nullptr;
+                }
+                if (m_scriptWorker == worker) {
+                    m_scriptWorker = nullptr;
+                }
+                if (!m_scriptThread) {
+                    m_cancelRequested.reset();
+                }
+            });
+    connect(m_scriptThread, &QThread::finished,
+            m_scriptWorker, &QObject::deleteLater);
+    connect(m_scriptThread, &QThread::finished,
+            m_scriptThread, &QObject::deleteLater);
+
+    setRunState(ScriptRunState::Running);
+    m_scriptThread->start();
+}
+
+void ScriptEditorDialog::requestWorkerCancellation()
+{
     /*
-     * 4.6 只接入脚本编辑器到既有发送链路，暂不把主窗口连接状态传入对话框。
-     * 因此当通信 API 已显式启用时，脚本侧 isOpen() 返回 true。
+     * 原子标记是 UI 线程和 Lua worker 线程之间唯一共享状态。
+     * store(true) 后 Lua hook 会在下一次指令计数检查时返回 interrupted。
      */
-    options.isOpenCallback = []() {
-        return true;
-    };
+    if (m_cancelRequested) {
+        m_cancelRequested->store(true);
+    }
+}
 
-    LuaSandbox sandbox;
-    const LuaSandboxResult result = sandbox.execute(script, options);
+void ScriptEditorDialog::handleWorkerSendRequested(const QByteArray& data)
+{
+    /*
+     * 该槽通过 queued connection 在 UI 线程执行，所以可以安全更新输出区域。
+     * 真正发送仍交给 MainWindow 既有 sendData 连接处理。
+     */
+    emit sendData(data);
+    appendOutput(tr("[发送] %1").arg(sentPayloadPreview(data)), QColor(33, 150, 243));
+}
 
+void ScriptEditorDialog::handleWorkerFinished(const LuaSandboxResult& result)
+{
+    /*
+     * worker 的结构化结果统一在这里转成用户可见输出。
+     * 取消、成功、普通错误互斥展示，避免停止脚本时再显示 Lua 错误文本。
+     */
     for (const QString& line : result.outputLines) {
         appendOutput(line, QColor(0, 180, 0));
     }
 
-    if (!result.success) {
+    if (result.interrupted) {
+        appendOutput(tr("[系统] 脚本已取消"), QColor(255, 165, 0));
+    } else if (result.success) {
+        appendOutput(tr("[系统] 脚本执行完成"), QColor(100, 149, 237));
+    } else {
         appendOutput(tr("[错误] %1").arg(result.errorMessage), QColor(220, 20, 60));
-        return false;
     }
 
-    return true;
+    setRunState(ScriptRunState::Idle);
+}
+
+void ScriptEditorDialog::cleanupWorkerThread()
+{
+    /*
+     * 正在运行的线程不能被 UI 线程直接清空指针或销毁；等待线程 finished
+     * 连接负责最终清理。这里只处理已结束或未创建线程的空闲情况。
+     */
+    if (m_scriptThread && m_scriptThread->isRunning()) {
+        return;
+    }
+
+    m_scriptThread = nullptr;
+    m_scriptWorker = nullptr;
+    m_cancelRequested.reset();
+}
+
+void ScriptEditorDialog::setRunState(ScriptRunState state)
+{
+    /*
+     * 按状态集中控制按钮可用性，避免 onRunScript/onStopScript/finished
+     * 分散修改 UI 后出现运行按钮和停止按钮不同步。
+     */
+    m_runState = state;
+    m_isRunning = state != ScriptRunState::Idle;
+
+    if (m_runBtn) {
+        m_runBtn->setEnabled(state == ScriptRunState::Idle);
+    }
+
+    if (m_stopBtn) {
+        m_stopBtn->setEnabled(state == ScriptRunState::Running);
+    }
 }
 
 } // namespace ComAssistant

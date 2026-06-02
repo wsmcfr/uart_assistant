@@ -64,7 +64,9 @@ void TestScriptEditorDialog::runScriptUsesLuaSandboxPrintOutput()
     runButton(dialog)->click();
 
     QVERIFY(outputArea(dialog));
-    QVERIFY(outputArea(dialog)->toPlainText().contains(QStringLiteral("hello from lua")));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        outputArea(dialog)->toPlainText().contains(QStringLiteral("hello from lua")),
+        1000);
 }
 
 /**
@@ -82,10 +84,11 @@ void TestScriptEditorDialog::runScriptEmitsSendDataFromSerialSend()
     QVERIFY(runButton(dialog));
     runButton(dialog)->click();
 
-    QCOMPARE(sendSpy.count(), 1);
+    QTRY_COMPARE_WITH_TIMEOUT(sendSpy.count(), 1, 1000);
     QCOMPARE(sendSpy.takeFirst().at(0).toByteArray(), QByteArray("AT\r\n"));
     QVERIFY(outputArea(dialog));
-    QVERIFY(outputArea(dialog)->toPlainText().contains(QStringLiteral("[发送]")));
+    QTRY_VERIFY_WITH_TIMEOUT(outputArea(dialog)->toPlainText().contains(QStringLiteral("[发送]")),
+                             1000);
 }
 
 /**
@@ -103,8 +106,10 @@ void TestScriptEditorDialog::runScriptShowsLuaErrors()
     runButton(dialog)->click();
 
     QVERIFY(outputArea(dialog));
+    QTRY_VERIFY_WITH_TIMEOUT(
+        outputArea(dialog)->toPlainText().contains(QStringLiteral("bad script")),
+        1000);
     const QString output = outputArea(dialog)->toPlainText();
-    QVERIFY(output.contains(QStringLiteral("bad script")));
     QVERIFY(output.contains(QStringLiteral("错误"))
             || output.contains(QStringLiteral("error"), Qt::CaseInsensitive));
 }

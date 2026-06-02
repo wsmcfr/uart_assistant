@@ -5,8 +5,18 @@
 
 #include "ScriptExecutionWorker.h"
 
+#include <utility>
+
 namespace ComAssistant {
 
+/**
+ * @brief 创建脚本后台执行 worker。
+ * @param script 要在后台线程中执行的 Lua 脚本文本。
+ * @param interruptCallback Lua hook 查询取消状态时调用的函数。
+ * @param parent Qt 父对象，通常为空，避免跨线程父子关系。
+ *
+ * 构造函数只保存脚本文本和取消回调，不启动线程，也不访问 UI。
+ */
 ScriptExecutionWorker::ScriptExecutionWorker(QString script,
                                              InterruptCallback interruptCallback,
                                              QObject* parent)
@@ -16,6 +26,13 @@ ScriptExecutionWorker::ScriptExecutionWorker(QString script,
 {
 }
 
+/**
+ * @brief 执行脚本并通过信号返回结果。
+ *
+ * 主要流程是创建 LuaSandboxOptions、绑定发送信号回调、绑定取消回调，
+ * 然后在当前 worker 线程中调用 LuaSandbox::execute()。函数没有返回值，
+ * 执行完成后通过 finished() 把 LuaSandboxResult 交回 UI 线程。
+ */
 void ScriptExecutionWorker::run()
 {
     LuaSandboxOptions options;

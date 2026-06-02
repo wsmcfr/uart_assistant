@@ -9,6 +9,7 @@
 #include <QString>
 #include <QStringList>
 #include <QByteArray>
+#include <QMetaType>
 
 #include <functional>
 
@@ -72,5 +73,7 @@ public:
 };
 
 } // namespace ComAssistant
+
+Q_DECLARE_METATYPE(ComAssistant::LuaSandboxResult)
 
 #endif // COMASSISTANT_LUASANDBOX_H
