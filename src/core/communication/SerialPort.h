@@ -177,10 +177,15 @@ private slots:
 
 private:
     void applyConfig();
-    void startTransmitLineDelay();
+    /*
+     * 测试会直接探测 drain 状态机的线路等待阶段。MSVC Release 编译可能把
+     * 私有辅助函数完全内联到本翻译单元，导致测试目标跨翻译单元链接不到符号；
+     * 因此显式保留函数体，产品运行逻辑不受影响。
+     */
+    Q_NEVER_INLINE void startTransmitLineDelay();
     void completeTransmitDrain(bool success, const QString& errorMessage);
     double configuredBitsPerByte() const;
-    int estimateTransmitTimeMs(qint64 bytes) const;
+    Q_NEVER_INLINE int estimateTransmitTimeMs(qint64 bytes) const;
     static QSerialPort::DataBits toQtDataBits(DataBits bits);
     static QSerialPort::StopBits toQtStopBits(StopBits bits);
     static QSerialPort::Parity toQtParity(Parity parity);

@@ -396,7 +396,7 @@ void SerialPort::applyConfig()
     m_port->setReadBufferSize(m_config.readBufferSize);
 }
 
-void SerialPort::startTransmitLineDelay()
+Q_NEVER_INLINE void SerialPort::startTransmitLineDelay()
 {
     if (!m_waitingTransmitDrain || m_transmitLineTimer->isActive()) {
         return;
@@ -485,7 +485,7 @@ double SerialPort::configuredBitsPerByte() const
     return bits;
 }
 
-int SerialPort::estimateTransmitTimeMs(qint64 bytes) const
+Q_NEVER_INLINE int SerialPort::estimateTransmitTimeMs(qint64 bytes) const
 {
     if (bytes <= 0) {
         return 0;
