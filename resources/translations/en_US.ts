@@ -1681,6 +1681,14 @@ Time spent: % 4</translation>
         <translation>Custom OTA</translation>
     </message>
     <message>
+        <source>OTA1 或 0x474F5441UL</source>
+        <translation>OTA1 or 0x474F5441UL</translation>
+    </message>
+    <message>
+        <source>支持 4 字节 ASCII，或 0x12345678UL 形式的 uint32_t Magic</source>
+        <translation>Supports 4-byte ASCII or uint32_t Magic such as 0x12345678UL</translation>
+    </message>
+    <message>
         <source>每包字节:</source>
         <translation>Bytes/Packet:</translation>
     </message>
@@ -8887,6 +8895,18 @@ Please check application permissions.</translation>
         <location filename="../../src/core/macro/MacroRecorder.cpp" line="97" />
         <source>无法打开文件</source>
         <translation>Cannot open file</translation>
+    </message>
+    <message>
+        <source>OTA Magic 不能为空</source>
+        <translation>OTA Magic cannot be empty</translation>
+    </message>
+    <message>
+        <source>OTA Magic 十六进制值必须在 uint32_t 范围内</source>
+        <translation>OTA Magic hex value must fit in uint32_t</translation>
+    </message>
+    <message>
+        <source>OTA Magic ASCII 模式最多 4 字节；十六进制请使用 0x12345678UL</source>
+        <translation>OTA Magic ASCII mode allows at most 4 bytes; use 0x12345678UL for hex input</translation>
     </message>
 </context>
 <context>

@@ -89,6 +89,25 @@
 
 namespace ComAssistant {
 
+namespace {
+
+/**
+ * @brief 查找一段字节中的首个换行边界。
+ * @param data 待检查的数据。
+ * @param from 起始查找位置。
+ * @return 找到 `\n` 时返回其位置；否则返回 -1。
+ *
+ * 串口、TCP 等流式通信没有天然报文边界，设备通常用 CRLF/LF 结束一条
+ * 日志。这里统一以 LF 作为完整行结束标记，CR 会保留在记录中，保证
+ * 导出的原始字节和设备输出一致。
+ */
+int firstLineFeedIndex(const QByteArray& data, int from)
+{
+    return data.indexOf('\n', from);
+}
+
+} // namespace
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -790,6 +809,12 @@ void MainWindow::createCommunication()
 
 void MainWindow::destroyCommunication()
 {
+    /*
+     * 关闭连接前把尚未遇到换行的接收导出缓冲写入历史。这样设备最后
+     * 一行没有换行符时，用户断开连接后仍能在增强导出里看到这段数据。
+     */
+    flushPendingReceiveExportHistory();
+
     if (m_commController) {
         m_commController->closeCurrent();
     }
@@ -852,7 +877,7 @@ void MainWindow::onDataReceived(const QByteArray& data)
     if (m_statistics) {
         m_statistics->addRxBytes(data.size());
     }
-    appendExportHistoryRecord(data, true);
+    appendReceiveExportHistoryData(data);
 
     // 数据分窗路由
     if (m_dataWindowManager && m_dataWindowManager->hasRules()) {
@@ -928,6 +953,12 @@ void MainWindow::recordSentData(const QByteArray& data,
                                 const QString& note,
                                 bool updateVisibleDisplay)
 {
+    /*
+     * RX 行缓冲可能还没有等到换行。如果此时用户发送数据，应先落地
+     * 之前的 RX 片段，保持导出历史中的收发顺序和时间线一致。
+     */
+    flushPendingReceiveExportHistory();
+
     // 串口类型继续进入当前显示模式；网络/HID 类型进入对应专用工作台。
     if (updateVisibleDisplay) {
         if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
@@ -955,6 +986,12 @@ void MainWindow::recordSentData(const QByteArray& data,
  */
 void MainWindow::recordAuxiliaryReceivedData(const QByteArray& data, const QString& note)
 {
+    /*
+     * HID Feature Report 等辅助接收是一次调用一条离散记录。提交前先把
+     * 普通流式 RX 缓冲落地，避免两种来源在导出顺序上互相穿插。
+     */
+    flushPendingReceiveExportHistory();
+
     if (m_statistics) {
         m_statistics->addRxBytes(data.size());
     }
@@ -1413,6 +1450,136 @@ QString MainWindow::currentCommunicationSourceLabel() const
 }
 
 /**
+ * @brief 判断当前接收导出历史是否应该按文本行聚合。
+ * @return 串口和 TCP 流式通信返回 true；UDP/HID 等天然报文返回 false。
+ *
+ * 串口和 TCP 的 readyRead 信号只表示“当前驱动缓冲里有一段字节”，不等于
+ * 用户理解的一条设备日志。UDP 数据报和 HID Report 则有明确消息边界，
+ * 聚合它们反而会破坏协议语义。
+ */
+bool MainWindow::shouldAggregateReceiveExportRecords() const
+{
+    return m_currentCommType == CommType::Serial ||
+           m_currentCommType == CommType::TcpClient ||
+           m_currentCommType == CommType::TcpServer;
+}
+
+/**
+ * @brief 追加普通接收数据到增强导出历史，必要时按完整文本行聚合。
+ * @param data 本次底层通信上报的原始接收字节。
+ *
+ * 串口常把一条 `...\r\n` 日志拆成多个 readyRead 分片。接收区文本显示会
+ * 继续把这些字节拼成一行；导出历史也应该按同样的用户粒度保存。为避免
+ * 二进制流或无换行文本无限积压，缓冲超过上限时会把当前片段作为一条记录
+ * 提交，然后继续接收后续字节。
+ */
+void MainWindow::appendReceiveExportHistoryData(const QByteArray& data)
+{
+    if (data.isEmpty()) {
+        return;
+    }
+
+    if (!shouldAggregateReceiveExportRecords()) {
+        flushPendingReceiveExportHistory();
+        appendExportHistoryRecord(data, true);
+        return;
+    }
+
+    int offset = 0;
+    while (offset < data.size()) {
+        if (m_pendingReceiveExportLine.isEmpty()) {
+            m_pendingReceiveExportTimestamp = QDateTime::currentDateTime();
+            m_pendingReceiveExportSource = currentCommunicationSourceLabel();
+        }
+
+        const int lineFeedIndex = firstLineFeedIndex(data, offset);
+        const int takeBytes = lineFeedIndex >= 0
+            ? lineFeedIndex - offset + 1
+            : data.size() - offset;
+
+        m_pendingReceiveExportLine.append(data.constData() + offset, takeBytes);
+        offset += takeBytes;
+
+        if (lineFeedIndex >= 0) {
+            flushPendingReceiveExportHistory();
+            continue;
+        }
+
+        if (m_pendingReceiveExportLine.size() >= kMaxPendingReceiveExportLineBytes) {
+            /*
+             * 没有换行但缓冲已到上限时主动落地。这样二进制协议、异常长日志
+             * 或设备卡住不发换行时，导出功能仍保持有界内存。
+             */
+            flushPendingReceiveExportHistory();
+        }
+    }
+}
+
+/**
+ * @brief 将待聚合的普通 RX 导出缓冲提交为一条历史记录。
+ *
+ * 该函数在遇到换行、导出前、发送前、断开连接和清空时调用。时间戳和来源
+ * 使用第一段数据到达时记录的值，避免一条被拆分的设备日志在导出中显示成
+ * 最后一段分片的时间。
+ */
+void MainWindow::flushPendingReceiveExportHistory()
+{
+    if (m_pendingReceiveExportLine.isEmpty()) {
+        return;
+    }
+
+    const QDateTime timestamp = m_pendingReceiveExportTimestamp.isValid()
+        ? m_pendingReceiveExportTimestamp
+        : QDateTime::currentDateTime();
+    const QString source = m_pendingReceiveExportSource.isEmpty()
+        ? currentCommunicationSourceLabel()
+        : m_pendingReceiveExportSource;
+
+    commitExportHistoryRecord(m_pendingReceiveExportLine,
+                              true,
+                              QString(),
+                              timestamp,
+                              source);
+
+    m_pendingReceiveExportLine.clear();
+    m_pendingReceiveExportLine.squeeze();
+    m_pendingReceiveExportTimestamp = QDateTime();
+    m_pendingReceiveExportSource.clear();
+}
+
+/**
+ * @brief 使用指定元数据提交一条增强导出历史记录。
+ * @param data 要导出的原始字节。
+ * @param isReceive true 表示 RX，false 表示 TX。
+ * @param note 附加说明，留空时只写入递增序号。
+ * @param timestamp 记录时间戳。
+ * @param source 数据来源标签。
+ */
+void MainWindow::commitExportHistoryRecord(const QByteArray& data,
+                                           bool isReceive,
+                                           const QString& note,
+                                           const QDateTime& timestamp,
+                                           const QString& source)
+{
+    if (data.isEmpty()) {
+        return;
+    }
+
+    DataRecord record;
+    record.timestamp = timestamp.isValid() ? timestamp : QDateTime::currentDateTime();
+    record.data = data;
+    record.isReceive = isReceive;
+    record.source = source;
+    record.note = note.isEmpty()
+        ? QStringLiteral("#%1").arg(++m_exportHistoryNextIndex)
+        : QStringLiteral("#%1 %2").arg(++m_exportHistoryNextIndex).arg(note);
+
+    m_exportHistoryRecords.append(record);
+    m_exportHistoryBytes += record.data.size();
+    trimExportHistory();
+}
+
+/**
  * @brief 追加一条主窗口增强导出历史记录。
  * @param data 收到或发送的原始字节。
  * @param isReceive true 表示 RX，false 表示 TX。
@@ -1426,16 +1593,11 @@ void MainWindow::appendExportHistoryRecord(const QByteArray& data,
         return;
     }
 
-    DataRecord record = isReceive
-        ? DataRecord::fromReceive(data, currentCommunicationSourceLabel())
-        : DataRecord::fromSend(data, currentCommunicationSourceLabel());
-    record.note = note.isEmpty()
-        ? QStringLiteral("#%1").arg(++m_exportHistoryNextIndex)
-        : QStringLiteral("#%1 %2").arg(++m_exportHistoryNextIndex).arg(note);
-
-    m_exportHistoryRecords.append(record);
-    m_exportHistoryBytes += record.data.size();
-    trimExportHistory();
+    commitExportHistoryRecord(data,
+                              isReceive,
+                              note,
+                              QDateTime::currentDateTime(),
+                              currentCommunicationSourceLabel());
 }
 
 /**
@@ -1470,6 +1632,11 @@ void MainWindow::trimExportHistory()
  */
 void MainWindow::clearExportHistory()
 {
+    m_pendingReceiveExportLine.clear();
+    m_pendingReceiveExportLine.squeeze();
+    m_pendingReceiveExportTimestamp = QDateTime();
+    m_pendingReceiveExportSource.clear();
+
     m_exportHistoryRecords.clear();
     m_exportHistoryRecords.squeeze();
     m_exportHistoryBytes = 0;
@@ -1490,6 +1657,7 @@ void MainWindow::refreshExportDialogRecords()
 void MainWindow::onExportData()
 {
     syncCurrentWorkspaceToConfig();
+    flushPendingReceiveExportHistory();
 
     if (m_exportHistoryRecords.isEmpty()) {
         QMessageBox::information(this,

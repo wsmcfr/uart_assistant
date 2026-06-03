@@ -38,6 +38,30 @@ private slots:
     void testOtaHeaderUsesLittleEndianMetadata();
 
     /**
+     * @brief 验证 OTA 文件头支持 uint32_t 形式的 magic。
+     *
+     * 主要流程：使用 0x474F5441UL 这类 MCU 侧常见的 uint32_t magic
+     * 构造文件头，检查包头按小端数值写入，避免继续把 magic 当任意字符串处理。
+     */
+    void testOtaHeaderAcceptsUint32Magic();
+
+    /**
+     * @brief 验证 OTA magic 文本能解析为 uint32_t。
+     *
+     * 主要流程：分别解析 ASCII 默认值和 0x474F5441UL 十六进制常量，
+     * 检查输出的 32 位数值符合小端包头约定，并拒绝超过 uint32_t 的输入。
+     */
+    void testOtaMagicTextParsesUint32();
+
+    /**
+     * @brief 文件传输对话框的 OTA magic 输入框应允许十六进制 uint32_t。
+     *
+     * 主要流程：切换到自定义 OTA 模式，输入 0x474F5441UL，确认输入不会
+     * 被旧的 4 字符限制截断，便于用户直接填写固件侧常量。
+     */
+    void testFileTransferDialogAcceptsUint32OtaMagicInput();
+
+    /**
      * @brief 验证 OTA 数据包包含块序号、长度、载荷和 CRC16
      *
      * 主要流程：构造固定块序号和 payload，检查包头字段、payload

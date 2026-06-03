@@ -278,8 +278,13 @@ void TestFileTransfer::testOtaHeaderUsesLittleEndianMetadata()
      * 文件头是 MCU 识别整次 OTA 的第一包，因此字段顺序和大小端必须稳定。
      * 该测试用固定数字检查小端编码，便于下位机直接按字节解析。
      */
+    quint32 magic = 0;
+    QString errorMessage;
+    QVERIFY2(OtaFileTransfer::parseMagicText(QStringLiteral("OTA1"), magic, &errorMessage),
+             qPrintable(errorMessage));
+
     const QByteArray packet = OtaFileTransfer::buildHeaderPacketForTest(
-        "OTA1", "Project_ota.bin", 10, 0x12345678, 128);
+        magic, "Project_ota.bin", 10, 0x12345678, 128);
 
     QVERIFY(packet.size() >= 4 + 4 + 4 + 2 + 1);
     QCOMPARE(packet.left(4), QByteArray("OTA1"));
@@ -288,6 +293,71 @@ void TestFileTransfer::testOtaHeaderUsesLittleEndianMetadata()
     QCOMPARE(readLe16(packet, 12), static_cast<quint16>(128));
     QCOMPARE(static_cast<quint8>(packet[14]), static_cast<quint8>(15));
     QCOMPARE(packet.mid(15), QByteArray("Project_ota.bin"));
+}
+
+void TestFileTransfer::testOtaHeaderAcceptsUint32Magic()
+{
+    /*
+     * MCU Bootloader 常把 magic 定义为 uint32_t 常量，例如 0x474F5441UL。
+     * OTA 文件头应直接按 32 位数值小端写入，和后续 fileSize、CRC32 字段
+     * 保持同一套字节序规则。
+     */
+    const QByteArray packet = OtaFileTransfer::buildHeaderPacketForTest(
+        static_cast<quint32>(0x474F5441UL), QStringLiteral("firmware.bin"), 10, 0x12345678, 128);
+
+    QVERIFY(packet.size() >= 4);
+    QCOMPARE(readLe32(packet, 0), static_cast<quint32>(0x474F5441UL));
+    QCOMPARE(packet.left(4), QByteArray("\x41\x54\x4F\x47", 4));
+}
+
+void TestFileTransfer::testOtaMagicTextParsesUint32()
+{
+    /*
+     * ASCII 输入保持历史兼容：OTA1 在线上仍是 4F 54 41 31，但内部
+     * 存储为小端 uint32_t 0x3141544F。十六进制输入则按数值直接解析。
+     */
+    quint32 magic = 0;
+    QString errorMessage;
+
+    QVERIFY2(OtaFileTransfer::parseMagicText(QStringLiteral("OTA1"), magic, &errorMessage),
+             qPrintable(errorMessage));
+    QCOMPARE(magic, static_cast<quint32>(0x3141544FUL));
+
+    QVERIFY2(OtaFileTransfer::parseMagicText(QStringLiteral("0x474F5441UL"), magic, &errorMessage),
+             qPrintable(errorMessage));
+    QCOMPARE(magic, static_cast<quint32>(0x474F5441UL));
+
+    QVERIFY(!OtaFileTransfer::parseMagicText(QStringLiteral("0x100000000"), magic, &errorMessage));
+    QVERIFY(!errorMessage.isEmpty());
+}
+
+void TestFileTransfer::testFileTransferDialogAcceptsUint32OtaMagicInput()
+{
+    /*
+     * 旧 UI 把 Magic 当 4 字符 ASCII，并设置 maxLength(4)。用户输入
+     * 0x474F5441UL 时会被截成 0x47，最终无法配置固件侧 uint32_t magic。
+     */
+    FileTransferDialog dialog;
+
+    const QList<QComboBox*> combos = dialog.findChildren<QComboBox*>();
+    QComboBox* modeCombo = nullptr;
+    for (QComboBox* combo : combos) {
+        if (combo->findText(QStringLiteral("自定义 OTA")) >= 0) {
+            modeCombo = combo;
+            break;
+        }
+    }
+    QVERIFY(modeCombo != nullptr);
+
+    const int otaModeIndex = modeCombo->findText(QStringLiteral("自定义 OTA"));
+    QVERIFY(otaModeIndex >= 0);
+    modeCombo->setCurrentIndex(otaModeIndex);
+
+    QLineEdit* magicEdit = dialog.findChild<QLineEdit*>(QStringLiteral("otaMagicEdit"));
+    QVERIFY2(magicEdit != nullptr, "OTA Magic 输入框应提供稳定 objectName，方便回归测试和 UI 自动化定位。");
+
+    magicEdit->setText(QStringLiteral("0x474F5441UL"));
+    QCOMPARE(magicEdit->text(), QStringLiteral("0x474F5441UL"));
 }
 
 void TestFileTransfer::testOtaDataPacketIncludesIndexLengthPayloadAndCrc()

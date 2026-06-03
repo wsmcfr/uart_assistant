@@ -25,6 +25,14 @@ private slots:
      * 该测试覆盖用户可见入口，避免工具栏/菜单仍停留在旧的简单文本保存流程。
      */
     void testExportActionOpensEnhancedDialogWithRxAndTxRecords();
+
+    /**
+     * @brief 串口底层分片收到同一文本行时，增强导出历史应按完整行合并为一条 RX 记录。
+     *
+     * 实际串口 readyRead 可能把一行日志拆成 32/32/4 等多段；导出功能面向用户
+     * 的“记录”应和接收区显示的一行一致，不能把同一条设备日志导出成多条。
+     */
+    void testExportHistoryMergesReceiveChunksIntoCompleteTextLine();
 };
 
 #endif // TESTMAINWINDOWEXPORTINTEGRATION_H

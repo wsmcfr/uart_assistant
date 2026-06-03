@@ -19,8 +19,9 @@
 | 高 | YMODEM 接收入口存在但核心没实现 | UI/文档让用户以为能接收，实际 `processReceivedData()` 只处理发送方向。 | `src/core/transfer/FileTransfer.cpp:1380`、`src/core/transfer/FileTransfer.cpp:1424`、`resources/help/advanced.html:245` | 已完成。实现 YMODEM 接收状态机，支持文件头解析、CRC/包号校验、数据包落盘、双 EOT 收尾、空头批次结束和不安全文件名拦截。 |
 | 高 | `SendDispatcher` 没处理部分写入 | `write()` 返回 `0 < written < payload.size()` 时会被误判为完成，串口/TCP/Socket 可能丢尾包。 | `src/core/communication/SendDispatcher.cpp:80` | 已完成。`SendQueueItem::bytesWritten` 记录队首写入偏移，`SendDispatcher` 只发送剩余片段；覆盖多次部分写入、部分写入后失败恢复、0 字节停滞和超量返回异常。 |
 | 高 | TCP Server / UDP / HID 有影子接收缓存 | 数据已通过 `dataReceived` 被主窗口消费，同时 append 到内部 `m_readBuffer`；主流程不调用 `readAll()` 时会长期占内存。 | `src/core/communication/TcpServer.cpp:260`、`src/core/communication/UdpSocket.cpp:261`、`src/core/communication/HidDevice.cpp:327` | 已完成。保留 `readAll()` 兼容缓存，但统一通过 `ICommunication::appendToReceiveBuffer()` 按 `bufferSize()` 只保留尾部最近数据；运行中调小 `bufferSize()` 会立即裁剪已有缓存。 |
-| 中高 | 增强导出对话框和 `DataExporter` 基本完整，但主窗口没接上 | 文档写“文件 -> 导出数据可选 TXT/CSV/HTML/JSON”，实际主入口只是简单保存文本。 | `src/ui/MainWindow.cpp:1341`、`src/ui/MainWindow.h:317`、`docs/user-guide/quickstart.md:123` | 已完成。主窗口维护有界结构化收发历史并接入 `ExportDialog`，覆盖串口、TCP、UDP、HID 的 RX/TX 数据；导出对话框过滤统计按真实过滤结果计算。 |
+| 中高 | 增强导出对话框和 `DataExporter` 基本完整，但主窗口没接上 | 文档写“文件 -> 导出数据可选 TXT/CSV/HTML/JSON”，实际主入口只是简单保存文本。 | `src/ui/MainWindow.cpp:1341`、`src/ui/MainWindow.h:317`、`docs/user-guide/quickstart.md:123` | 已完成。主窗口维护有界结构化收发历史并接入 `ExportDialog`，覆盖串口、TCP、UDP、HID 的 RX/TX 数据；导出对话框过滤统计按真实过滤结果计算；串口/TCP 接收导出按完整文本行合并底层分片，避免一条日志被导出成多条。 |
 | 中 | `IAPUpgrader`、`AutoSaveManager`、旧 `LuaEngine` 编译进工程但生产入口基本没用 | 属于遗留/未接线模块，增加维护成本、体积和误用风险。 | `CMakeLists.txt:141`、`CMakeLists.txt:148`、`CMakeLists.txt:156` | 已完成。源码保留作历史参考，但主程序和测试构建目标不再编译这些旧模块；IAP 菜单真实入口复用 `FileTransferDialog` 的文件传输/IAP 模式，脚本生产链路统一使用 `LuaSandbox`。 |
+| 中 | 帧模式工具栏露出 XOR/SUM/CRC16 校验选项，但接收校验未真正执行 | 用户选择校验类型后会以为坏帧能被标记，实际 `validateFrame()` 仍跳过校验。 | `src/ui/modes/FrameModeWidget.cpp:197`、`src/ui/modes/FrameModeWidget.cpp:332`、`resources/help/modes.html:390` | 未完成。应按 TDD 补 XOR/SUM/CRC16 的接收校验、错误提示、发送构帧一致性和文档说明。 |
 
 ## 无损降内存方向
 
@@ -31,6 +32,8 @@
 | `DataExporter` 改流式过滤、流式写入 | 真实文件导出如果先生成过滤记录和完整 `QString/QByteArray`，大历史导出会产生额外峰值内存。 | `src/core/export/DataExporter.cpp`、`tests/unit/TestDataExporter.cpp` | 已完成。`exportToFile()` 复用 `exportToDevice()` 流式核心，两次线性扫描完成计数和逐条写入；TXT、CSV、HTML、JSON、XML、Binary、HexDump 都按匹配记录分块写入，不再复制过滤全集或拼完整文件内容。 |
 | `DataWindow` 补字符数裁剪 | 主接收页已处理无换行超长流，数据分窗如果只靠最大 block 数，长行可能单 block 膨胀。 | `src/ui/widgets/DataWindow.cpp`、`tests/unit/TestDataWindow.cpp` | 已完成。分窗文本区按字符上限裁剪头部，保留尾部最新数据；清空时同步清理 `QTextDocument` undo 栈；导出只包含裁剪后的可见内容。 |
 | `DataTableWidget::clearAll()` 后 `squeeze()` | 清空记录但保留历史峰值容量，用户清空后内存不一定回落。 | `src/ui/widgets/DataTableWidget.cpp`、`tests/unit/TestMemoryAwareUiBehavior.cpp` | 已完成。清空后释放 `m_records` 和 `m_pendingRecords` 容量，并替换空表格模型以释放模型内部历史分配。 |
+| 调试/帧/Modbus 等模式的详情文本框关闭 undo | 这些输出框多为只读历史显示，保留 undo 栈没有使用价值，长时间接收会增加文档内部缓存。 | `src/ui/modes/FrameModeWidget.cpp`、`src/ui/modes/DebugModeWidget.cpp`、`src/ui/widgets/ModbusAnalyzerWidget.cpp` | 待处理。逐个确认不会影响用户编辑输入框后，对只读输出区调用 `setUndoRedoEnabled(false)`，并补清空后容量释放测试。 |
+| 暂停显示或批量刷新队列继续有界化 | 主接收区已限制暂停缓存，但其它模式仍可能存在待刷新 `QVector/QByteArray` 清空后容量不回落或暂停期间增长的问题。 | `src/ui/modes/DebugModeWidget.cpp`、`src/ui/modes/FrameModeWidget.cpp`、`src/ui/widgets/WaterfallWidget.cpp` | 待处理。按模式审计 pending 容器，设置上限、丢弃最旧数据或暂停时落屏，并在 clear/reset 后 squeeze。 |
 
 ## 其它可优化点
 
@@ -41,6 +44,7 @@
 | `ExportDialog::updateStatistics()` | 已完成。过滤后数量现在调用 `DataExporter::filteredRecordCount()`，与真实导出过滤规则一致。 | `tests/unit/TestExportDialog.cpp` 覆盖内容过滤后统计从 3 条变为 2 条。 |
 | 旧 `LuaEngine` | 已完成。旧源码保留但不进入主程序或测试目标；脚本编辑器、Lua 协议解析和开发文档均以 `LuaSandbox` 为生产入口。 | `tests/unit/TestReleaseMetadata.cpp` 验证旧 `LuaEngine.cpp` 未进入构建清单。 |
 | `ConfigManager::saveConfig(filePath)` | 已完成。显式路径保存使用临时 `QSettings` 写入目标文件，不切换当前配置对象，也不依赖原 `m_settings` 路径。 | `tests/unit/TestConfigManager.cpp` 覆盖显式路径真实写入且当前设置路径保持不变。 |
+| 自定义 OTA Magic | 已完成。内部 `OtaTransferOptions::magic` 改为 `quint32`；UI 同时接受旧版 4 字节 ASCII 和 `0x12345678UL` 十六进制常量，启动前校验格式并按小端写入头包前 4 字节。 | `tests/unit/TestFileTransfer.cpp` 覆盖 ASCII 兼容、`uint32_t` magic、越界拒绝和 UI 不截断十六进制输入。 |
 
 ## 执行顺序
 
@@ -62,7 +66,7 @@
 | 2026-06-03 | `SendDispatcher` 部分写入处理 | 队列记录队首写入偏移；调度器只写未完成尾部；成功完成前强制校验整包已写完；失败后保留进度以便只重试剩余数据；0 字节写入按停滞失败处理；底层返回超过剩余长度时拒绝推进。 | `tests/unit/TestSendQueue.cpp` 覆盖队首写入进度、多次部分写入、部分写入后失败恢复、0 字节停滞和超量返回异常。 |
 | 2026-06-03 | TCP Server / UDP / HID 影子接收缓存 | `dataReceived`/`clientDataReceived`/`datagramReceived` 仍发送完整数据；`readAll()` 兼容缓存通过 `ICommunication` 统一 helper 只保留 `bufferSize()` 限制内的尾部最近数据；`setBufferSize()` 调小后立即裁剪已有缓存；`bufferSize() <= 0` 保持“不限制”兼容语义；修正 UDP 无 pending datagram 时 `bytesAvailable()` 误减 1 的统计问题。 | `tests/unit/TestCommunicationReceiveBuffers.cpp` 覆盖 TCP、UDP、HID 三后端的完整信号接收、有界 `readAll()` 兼容缓存、运行中调小缓存立即裁剪。 |
 | 2026-06-03 | YMODEM 接收入口与核心实现不一致 | `YModemTransfer` 接收模式现在主动发送 `C` 握手，解析 0 号文件头，按声明文件大小写入目标文件，处理数据包 ACK、坏包 NAK、重复包补 ACK、双 EOT 收尾和空 0 号头批次结束；对端文件名会拦截绝对路径、目录分隔符、盘符和 `..`，避免写出保存目录。 | `tests/unit/TestFileTransfer.cpp` 覆盖单文件批次完整接收、坏头包 NAK 后重试、路径穿越文件名拒绝。 |
-| 2026-06-03 | 增强导出主入口未接入 | `文件 -> 导出数据` 现在打开 `ExportDialog`，使用主窗口最近有界结构化收发历史；普通发送、TCP Server 定向/广播、UDP 指定目标、HID Output/Feature 和接收数据都会进入导出历史；历史按 10000 条和 16MB payload 双上限裁剪，清空当前数据时释放容量；`ExportDialog` 过滤统计和预览复用 `DataExporter` 过滤规则。 | `tests/unit/TestMainWindowExportIntegration.cpp` 覆盖主窗口 RX/TX 后导出入口打开增强对话框并显示预览；`tests/unit/TestExportDialog.cpp` 覆盖过滤统计真实反映当前条件。 |
+| 2026-06-03 | 增强导出主入口未接入 | `文件 -> 导出数据` 现在打开 `ExportDialog`，使用主窗口最近有界结构化收发历史；普通发送、TCP Server 定向/广播、UDP 指定目标、HID Output/Feature 和接收数据都会进入导出历史；历史按 10000 条和 16MB payload 双上限裁剪，清空当前数据时释放容量；`ExportDialog` 过滤统计和预览复用 `DataExporter` 过滤规则；串口/TCP 接收导出按完整文本行合并 readyRead 分片，无换行长流达到 64KB 上限后提交当前片段，UDP/HID 保持报文粒度。 | `tests/unit/TestMainWindowExportIntegration.cpp` 覆盖主窗口 RX/TX 后导出入口打开增强对话框并显示预览，以及 32/32/4 分片的一条串口日志只导出为一条 RX 记录；`tests/unit/TestExportDialog.cpp` 覆盖过滤统计真实反映当前条件。 |
 | 2026-06-03 | XMODEM/YMODEM 标准协议发送整文件缓存 | XMODEM 发送启动后只记录文件大小和分包数，按当前 128/1024 字节块读取；YMODEM 头包阶段只读取文件元数据，数据包按 1K 读取；两者都只缓存当前待 ACK 协议包用于 NAK/超时重发，EOT 超时只重发 EOT，完成、取消、失败、接收方取消和批量切换文件时释放文件句柄。 | `tests/unit/TestFileTransfer.cpp` 覆盖 XMODEM/YMODEM 发送不缓存整文件、XMODEM EOT 超时重发 EOT、YMODEM NAK 重发当前包、每包 ACK 后重置重试计数。 |
 | 2026-06-03 | XMODEM 接收整文件累计到内存 | XMODEM 接收完整包校验通过后立即写入目标文件，半包会保留在 `m_receiveBuffer` 等待后续字节补齐；EOT 阶段只 ACK、flush 和关闭文件；发送方 CAN、校验失败超限和主动取消都会释放文件句柄；由于标准 XMODEM 无真实文件大小字段，最后一包 `CPMEOF` 填充不默认裁剪。 | `tests/unit/TestFileTransfer.cpp` 覆盖接收不累计 `m_fileData`、半包保留、发送方取消释放文件、校验失败释放文件。 |
 | 2026-06-03 | `DataExporter` 文件导出复制过滤记录并拼完整内容 | `exportToFile()` 现在打开目标设备后走 `exportToDeviceInternal()`：第一次扫描只计算匹配数量和总字节数，第二次按过滤结果逐条写入。文本格式通过 `QTextCodec` 编码后分块写入并统计真实字节数；二进制直接逐条写 payload；JSON 不再构造完整 `QJsonArray`。`exportToString()`/`exportToBytes()` 保留给预览和旧接口。 | `tests/unit/TestDataExporter.cpp` 覆盖文本导出分块写入、内容过滤一致性、二进制逐条写入和进度、非 UTF-8 编码文件大小统计。 |
@@ -71,3 +75,5 @@
 | 2026-06-03 | `ConfigManager::saveConfig(filePath)` 显式路径未真实写入 | `saveConfig(filePath)` 现在把写入逻辑集中到 `writeConfigToSettings(QSettings&)`，默认保存继续使用当前配置对象，显式路径保存则创建临时 `QSettings` 写入目标文件，不改变当前配置文件位置；测试专用 `resetForTest()` 保证单例状态可隔离验证。 | `tests/unit/TestConfigManager.cpp` 覆盖目标路径真实生成、内容包含应用设置，以及当前配置路径不被显式保存切换。 |
 | 2026-06-03 | 遗留模块仍编译进构建目标 | 主程序和测试目标已移除 `AutoSaveManager.cpp`、旧 `LuaEngine.cpp` 和 `IAPUpgrader.cpp`；保留源码只作历史参考，禁止新增生产入口。IAP 菜单继续存在，但真实链路走 `FileTransferDialog::setIAPMode(true)` 和文件传输中心，不再依赖旧升级器。 | `tests/unit/TestReleaseMetadata.cpp` 覆盖根 CMake 与测试 CMake 均不包含三个遗留源文件。 |
 | 2026-06-03 | `YModemG` 枚举存在但 UI 和核心行为不完整 | YMODEM-G 已在标准协议下拉框中可选；发送端使用 `G` 启动，头包后收到 `ACK+G` 进入 0ms 定时流式发送，逐包从文件读取，不等待数据包 ACK，EOT 后等待 `ACK+G` 再发空头结束；接收端用 `G` 握手，不对数据包逐包 ACK，EOT 后 `ACK+G`，校验或序号错误时发送多字节 CAN 并释放文件句柄。 | `tests/unit/TestFileTransfer.cpp` 覆盖 G 模式发送、接收、错误中止和 UI 下拉框入口。 |
+| 2026-06-03 | 接收区智能暂停滚动仍被新数据拉到底部 | 主接收区追加文本时不再移动 `QPlainTextEdit` 自身可见光标，而是用独立 `QTextCursor` 写入文档尾部；智能暂停状态下保存并恢复滚动条值，裁剪历史后按新范围夹紧，并屏蔽恢复信号避免误判为用户滚动到底部。 | `tests/unit/TestTabbedReceiveWidget.cpp` 覆盖用户滚到顶部后继续接收新数据仍保留阅读位置。 |
+| 2026-06-03 | 自定义 OTA Magic 仍按字符串截断 | `OtaTransferOptions::magic` 改为 `quint32`，默认值为 ASCII `OTA1` 对应的小端数值 `0x3141544F`；`parseMagicText()` 支持 `OTA1` 和 `0x474F5441UL`，拒绝空值、ASCII 超 4 字节和越界数值；UI Magic 输入框放宽长度并在启动前校验。 | `tests/unit/TestFileTransfer.cpp` 覆盖 `uint32_t` 包头、文本解析、UI 输入框不截断。 |

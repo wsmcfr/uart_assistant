@@ -123,3 +123,57 @@ void TestMainWindowExportIntegration::testExportActionOpensEnhancedDialogWithRxA
     QVERIFY2(preview.contains(QStringLiteral("tx-payload")),
              "增强导出预览应包含主窗口发送历史。");
 }
+
+void TestMainWindowExportIntegration::testExportHistoryMergesReceiveChunksIntoCompleteTextLine()
+{
+    MainWindow window;
+    window.resize(1200, 760);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    /*
+     * 复现用户截图中的场景：设备实际输出一条以换行结束的 PT100 日志，
+     * 但串口底层 readyRead 可能按 32/32/4 字节分三次上报。导出历史
+     * 应以完整文本行为粒度，而不是以底层分片为粒度。
+     */
+    const QByteArray line("PT100: Vout=0.0000V signal=-0.9617V R=-491.42ohm T=-50.00C valid=0\r\n");
+    QCOMPARE(line.size(), 68);
+
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDataReceived",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, line.left(32))));
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDataReceived",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, line.mid(32, 32))));
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDataReceived",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, line.mid(64))));
+
+    bool sawExportDialog = false;
+    QString preview;
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "onExportData", Qt::DirectConnection);
+    });
+    QTimer::singleShot(200, &window, [&sawExportDialog, &preview]() {
+        ExportDialog* exportDialog = findVisibleDialog<ExportDialog>();
+        if (exportDialog) {
+            sawExportDialog = true;
+            preview = exportPreviewText(exportDialog);
+            exportDialog->reject();
+            return;
+        }
+
+        rejectVisibleDialogs();
+    });
+
+    QTRY_VERIFY_WITH_TIMEOUT(sawExportDialog, 1000);
+
+    const int firstRx = preview.indexOf(QStringLiteral("[RX]"));
+    QVERIFY2(firstRx >= 0, "导出预览应包含合并后的 RX 记录。");
+    QCOMPARE(preview.indexOf(QStringLiteral("[RX]"), firstRx + 1), -1);
+    QVERIFY2(preview.contains(QString::fromUtf8(line).trimmed()),
+             "导出预览应包含完整的设备日志行，而不是串口底层分片。");
+}

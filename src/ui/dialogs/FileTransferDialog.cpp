@@ -125,7 +125,10 @@ void FileTransferDialog::setupUi()
     auto* otaLayout = new QGridLayout(m_otaOptionsWidget);
     otaLayout->setContentsMargins(0, 0, 0, 0);
     m_otaMagicEdit = new QLineEdit("OTA1", this);
-    m_otaMagicEdit->setMaxLength(4);
+    m_otaMagicEdit->setObjectName(QStringLiteral("otaMagicEdit"));
+    m_otaMagicEdit->setMaxLength(16);
+    m_otaMagicEdit->setPlaceholderText(tr("OTA1 或 0x474F5441UL"));
+    m_otaMagicEdit->setToolTip(tr("支持 4 字节 ASCII，或 0x12345678UL 形式的 uint32_t Magic"));
     m_otaBlockSizeSpin = new QSpinBox(this);
     m_otaBlockSizeSpin->setRange(1, 4096);
     m_otaBlockSizeSpin->setValue(256);
@@ -345,13 +348,12 @@ void FileTransferDialog::onStartClicked()
     } else if (mode == DialogTransferMode::CustomOta) {
         auto* otaTransfer = new OtaFileTransfer(this);
         OtaTransferOptions options;
-        options.magic = m_otaMagicEdit->text();
-        options.blockSize = m_otaBlockSizeSpin->value();
-        options.intervalMs = m_otaIntervalSpin->value();
-        options.waitAck = m_otaWaitAckCheck->isChecked();
-        options.ackToken = m_otaAckEdit->text().toUtf8();
-        options.timeoutMs = m_otaTimeoutSpin->value();
-        options.maxRetries = m_otaRetrySpin->value();
+        QString otaErrorMessage;
+        if (!collectOtaOptions(options, otaErrorMessage)) {
+            delete otaTransfer;
+            QMessageBox::warning(this, tr("警告"), otaErrorMessage);
+            return;
+        }
         otaTransfer->setOptions(options);
         m_transfer = otaTransfer;
     } else {
@@ -572,6 +574,28 @@ int FileTransferDialog::currentIntervalMs() const
         return m_otaIntervalSpin ? m_otaIntervalSpin->value() : 0;
     }
     return 0;
+}
+
+bool FileTransferDialog::collectOtaOptions(OtaTransferOptions& options, QString& errorMessage) const
+{
+    /*
+     * Magic 现在按 uint32_t 存储，但界面仍允许用户输入旧版 ASCII "OTA1"。
+     * 启动前统一解析，能在创建传输状态机之前就拦截格式错误。
+     */
+    if (!OtaFileTransfer::parseMagicText(m_otaMagicEdit ? m_otaMagicEdit->text() : QString(),
+                                         options.magic,
+                                         &errorMessage)) {
+        return false;
+    }
+
+    options.blockSize = m_otaBlockSizeSpin ? m_otaBlockSizeSpin->value() : 256;
+    options.intervalMs = m_otaIntervalSpin ? m_otaIntervalSpin->value() : 10;
+    options.waitAck = m_otaWaitAckCheck && m_otaWaitAckCheck->isChecked();
+    options.ackToken = m_otaAckEdit ? m_otaAckEdit->text().toUtf8() : QByteArray("ACK");
+    options.timeoutMs = m_otaTimeoutSpin ? m_otaTimeoutSpin->value() : 1000;
+    options.maxRetries = m_otaRetrySpin ? m_otaRetrySpin->value() : 3;
+    errorMessage.clear();
+    return true;
 }
 
 void FileTransferDialog::updateFileInfo()

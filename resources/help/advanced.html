@@ -233,7 +233,7 @@
         <tr>
             <td>自定义 OTA / Custom OTA</td>
             <td>1-4096 字节可配置</td>
-            <td>发送文件头、数据块和结束包，可选 ACK、超时与重试；第一版仅支持发送 / Sends header, data blocks and end packet with optional ACK, timeout and retry; send-only in this version</td>
+            <td>发送文件头、数据块和结束包，可选 ACK、超时与重试；Magic 支持 4 字节 ASCII 或 <code>0x12345678UL</code> 形式的 <code>uint32_t</code>，按小端写入；第一版仅支持发送 / Sends header, data blocks and end packet with optional ACK, timeout and retry; Magic accepts 4-byte ASCII or <code>uint32_t</code> values such as <code>0x12345678UL</code> and is written little-endian; send-only in this version</td>
         </tr>
     </table>
 
@@ -375,6 +375,8 @@
     <p><strong>English:</strong> Open the enhanced export dialog from <code>File -&gt; Export Data</code>. The main window records recent structured RX/TX history for serial, TCP Client, TCP Server, UDP and HID Input/Output/Feature reports, then exports it in multiple formats.</p>
     <p><strong>中文：</strong>导出历史按记录数和 payload 字节数双上限保留最近数据；清空当前数据时会同步释放导出历史。过滤统计使用与真实导出相同的方向、时间和内容正则规则。</p>
     <p><strong>English:</strong> Export history keeps recent data using both record-count and payload-byte limits, and clearing current data releases the export history. Filter statistics use the same direction, time and content-regex rules as the actual export.</p>
+    <p><strong>中文：</strong>串口和 TCP 接收历史会按完整文本行合并底层分片，避免一条设备日志因为 readyRead 拆包被导出成多条；如果长时间没有换行，缓冲达到上限后会按当前片段提交，保证内存有界。UDP 和 HID 保持按数据报或 Report 粒度记录。</p>
+    <p><strong>English:</strong> Serial and TCP receive history merges low-level chunks into complete text lines, preventing one device log from being exported as several readyRead fragments. If no line break arrives for a long stream, the bounded buffer is committed as a chunk. UDP and HID keep datagram/report granularity.</p>
     <p><strong>中文：</strong>保存到文件时，TXT、CSV、HTML、JSON、XML、二进制和十六进制转储都会按匹配记录流式写入目标文件；导出器只提前统计数量和字节数，不会先复制全部过滤结果或拼接完整导出内容。</p>
     <p><strong>English:</strong> File export streams matching records directly to TXT, CSV, HTML, JSON, XML, binary and hex dump targets. The exporter pre-counts records and bytes only, without copying all filtered records or assembling the entire output in memory first.</p>
 

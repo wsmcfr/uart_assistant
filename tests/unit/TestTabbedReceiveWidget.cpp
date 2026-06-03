@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QPlainTextEdit>
+#include <QScrollBar>
 #include <QTextEdit>
 
 using namespace ComAssistant;
@@ -225,6 +226,45 @@ void TestTabbedReceiveWidget::testReceiveContextMenuActionsOperateOnDisplayState
 
     autoScrollAction->trigger();
     QVERIFY2(!widget.isAutoScrollEnabled(), "自动滚动动作应能关闭自动滚动");
+}
+
+void TestTabbedReceiveWidget::testSmartScrollPauseKeepsScrollPositionWhenDataArrives()
+{
+    TabbedReceiveWidget widget;
+    widget.resize(900, 240);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    /*
+     * 先生成足够多的可见行，让主文本区出现垂直滚动条。随后把滚动条
+     * 拉到顶部，模拟用户正在查看历史输出。此时控件应进入智能暂停滚动。
+     */
+    for (int line = 0; line < 160; ++line) {
+        widget.appendData(QStringLiteral("history-%1\n").arg(line, 3, 10, QChar('0')).toUtf8());
+    }
+    QPlainTextEdit* editor = widget.findChild<QPlainTextEdit*>();
+    QVERIFY(editor != nullptr);
+    QScrollBar* scrollBar = editor->verticalScrollBar();
+    QVERIFY(scrollBar != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(scrollBar->maximum() > 0, 500);
+
+    scrollBar->setValue(0);
+    QTRY_VERIFY_WITH_TIMEOUT(scrollBar->value() == 0, 300);
+
+    /*
+     * 新数据到达时，旧实现会在 flushPendingReceiveViews() 中调用
+     * moveCursor(QTextCursor::End)，导致视图立即跳到底部。智能暂停状态下
+     * 应只追加文档内容，不改变用户当前阅读的滚动条位置。
+     */
+    widget.appendData(QByteArray("new-data-after-user-scroll\n"));
+    QTest::qWait(80);
+
+    QVERIFY2(mainViewText(widget).contains(QStringLiteral("new-data-after-user-scroll")),
+             "新数据仍应被追加到文本区。");
+    QVERIFY2(scrollBar->value() <= 2,
+             qPrintable(QStringLiteral("智能暂停滚动后不应跳到底部，当前滚动值为 %1，最大值为 %2")
+                            .arg(scrollBar->value())
+                            .arg(scrollBar->maximum())));
 }
 
 void TestTabbedReceiveWidget::testPausedReceiveBuffersStayBounded()

@@ -25,6 +25,7 @@
 #include <QMenu>
 #include <QToolButton>
 #include <QScrollArea>
+#include <QDateTime>
 #include <memory>
 
 #include "communication/ICommunication.h"
@@ -226,6 +227,14 @@ private:
     void syncReceiveProtocolActionCheckedState(); ///< 同步接收协议菜单的选中状态
     QString currentProtocolDisplayName() const; ///< 当前协议用于表格和日志显示的名称
     QString currentCommunicationSourceLabel() const; ///< 当前通信端点用于导出记录来源列的名称
+    bool shouldAggregateReceiveExportRecords() const; ///< 当前通信类型是否应按文本行聚合接收导出记录
+    void appendReceiveExportHistoryData(const QByteArray& data); ///< 追加普通 RX 数据，按完整文本行合并导出历史
+    void flushPendingReceiveExportHistory(); ///< 将尚未遇到换行的 RX 导出缓冲写成一条记录
+    void commitExportHistoryRecord(const QByteArray& data,
+                                   bool isReceive,
+                                   const QString& note,
+                                   const QDateTime& timestamp,
+                                   const QString& source); ///< 使用指定元数据提交一条导出历史记录
     void appendExportHistoryRecord(const QByteArray& data,
                                    bool isReceive,
                                    const QString& note = QString()); ///< 追加一条有界导出历史记录
@@ -342,8 +351,12 @@ private:
     QVector<DataRecord> m_exportHistoryRecords; ///< 主窗口最近收发记录，供增强导出对话框使用
     qint64 m_exportHistoryBytes = 0;             ///< 导出历史中 payload 字节总量，用于字节上限裁剪
     int m_exportHistoryNextIndex = 0;            ///< 导出历史递增序号，写入 note 便于导出后追溯顺序
+    QByteArray m_pendingReceiveExportLine;       ///< 普通 RX 尚未遇到换行的导出行缓冲，避免串口分片被导成多条
+    QDateTime m_pendingReceiveExportTimestamp;   ///< 当前待聚合 RX 行第一段数据的接收时间
+    QString m_pendingReceiveExportSource;        ///< 当前待聚合 RX 行第一段数据的来源标签
     static constexpr int kMaxExportHistoryRecords = 10000;      ///< 导出历史最多保留最近 10000 条记录
     static constexpr qint64 kMaxExportHistoryBytes = 16 * 1024 * 1024; ///< 导出历史最多保留最近 16MB payload
+    static constexpr int kMaxPendingReceiveExportLineBytes = 64 * 1024; ///< 无换行 RX 导出缓冲上限，避免长二进制流无限等待
 
     // 接收协议相关
     MainWindowProtocolState m_protocolState; ///< 稳定协议 ID 与旧版绘图枚举的当前事实源

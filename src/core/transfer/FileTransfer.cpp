@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QRegularExpression>
 #include <QtGlobal>
 
 namespace ComAssistant {
@@ -115,23 +116,6 @@ bool calculateFileCrc32(QFile& file, quint32& crc32, QString& errorMessage)
         return false;
     }
     return true;
-}
-
-/**
- * @brief 构造固定 4 字节 magic
- * @param magic 用户输入的 magic 字符串。
- * @return 长度固定为 4 字节的 magic，过长截断，过短补零。
- */
-QByteArray normalizedMagic(const QString& magic)
-{
-    QByteArray result = magic.toLatin1();
-    if (result.size() > 4) {
-        result = result.left(4);
-    }
-    while (result.size() < 4) {
-        result.append('\0');
-    }
-    return result;
 }
 
 } // namespace
@@ -472,9 +456,6 @@ void OtaFileTransfer::setOptions(const OtaTransferOptions& options)
     m_options.intervalMs = sanitizeIntervalMs(options.intervalMs);
     m_options.timeoutMs = qMax(1, options.timeoutMs);
     m_options.maxRetries = qMax(0, options.maxRetries);
-    if (m_options.magic.isEmpty()) {
-        m_options.magic = "OTA1";
-    }
     if (m_options.ackToken.isEmpty()) {
         m_options.ackToken = "ACK";
     }
@@ -648,14 +629,75 @@ void OtaFileTransfer::resume()
     }
 }
 
-QByteArray OtaFileTransfer::buildHeaderPacketForTest(const QString& magic,
+bool OtaFileTransfer::parseMagicText(const QString& text, quint32& magic, QString* errorMessage)
+{
+    /*
+     * Magic 同时面向两类用户：旧版界面中的 4 字节 ASCII（例如 OTA1），
+     * 以及固件代码中常见的 uint32_t 常量（例如 0x474F5441UL）。
+     * 解析集中放在核心层，避免 UI、测试和后续配置文件各自维护一套规则。
+     */
+    const QString trimmed = text.trimmed();
+    auto setError = [errorMessage](const QString& message) {
+        if (errorMessage) {
+            *errorMessage = message;
+        }
+    };
+
+    if (trimmed.isEmpty()) {
+        setError(QObject::tr("OTA Magic 不能为空"));
+        return false;
+    }
+
+    QString numericText = trimmed;
+    while (numericText.endsWith(QLatin1Char('u'), Qt::CaseInsensitive) ||
+           numericText.endsWith(QLatin1Char('l'), Qt::CaseInsensitive)) {
+        numericText.chop(1);
+    }
+
+    static const QRegularExpression hexPattern(QStringLiteral("^0[xX][0-9a-fA-F]+$"));
+    if (hexPattern.match(numericText).hasMatch()) {
+        bool ok = false;
+        const quint64 value = numericText.mid(2).toULongLong(&ok, 16);
+        if (!ok || value > 0xFFFFFFFFULL) {
+            setError(QObject::tr("OTA Magic 十六进制值必须在 uint32_t 范围内"));
+            return false;
+        }
+
+        magic = static_cast<quint32>(value);
+        if (errorMessage) {
+            errorMessage->clear();
+        }
+        return true;
+    }
+
+    const QByteArray ascii = trimmed.toLatin1();
+    if (ascii.size() > 4) {
+        setError(QObject::tr("OTA Magic ASCII 模式最多 4 字节；十六进制请使用 0x12345678UL"));
+        return false;
+    }
+
+    magic = 0;
+    for (int index = 0; index < ascii.size(); ++index) {
+        /*
+         * ASCII 输入按线上字节顺序写入头包。由于发包统一使用 appendLe32()，
+         * 这里反向还原成小端 uint32_t，确保 "OTA1" 仍输出 4F 54 41 31。
+         */
+        magic |= static_cast<quint32>(static_cast<quint8>(ascii.at(index))) << (8 * index);
+    }
+    if (errorMessage) {
+        errorMessage->clear();
+    }
+    return true;
+}
+
+QByteArray OtaFileTransfer::buildHeaderPacketForTest(quint32 magic,
                                                      const QString& fileName,
                                                      qint64 fileSize,
                                                      quint32 crc32,
                                                      int blockSize)
 {
     QByteArray packet;
-    packet.append(normalizedMagic(magic));
+    appendLe32(packet, magic);
     appendLe32(packet, static_cast<quint32>(fileSize));
     appendLe32(packet, crc32);
     appendLe16(packet, static_cast<quint16>(sanitizeTransferBlockSize(blockSize)));

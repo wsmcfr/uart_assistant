@@ -31,6 +31,7 @@
 #include <QAbstractScrollArea>
 #include <QEvent>
 #include <QAbstractTableModel>
+#include <QSignalBlocker>
 #include <QSyntaxHighlighter>
 #include <QRegularExpression>
 #include <QElapsedTimer>
@@ -968,13 +969,31 @@ void TabbedReceiveWidget::flushPendingReceiveViews()
         const QString text = m_pendingMainText;
         m_pendingMainText.clear();
 
+        /*
+         * 用户向上查看历史时，智能滚屏会进入暂停状态。追加新文本仍然
+         * 要写入文档尾部，但不能移动 QPlainTextEdit 自身的可见光标；
+         * 否则 moveCursor(QTextCursor::End) 会把视图强行拉到底部，和
+         * “已暂停滚动”的提示相矛盾。
+         */
+        QScrollBar* scrollBar = m_mainTextEdit->verticalScrollBar();
+        const bool preserveScrollPosition =
+            m_autoScrollEnabled && m_smartScrollPaused && scrollBar != nullptr;
+        const int preservedScrollValue = preserveScrollPosition ? scrollBar->value() : 0;
+
         m_mainTextEdit->setUpdatesEnabled(false);
-        m_mainTextEdit->moveCursor(QTextCursor::End);
-        m_mainTextEdit->insertPlainText(text);
+        QTextCursor appendCursor(m_mainTextEdit->document());
+        appendCursor.movePosition(QTextCursor::End);
+        appendCursor.insertText(text);
         trimMainTextDocument();
-        if (m_autoScrollEnabled && !m_smartScrollPaused) {
-            m_mainTextEdit->verticalScrollBar()->setValue(
-                m_mainTextEdit->verticalScrollBar()->maximum());
+        if (preserveScrollPosition) {
+            /*
+             * 裁剪历史文本时 maximum 可能缩小，因此恢复值需要按新的范围
+             * 夹紧。信号临时屏蔽，避免程序性恢复位置被误判为用户滚到底部。
+             */
+            const QSignalBlocker blocker(scrollBar);
+            scrollBar->setValue(qMin(preservedScrollValue, scrollBar->maximum()));
+        } else if (m_autoScrollEnabled && !m_smartScrollPaused && scrollBar) {
+            scrollBar->setValue(scrollBar->maximum());
         }
         m_mainTextEdit->setUpdatesEnabled(true);
 

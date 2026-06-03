@@ -97,6 +97,17 @@ private:
     void appendLog(const QString& message);
     void retranslateUi();
 
+    /**
+     * @brief 收集并校验自定义 OTA 参数。
+     * @param options 输出可直接传给 OtaFileTransfer 的参数。
+     * @param errorMessage 参数非法时输出给用户看的错误文本。
+     * @return 所有字段可用时返回 true。
+     *
+     * 该函数把 Magic 文本解析集中在启动前处理，避免 UI 输入、核心
+     * OtaTransferOptions 和后续测试各自理解不同格式。
+     */
+    bool collectOtaOptions(OtaTransferOptions& options, QString& errorMessage) const;
+
 private:
     // 模式选择
     QComboBox* m_modeCombo = nullptr;

@@ -212,7 +212,7 @@ struct RawTransferOptions {
  * 等待下位机返回 ackToken 才继续，适合需要可靠写 Flash 的 Bootloader。
  */
 struct OtaTransferOptions {
-    QString magic = "OTA1";      ///< 文件头 magic，默认取前 4 字节
+    quint32 magic = 0x3141544F;  ///< 文件头 magic，默认 ASCII "OTA1" 的小端 uint32_t 值
     int blockSize = 256;         ///< 每个 OTA 数据块最大 payload 字节数
     int intervalMs = 10;         ///< 未启用 ACK 或 ACK 后发送下一包的间隔
     bool waitAck = false;        ///< 是否等待下位机 ACK
@@ -395,15 +395,28 @@ public:
     bool isPaused() const { return m_paused; }
 
     /**
+     * @brief 将用户输入的 OTA magic 文本解析为 uint32_t。
+     * @param text 用户输入，支持 4 字节 ASCII 或 0x12345678UL 形式的十六进制数。
+     * @param magic 输出解析得到的 32 位 magic。
+     * @param errorMessage 可选错误文本输出，用于 UI 展示。
+     * @return 解析成功返回 true，输入为空、过长或数值越界时返回 false。
+     *
+     * ASCII 兼容旧版 "OTA1" 输入，按线上字节 4F 54 41 31 还原为
+     * 小端 uint32_t 0x3141544F；十六进制输入按数值解析，发包时统一
+     * 用小端序写入。
+     */
+    static bool parseMagicText(const QString& text, quint32& magic, QString* errorMessage = nullptr);
+
+    /**
      * @brief 测试辅助：构造 OTA 文件头包
-     * @param magic 4 字节 magic，不足 4 字节会补 0，超过会截断。
+     * @param magic 32 位 magic，按小端序写入头包前 4 字节。
      * @param fileName 文件名。
      * @param fileSize 文件大小，第一版协议使用 32 位长度字段。
      * @param crc32 整文件 CRC32。
      * @param blockSize 数据块大小。
      * @return 可直接发送给下位机的文件头包。
      */
-    static QByteArray buildHeaderPacketForTest(const QString& magic,
+    static QByteArray buildHeaderPacketForTest(quint32 magic,
                                                const QString& fileName,
                                                qint64 fileSize,
                                                quint32 crc32,

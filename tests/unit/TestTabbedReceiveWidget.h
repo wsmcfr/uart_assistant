@@ -68,6 +68,14 @@ private slots:
     void testReceiveContextMenuActionsOperateOnDisplayState();
 
     /**
+     * @brief 智能暂停滚动后，继续接收数据不应把阅读位置强行拉回底部。
+     *
+     * 用户向上查看历史时，接收区会显示“已暂停滚动”。该状态下仍会继续
+     * 刷新新数据，但必须保留当前滚动位置，避免用户正在看的历史被新数据打断。
+     */
+    void testSmartScrollPauseKeepsScrollPositionWhenDataArrives();
+
+    /**
      * @brief 暂停显示期间的待刷新缓存应保持有界，避免长时间暂停造成内存持续增长。
      */
     void testPausedReceiveBuffersStayBounded();
