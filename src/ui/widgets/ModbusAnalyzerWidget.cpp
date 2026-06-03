@@ -155,6 +155,11 @@ void ModbusAnalyzerWidget::setupUi()
     auto* rawLayout = new QVBoxLayout(m_rawGroup);
     m_rawDataEdit = new QTextEdit(this);
     m_rawDataEdit->setReadOnly(true);
+    /*
+     * 原始数据框只展示当前选中 Modbus 帧，关闭撤销栈可以避免切换大帧
+     * 时 QTextEdit 保留无意义的历史文本。
+     */
+    m_rawDataEdit->document()->setUndoRedoEnabled(false);
     m_rawDataEdit->setFont(QFont("Consolas", 10));
     m_rawDataEdit->setMaximumWidth(300);
     rawLayout->addWidget(m_rawDataEdit);
@@ -693,12 +698,19 @@ void ModbusAnalyzerWidget::onClearClicked()
         m_frameFlushTimer->stop();
     }
     m_frames.clear();
+    m_frames.squeeze();
     m_visibleFrames.clear();
+    m_visibleFrames.squeeze();
     m_pendingFrames.clear();
+    m_pendingFrames.squeeze();
     m_frameTable->setRowCount(0);
     m_detailTree->clear();
     m_rawDataEdit->clear();
+    if (m_rawDataEdit->document()) {
+        m_rawDataEdit->document()->clearUndoRedoStacks();
+    }
     m_receiveBuffer.clear();
+    m_receiveBuffer.squeeze();
 }
 
 void ModbusAnalyzerWidget::onExportClicked()

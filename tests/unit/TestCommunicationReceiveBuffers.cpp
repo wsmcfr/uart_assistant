@@ -248,3 +248,130 @@ void TestCommunicationReceiveBuffers::testSetBufferSizeTrimsExistingReceiveBuffe
     QCOMPARE(hidDevice.bytesAvailable(), static_cast<qint64>(5));
     QCOMPARE(hidDevice.readAll(), payload.right(5));
 }
+
+void TestCommunicationReceiveBuffers::testClearingAndClosingReleaseReceiveBufferCapacity()
+{
+    /*
+     * 这组测试关注“数据已经清掉后，历史峰值容量是否仍被容器保留”。
+     * bytesAvailable()==0 只能证明逻辑内容为空，capacity()==0 才能约束
+     * close/clear/readAll 后不会继续挂住大块兼容缓存。
+     */
+    const QByteArray payload(32 * 1024, 'M');
+
+    const quint16 tcpPort = reserveFreeTcpPort();
+    QVERIFY2(tcpPort > 0, "测试需要可用的本机 TCP 端口。");
+
+    NetworkConfig tcpConfig;
+    tcpConfig.mode = NetworkMode::TcpServer;
+    tcpConfig.listenPort = tcpPort;
+    tcpConfig.maxConnections = 1;
+
+    TcpServer tcpServer(tcpConfig);
+    tcpServer.setBufferSize(payload.size());
+    QVERIFY2(tcpServer.open(), qPrintable(tcpServer.lastError()));
+    QSignalSpy tcpSpy(&tcpServer, SIGNAL(dataReceived(QByteArray)));
+
+    QTcpSocket tcpClient;
+    tcpClient.connectToHost(QHostAddress::LocalHost, tcpPort);
+    QVERIFY2(tcpClient.waitForConnected(1000), qPrintable(tcpClient.errorString()));
+    QTRY_COMPARE_WITH_TIMEOUT(tcpServer.connectionCount(), 1, 1000);
+    QCOMPARE(tcpClient.write(payload), static_cast<qint64>(payload.size()));
+    QVERIFY2(tcpClient.waitForBytesWritten(1000), qPrintable(tcpClient.errorString()));
+    QTRY_VERIFY_WITH_TIMEOUT(concatenateByteArraySignal(tcpSpy).size() >= payload.size(), 1000);
+    QVERIFY(tcpServer.readBufferCapacityForTest() > 0);
+
+    tcpServer.clearBuffer();
+    QCOMPARE(tcpServer.bytesAvailable(), static_cast<qint64>(0));
+    QCOMPARE(tcpServer.readBufferCapacityForTest(), 0);
+
+    QCOMPARE(tcpClient.write(payload), static_cast<qint64>(payload.size()));
+    QVERIFY2(tcpClient.waitForBytesWritten(1000), qPrintable(tcpClient.errorString()));
+    QTRY_VERIFY_WITH_TIMEOUT(tcpServer.bytesAvailable() >= payload.size(), 1000);
+    QVERIFY(tcpServer.readBufferCapacityForTest() > 0);
+    tcpServer.close();
+    QCOMPARE(tcpServer.readBufferCapacityForTest(), 0);
+
+    const quint16 udpPort = reserveFreeUdpPort();
+    QVERIFY2(udpPort > 0, "测试需要可用的本机 UDP 端口。");
+
+    NetworkConfig udpConfig;
+    udpConfig.mode = NetworkMode::Udp;
+    udpConfig.listenPort = udpPort;
+
+    UdpSocket udpReceiver(udpConfig);
+    udpReceiver.setBufferSize(payload.size());
+    QVERIFY2(udpReceiver.open(), qPrintable(udpReceiver.lastError()));
+    QSignalSpy udpSpy(&udpReceiver, SIGNAL(dataReceived(QByteArray)));
+
+    QUdpSocket udpSender;
+    QCOMPARE(udpSender.writeDatagram(payload, QHostAddress::LocalHost, udpPort),
+             static_cast<qint64>(payload.size()));
+    QTRY_VERIFY_WITH_TIMEOUT(concatenateByteArraySignal(udpSpy).size() >= payload.size(), 1000);
+    QVERIFY(udpReceiver.readBufferCapacityForTest() > 0);
+
+    udpReceiver.clearBuffer();
+    QCOMPARE(udpReceiver.bytesAvailable(), static_cast<qint64>(0));
+    QCOMPARE(udpReceiver.readBufferCapacityForTest(), 0);
+
+    QCOMPARE(udpSender.writeDatagram(payload, QHostAddress::LocalHost, udpPort),
+             static_cast<qint64>(payload.size()));
+    /*
+     * UdpSocket::bytesAvailable() 会同时统计底层 pendingDatagramSize 和
+     * readAll() 兼容缓存。这里必须等待 dataReceived 增长，确保新数据报
+     * 已进入 m_readBuffer 后再检查容量，否则会把底层队列误当成兼容缓存。
+     */
+    QTRY_VERIFY_WITH_TIMEOUT(concatenateByteArraySignal(udpSpy).size() >= payload.size() * 2, 1000);
+    QVERIFY(udpReceiver.readBufferCapacityForTest() > 0);
+    udpReceiver.close();
+    QCOMPARE(udpReceiver.readBufferCapacityForTest(), 0);
+
+    HidDevice hidDevice{HidConfig()};
+    hidDevice.setBufferSize(payload.size());
+    QVERIFY(QMetaObject::invokeMethod(&hidDevice,
+                                      "handleInputReport",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, payload)));
+    QVERIFY(hidDevice.readBufferCapacityForTest() > 0);
+
+    hidDevice.clearBuffer();
+    QCOMPARE(hidDevice.bytesAvailable(), static_cast<qint64>(0));
+    QCOMPARE(hidDevice.readBufferCapacityForTest(), 0);
+
+    QVERIFY(QMetaObject::invokeMethod(&hidDevice,
+                                      "handleInputReport",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, payload)));
+    QVERIFY(hidDevice.readBufferCapacityForTest() > 0);
+    hidDevice.close();
+    QCOMPARE(hidDevice.readBufferCapacityForTest(), 0);
+}
+
+void TestCommunicationReceiveBuffers::testTcpServerCloseClearsClientListSynchronously()
+{
+    /*
+     * 关闭 TCP Server 时不能只等待客户端 disconnected 信号异步清理。
+     * 如果 close() 返回后 m_clients 仍保留 socket 指针，界面会继续显示旧
+     * 连接，析构/重开也会拖着本应释放的客户端对象。
+     */
+    const quint16 port = reserveFreeTcpPort();
+    QVERIFY2(port > 0, "测试需要可用的本机 TCP 端口。");
+
+    NetworkConfig config;
+    config.mode = NetworkMode::TcpServer;
+    config.listenPort = port;
+    config.maxConnections = 1;
+
+    TcpServer server(config);
+    QVERIFY2(server.open(), qPrintable(server.lastError()));
+
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, port);
+    QVERIFY2(client.waitForConnected(1000), qPrintable(client.errorString()));
+    QTRY_COMPARE_WITH_TIMEOUT(server.connectionCount(), 1, 1000);
+
+    server.close();
+
+    QCOMPARE(server.connectionCount(), 0);
+    QCOMPARE(server.connectedClients().size(), 0);
+    QVERIFY(!server.isOpen());
+}

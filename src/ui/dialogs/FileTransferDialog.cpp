@@ -762,13 +762,23 @@ void FileTransferDialog::setIAPMode(bool iapMode)
 void FileTransferDialog::notifyLocalSendResult(bool success, const QString& errorMessage)
 {
     /*
-     * 文件传输对象只知道自己发出了一个协议包，不知道主窗口发送队列是否
-     * 接受。该桥接函数由 MainWindow 在 onSendData() 后回调，保证 Raw/OTA
-     * 不会早于本地发送结果读取下一块。
+     * 文件传输对象只知道自己发出了一个协议包，不知道主窗口是否已经把
+     * 当前包真正发空。该桥接函数由 MainWindow 在文件发送专用异步入口
+     * 完成后回调，保证 Raw/OTA 的进度条不会早于串口真实发送完成。
      */
     if (m_transfer) {
         m_transfer->notifyLocalSendResult(success, errorMessage);
     }
+}
+
+bool FileTransferDialog::requiresTransmitDrainForCurrentTransfer() const
+{
+    /*
+     * 只有 Raw/OTA 的进度条完全依赖本地发送回调。标准 X/YMODEM 已经有
+     * 设备端握手机制，尤其 YMODEM-G 需要连续发包，不能被每包 drain 阻塞。
+     */
+    return qobject_cast<RawFileTransfer*>(m_transfer) != nullptr ||
+           qobject_cast<OtaFileTransfer*>(m_transfer) != nullptr;
 }
 
 void FileTransferDialog::changeEvent(QEvent* event)

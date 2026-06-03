@@ -35,7 +35,9 @@ set(TEST_SOURCES
     unit/TestDataWindow.cpp
     unit/TestTabbedReceiveWidget.cpp
     unit/TestTerminalModeWidget.cpp
+    unit/TestFrameModeWidget.cpp
     unit/TestTranslationCompleteness.cpp
+    unit/TestSerialPortTransmitDrain.cpp
     unit/TestHidCommunication.cpp
     unit/TestCommunicationReceiveBuffers.cpp
     unit/TestCommunicationWorkspaces.cpp

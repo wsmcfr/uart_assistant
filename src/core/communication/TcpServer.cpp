@@ -48,6 +48,12 @@ bool TcpServer::open()
 void TcpServer::close()
 {
     disconnectAllClients();
+    /*
+     * TCP Server 的 m_readBuffer 只是 readAll() 兼容缓存。关闭监听时用户
+     * 已不再需要旧数据，释放容量可以避免大流量后关闭服务仍保留峰值内存。
+     */
+    m_readBuffer.clear();
+    m_readBuffer.squeeze();
 
     if (m_server->isListening()) {
         m_server->close();
@@ -71,6 +77,7 @@ QByteArray TcpServer::readAll()
 {
     QByteArray data = m_readBuffer;
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
     return data;
 }
 
@@ -100,6 +107,7 @@ int TcpServer::bufferSize() const
 void TcpServer::clearBuffer()
 {
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
 }
 
 void TcpServer::setReadTimeout(int ms)
@@ -183,9 +191,30 @@ void TcpServer::disconnectClient(const QString& clientId)
 
 void TcpServer::disconnectAllClients()
 {
-    QList<QString> clientIds = m_clients.keys();
-    for (const QString& clientId : clientIds) {
-        disconnectClient(clientId);
+    /*
+     * close()/析构要求返回时不再持有客户端 socket 引用。单纯调用
+     * disconnectFromHost() 需要等待异步 disconnected 信号，期间 m_clients
+     * 仍会保留旧指针。这里先从映射中取出全部 socket，再断开本对象上的
+     * socket 信号并安排删除，使“关闭服务”具备同步释放引用的语义。
+     */
+    const QMap<QString, QTcpSocket*> clients = m_clients;
+    m_clients.clear();
+    for (QTcpSocket* socket : clients) {
+        if (!socket) {
+            continue;
+        }
+        socket->disconnect(this);
+        socket->disconnectFromHost();
+        socket->close();
+        socket->deleteLater();
+    }
+
+    /*
+     * 主窗口工作台依赖 clientDisconnected 更新目标客户端列表。批量关闭时
+     * 已经屏蔽了 socket 的异步 disconnected 信号，因此这里主动广播一次。
+     */
+    for (const QString& clientId : clients.keys()) {
+        emit clientDisconnected(clientId);
     }
 }
 

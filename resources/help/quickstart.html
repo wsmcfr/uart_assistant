@@ -324,16 +324,16 @@
     <p><strong>English:</strong> Use the <strong>Send File</strong> toolbar button to open the file transfer center for <code>.bin</code>, <code>.hex</code> or other files.</p>
 
     <ul>
-        <li><strong>裸流分块 / Raw Chunks:</strong> 按指定“每包字节”和“包间隔”直接发送文件内容，适合 MCU 程序自行顺序接收。</li>
+        <li><strong>裸流分块 / Raw Chunks:</strong> 按指定“每包字节”和“包间隔”直接发送文件内容，适合 MCU 程序自行顺序接收；串口发送时每块会等待本地发送缓冲排空，并按当前波特率重新等待完整线路发送时间后才推进进度。</li>
         <li><strong>XMODEM/YMODEM/YMODEM-G:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>G</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader；发送时按协议块读取文件，只保留当前待确认包或当前 G 流式包，标准协议模式可切换为接收文件。</li>
         <li><strong>自定义 OTA / Custom OTA:</strong> 发送文件头、分块数据和结束包，可选择等待 <code>ACK</code>、设置超时和重试；Magic 支持 4 字节 ASCII（如 <code>OTA1</code>）或 <code>0x12345678UL</code> 形式的 <code>uint32_t</code>，发包时按小端写入前 4 字节。</li>
         <li><strong>流式发送 / Streaming:</strong> 裸流、自定义 OTA、XMODEM、YMODEM 和 YMODEM-G 都会按块读取文件；普通标准协议只缓存当前待 ACK 包，NAK 或超时时重发当前包；YMODEM-G 不等待逐包 ACK，但仍逐包读取，适合低误码链路的大固件文件。</li>
-        <li><strong>可靠状态 / Reliable State:</strong> 文件传输会区分传输中、已暂停、正在取消、已取消、已完成和失败状态；失败时保留本地发送、连接或 ACK 超时等错误原因。</li>
+        <li><strong>可靠状态 / Reliable State:</strong> 文件传输会区分传输中、已暂停、正在取消、已取消、已完成和失败状态；裸流和自定义 OTA 的进度条会等当前块真实排空后再增加，最后一块排空后才显示完成；失败时保留本地发送、连接或 ACK 超时等错误原因。</li>
     </ul>
 
     <div class="warning">
-        <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；如果队列拒绝、写入失败或连接断开，当前文件传输会停止并显示失败原因。<br>
-        Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity. If the queue rejects data, writing fails or the connection drops, the transfer stops with the failure reason.
+        <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；如果写入失败、等待串口发送缓冲排空超时或连接断开，当前文件传输会停止并显示失败原因。<br>
+        Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity. If writing fails, waiting for the serial transmit buffer to drain times out, or the connection drops, the transfer stops with the failure reason.
     </div>
 
     <h3>接收文件 / Receive File</h3>
@@ -467,9 +467,9 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.9.1（发布于 2026-06-03 / released on 2026-06-03）</p>
-    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.1/ComAssistant_v1.9.1_Windows_x64_Portable.zip">ComAssistant_v1.9.1_Windows_x64_Portable.zip</a><br>
-    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.1/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
+    <p><strong>当前版本 / Current Version:</strong> v1.9.2（发布于 2026-06-03 / released on 2026-06-03）</p>
+    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.2/ComAssistant_v1.9.2_Windows_x64_Portable.zip">ComAssistant_v1.9.2_Windows_x64_Portable.zip</a><br>
+    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.2/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">

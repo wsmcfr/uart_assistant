@@ -13,6 +13,8 @@
 #include "communication/UdpSocket.h"
 #include "utils/Logger.h"
 
+#include <QPointer>
+
 namespace ComAssistant {
 
 MainWindowCommunicationController::MainWindowCommunicationController(QObject* parent)
@@ -110,6 +112,12 @@ void MainWindowCommunicationController::closeCurrent()
      * close() 可能触发底层 connectionStatusChanged(false)，因此先让
      * 底层对象完成关闭流程，再释放对象并同步控制器自己的状态缓存。
      */
+    if (m_activeFileTransferRequestId != 0) {
+        completeFileTransferSend(m_activeFileTransferRequestId,
+                                 false,
+                                 tr("连接已关闭，文件发送未完成"));
+    }
+
     m_sendDispatcher.cancelAll(tr("连接已关闭，待发送队列已取消"));
     m_sendDispatcher.setWriteHandler(SendDispatcher::WriteHandler());
     m_sendDispatcher.setErrorProvider(SendDispatcher::ErrorProvider());
@@ -154,6 +162,78 @@ bool MainWindowCommunicationController::sendData(const QByteArray& data)
     }
 
     m_lastError.clear();
+    return true;
+}
+
+bool MainWindowCommunicationController::sendFileTransferDataAsync(
+    const QByteArray& data,
+    FileTransferSendCallback callback)
+{
+    /*
+     * 文件传输是强顺序流：上一块没有真正排空前，下一块不能进入串口。
+     * 这里保留单个活动请求，既保护进度语义，也避免多个 drain 回调交叉。
+     */
+    if (!m_communication || !m_connected) {
+        m_lastError = tr("未连接，无法发送数据");
+        return false;
+    }
+    if (m_activeFileTransferRequestId != 0) {
+        m_lastError = tr("上一块文件数据仍在等待串口发送完成");
+        return false;
+    }
+
+    const qint64 requestId = m_nextFileTransferRequestId++;
+    const QPointer<ICommunication> communicationGuard(m_communication.get());
+    m_activeFileTransferRequestId = requestId;
+    m_activeFileTransferPayload = data;
+    m_fileTransferSendCallback = std::move(callback);
+
+    /*
+     * 文件传输块不进入通用 SendDispatcher 的批量循环，而是一次写一块、
+     * 一块排空后再由 FileTransfer 状态机请求下一块。这样进度条和串口
+     * 物理发送节奏保持一致。
+     */
+    const qint64 written = m_communication->write(data);
+    if (written < 0) {
+        QString error = m_communication->lastError();
+        if (error.isEmpty()) {
+            error = tr("发送失败");
+        }
+        completeFileTransferSend(requestId, false, error);
+        return false;
+    }
+    if (written != data.size()) {
+        /*
+         * 文件传输必须按块完整写入，否则即使后续 drain 成功，下位机也只
+         * 收到半块数据。普通发送的部分写入由 SendDispatcher 处理；这里
+         * 直接失败并让用户重新发送，避免进度与数据内容不一致。
+         */
+        completeFileTransferSend(
+            requestId,
+            false,
+            tr("文件发送块只写入 %1/%2 字节").arg(written).arg(data.size()));
+        return false;
+    }
+
+    auto* communication = m_communication.get();
+    m_fileTransferDrainConnection = connect(
+        communication,
+        &ICommunication::transmitDrained,
+        this,
+        [this, requestId, communicationGuard](bool success, const QString& errorMessage) {
+        Q_UNUSED(communicationGuard)
+        completeFileTransferSend(requestId, success, errorMessage);
+    });
+
+    if (!m_communication->waitForTransmitDrainedAsync(written)) {
+        QString error = m_communication->lastError();
+        if (error.isEmpty()) {
+            error = tr("等待发送完成失败");
+        }
+        completeFileTransferSend(requestId, false, error);
+        return false;
+    }
+
     return true;
 }
 
@@ -259,6 +339,9 @@ void MainWindowCommunicationController::bindCurrentCommunicationSignals()
     connect(m_communication.get(), &ICommunication::errorOccurred,
             this, [this](const QString& error) {
         m_lastError = error;
+        if (m_activeFileTransferRequestId != 0) {
+            completeFileTransferSend(m_activeFileTransferRequestId, false, error);
+        }
         emit errorOccurred(error);
     });
 
@@ -322,6 +405,41 @@ void MainWindowCommunicationController::bindSendDispatcher()
         }
         return m_communication ? m_communication->lastError() : QString();
     });
+}
+
+void MainWindowCommunicationController::completeFileTransferSend(
+    qint64 requestId,
+    bool success,
+    const QString& errorMessage)
+{
+    if (requestId != m_activeFileTransferRequestId) {
+        return;
+    }
+
+    if (m_fileTransferDrainConnection) {
+        disconnect(m_fileTransferDrainConnection);
+        m_fileTransferDrainConnection = QMetaObject::Connection();
+    }
+
+    FileTransferSendCallback callback = std::move(m_fileTransferSendCallback);
+    m_fileTransferSendCallback = FileTransferSendCallback();
+    m_activeFileTransferRequestId = 0;
+
+    if (success) {
+        m_lastError.clear();
+        emit dataSent(m_activeFileTransferPayload);
+    } else {
+        m_lastError = errorMessage.isEmpty()
+            ? tr("文件发送失败")
+            : errorMessage;
+    }
+
+    m_activeFileTransferPayload.clear();
+    m_activeFileTransferPayload.squeeze();
+
+    if (callback) {
+        callback(success, success ? QString() : m_lastError);
+    }
 }
 
 } // namespace ComAssistant

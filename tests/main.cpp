@@ -32,7 +32,9 @@
 #include "unit/TestDataWindow.h"
 #include "unit/TestTabbedReceiveWidget.h"
 #include "unit/TestTerminalModeWidget.h"
+#include "unit/TestFrameModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
+#include "unit/TestSerialPortTransmitDrain.h"
 #include "unit/TestHidCommunication.h"
 #include "unit/TestCommunicationReceiveBuffers.h"
 #include "unit/TestCommunicationWorkspaces.h"
@@ -200,8 +202,18 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] FrameModeWidget";
+        TestFrameModeWidget test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] TranslationCompleteness";
         TestTranslationCompleteness test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] SerialPortTransmitDrain";
+        TestSerialPortTransmitDrain test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {

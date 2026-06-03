@@ -75,6 +75,7 @@
 #include <QFile>
 #include <QSerialPortInfo>
 #include <QLabel>
+#include <QPointer>
 #include <QStyle>
 #include <QSettings>
 #include <QFont>
@@ -1012,16 +1013,40 @@ void MainWindow::onSendData(const QByteArray& data)
         return;
     }
 
-    const bool sent = m_commController->sendData(data);
-    const QString error = sent ? QString() : m_commController->lastError();
-
     if (m_fileTransferDialog && sender() == m_fileTransferDialog) {
+        if (!m_fileTransferDialog->requiresTransmitDrainForCurrentTransfer()) {
+            const bool sent = m_commController->sendData(data);
+            if (!sent) {
+                LOG_ERROR(QString("Send failed: %1").arg(m_commController->lastError()));
+            }
+            return;
+        }
+
         /*
-         * Raw/OTA 文件传输按块等待本地发送队列确认。只有发送请求来自当前
-         * 文件传输对话框时才回调，普通发送、快捷发送和脚本发送不需要该确认。
+         * Raw/OTA 文件传输的进度条必须等当前块真正排空后才推进。这里走
+         * 控制器的异步文件发送入口：串口后端会等待 Qt 写缓冲清空，再按
+         * 波特率重新等待完整线路发送时间；TCP/UDP/HID 后端保持即时完成语义。
          */
-        m_fileTransferDialog->notifyLocalSendResult(sent, error);
+        QPointer<FileTransferDialog> dialogGuard(m_fileTransferDialog);
+        const bool started = m_commController->sendFileTransferDataAsync(
+            data,
+            [this, dialogGuard](bool success, const QString& errorMessage) {
+                if (dialogGuard) {
+                    dialogGuard->notifyLocalSendResult(success, errorMessage);
+                }
+                if (!success) {
+                    LOG_ERROR(QString("File transfer send failed: %1").arg(errorMessage));
+                }
+            });
+        if (!started) {
+            const QString error = m_commController->lastError();
+            m_fileTransferDialog->notifyLocalSendResult(false, error);
+            LOG_ERROR(QString("File transfer send failed: %1").arg(error));
+        }
+        return;
     }
+
+    const bool sent = m_commController->sendData(data);
 
     if (!sent) {
         LOG_ERROR(QString("Send failed: %1").arg(m_commController->lastError()));

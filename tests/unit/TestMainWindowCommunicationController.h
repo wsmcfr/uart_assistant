@@ -51,6 +51,22 @@ private slots:
      * @brief 关闭当前连接时应关闭底层通信对象并清理连接状态。
      */
     void testCloseCurrentClosesCommunicationAndClearsState();
+
+    /**
+     * @brief 文件传输发送应等待串口异步发空后才通知成功。
+     *
+     * 主要流程：假通信对象先让 write() 成功，再挂起 transmit drain；
+     * 控制器不能在 drain 完成前回调文件传输状态机，避免 UI 提前显示完成。
+     */
+    void testFileTransferSendWaitsForAsyncDrainBeforeSuccessCallback();
+
+    /**
+     * @brief 文件传输发送在串口发空失败时应把失败原因回传给状态机。
+     *
+     * 主要流程：假通信对象模拟 drain 超时，控制器应回调失败并保存错误文本，
+     * 让 Raw/OTA 传输停止，而不是继续读取下一块。
+     */
+    void testFileTransferSendReportsDrainFailure();
 };
 
 #endif // TESTMAINWINDOWCOMMUNICATIONCONTROLLER_H

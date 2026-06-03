@@ -12,6 +12,7 @@
 #include "config/AppConfig.h"
 #include <QSerialPort>
 #include <QSerialPortInfo>
+#include <QTimer>
 #include <QList>
 
 namespace ComAssistant {
@@ -54,6 +55,18 @@ public:
     bool isOpen() const override;
 
     qint64 write(const QByteArray& data) override;
+
+    /**
+     * @brief 异步等待本次串口发送真正排空。
+     * @param bytes 本次文件发送块的字节数，用于按波特率估算线路发送时间。
+     * @return 成功接受等待请求返回 true；串口未打开或已有等待任务时返回 false。
+     *
+     * 该函数不会阻塞 UI 线程。它先等 Qt/系统写缓冲清空，再按当前串口
+     * 数据位、校验位、停止位和波特率重新等待完整线路传输时间，最后发出
+     * transmitDrained。这样文件传输进度条不会早于 CH340 实际发送完成。
+     */
+    bool waitForTransmitDrainedAsync(qint64 bytes) override;
+
     QByteArray readAll() override;
     qint64 bytesAvailable() const override;
 
@@ -157,10 +170,17 @@ signals:
 
 private slots:
     void onReadyRead();
+    void onBytesWritten(qint64 bytes);
     void onError(QSerialPort::SerialPortError error);
+    void onTransmitDrainTimeout();
+    void onTransmitLineDelayElapsed();
 
 private:
     void applyConfig();
+    void startTransmitLineDelay();
+    void completeTransmitDrain(bool success, const QString& errorMessage);
+    double configuredBitsPerByte() const;
+    int estimateTransmitTimeMs(qint64 bytes) const;
     static QSerialPort::DataBits toQtDataBits(DataBits bits);
     static QSerialPort::StopBits toQtStopBits(StopBits bits);
     static QSerialPort::Parity toQtParity(Parity parity);
@@ -170,6 +190,10 @@ private:
     SerialConfig m_config;
     bool m_dtr = false;
     bool m_rts = false;
+    QTimer* m_transmitDrainWatchdog = nullptr; ///< 等待 Qt/系统发送缓冲清空的超时保护。
+    QTimer* m_transmitLineTimer = nullptr;     ///< 按波特率等待线路上最后字节发完的定时器。
+    qint64 m_pendingTransmitDrainBytes = 0;    ///< 当前等待发空的数据字节数。
+    bool m_waitingTransmitDrain = false;       ///< 是否存在文件传输发空等待任务。
 };
 
 } // namespace ComAssistant

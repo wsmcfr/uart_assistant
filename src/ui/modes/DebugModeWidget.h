@@ -21,6 +21,7 @@
 #include <QEvent>
 #include <QLabel>
 #include <QPushButton>
+#include <QVector>
 
 namespace ComAssistant {
 
@@ -134,8 +135,8 @@ private:
     QAction* m_exportAction = nullptr;
 
     // 数据
-    QList<DebugDataRecord> m_records;
-    QList<DebugDataRecord> m_recordsToFlush;     ///< 未暂停状态下待批量刷新到表格的记录
+    QVector<DebugDataRecord> m_records;          ///< 已记录调试数据，使用 QVector 便于 clear() 后释放容量
+    QVector<DebugDataRecord> m_recordsToFlush;   ///< 未暂停状态下待批量刷新到表格的记录，清空时释放容量
     QList<QByteArray> m_breakpoints;
     QByteArray m_rxBuffer;
     QByteArray m_txBuffer;
@@ -155,7 +156,7 @@ private:
     QTimer* m_recordFlushTimer = nullptr;        ///< 调试表格批量刷新定时器
 
     // 暂停时的缓冲
-    QList<DebugDataRecord> m_pendingRecords;
+    QVector<DebugDataRecord> m_pendingRecords;   ///< 暂停期间待显示记录，恢复或清空时可释放容量
 };
 
 } // namespace ComAssistant

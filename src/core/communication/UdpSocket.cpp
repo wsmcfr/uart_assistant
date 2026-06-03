@@ -53,6 +53,13 @@ bool UdpSocket::open()
 
 void UdpSocket::close()
 {
+    /*
+     * UDP 的 readAll() 兼容缓存只保留最近数据。关闭绑定时释放容量，
+     * 避免接收过大数据报后关闭 UDP 工作台仍保留历史峰值分配。
+     */
+    m_readBuffer.clear();
+    m_readBuffer.squeeze();
+
     if (m_bound) {
         m_socket->close();
         m_bound = false;
@@ -80,6 +87,7 @@ QByteArray UdpSocket::readAll()
 {
     QByteArray data = m_readBuffer;
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
     return data;
 }
 
@@ -115,6 +123,7 @@ int UdpSocket::bufferSize() const
 void UdpSocket::clearBuffer()
 {
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
     // 清空socket缓冲区
     while (m_socket->hasPendingDatagrams()) {
         m_socket->receiveDatagram();

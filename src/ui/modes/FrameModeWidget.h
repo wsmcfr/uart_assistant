@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QComboBox>
 #include <QPushButton>
+#include <QVector>
 
 namespace ComAssistant {
 
@@ -77,6 +78,73 @@ public:
     void setFrameConfig(const ModeFrameConfig& config);
     ModeFrameConfig frameConfig() const { return m_config; }
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：立即把待刷新帧落到表格。
+     *
+     * 主要流程：直接调用批量刷新槽函数，等价于刷新定时器到点触发。
+     * 该接口只在测试目标中编译，生产程序不会暴露。
+     */
+    void flushPendingFramesForTest() { flushPendingFrames(); }
+
+    /**
+     * @brief 测试专用：获取已记录帧数量。
+     * @return m_frames 当前元素数量，用于验证 clear() 后记录已清空。
+     */
+    int frameCountForTest() const { return m_frames.size(); }
+
+    /**
+     * @brief 测试专用：获取待刷新帧数量。
+     * @return m_pendingFrames 当前元素数量，用于验证 clear() 后 pending 队列已清空。
+     */
+    int pendingFrameCountForTest() const { return m_pendingFrames.size(); }
+
+    /**
+     * @brief 测试专用：获取已记录帧容器容量。
+     * @return m_frames 当前 capacity，用于验证清空后是否释放历史容量。
+     */
+    int frameCapacityForTest() const { return m_frames.capacity(); }
+
+    /**
+     * @brief 测试专用：获取待刷新帧容器容量。
+     * @return m_pendingFrames 当前 capacity，用于验证清空后是否释放历史容量。
+     */
+    int pendingFrameCapacityForTest() const { return m_pendingFrames.capacity(); }
+
+    /**
+     * @brief 测试专用：获取接收缓冲区当前长度。
+     * @return m_buffer 当前 size，用于验证清空后没有残留半包数据。
+     */
+    int receiveBufferSizeForTest() const { return m_buffer.size(); }
+
+    /**
+     * @brief 测试专用：获取接收缓冲区容量。
+     * @return m_buffer 当前 capacity，用于验证清空后是否释放历史容量。
+     */
+    int receiveBufferCapacityForTest() const { return m_buffer.capacity(); }
+
+    /**
+     * @brief 测试专用：获取有效帧统计。
+     * @return m_validFrames 当前值，用于验证校验结果统计。
+     */
+    int validFrameCountForTest() const { return m_validFrames; }
+
+    /**
+     * @brief 测试专用：获取无效帧统计。
+     * @return m_invalidFrames 当前值，用于验证校验结果统计。
+     */
+    int invalidFrameCountForTest() const { return m_invalidFrames; }
+
+    /**
+     * @brief 测试专用：获取第一帧错误信息。
+     * @return 第一条记录的 errorInfo；没有记录时返回空字符串。
+     */
+    QString firstFrameErrorForTest() const
+    {
+        return m_frames.isEmpty() ? QString() : m_frames.first().errorInfo;
+    }
+#endif
+
 private slots:
     void onFrameSelected(int row, int column);
     void onConfigChanged();
@@ -103,6 +171,7 @@ private:
     void updateStatistics();
     bool validateFrame(const QByteArray& data, QString& error);
     QByteArray calculateChecksum(const QByteArray& data);
+    QByteArray buildFramePayloadForSending(const QByteArray& payload) const; ///< 按当前帧头/校验/帧尾构造发送帧
 
     // UI 组件
     QSplitter* m_splitter;
@@ -131,8 +200,8 @@ private:
     QAction* m_exportAction = nullptr;
 
     // 数据
-    QList<FrameData> m_frames;
-    QList<FrameData> m_pendingFrames;        ///< 待批量刷新到表格的帧
+    QVector<FrameData> m_frames;             ///< 已记录帧，使用 QVector 便于清空时明确释放容量
+    QVector<FrameData> m_pendingFrames;      ///< 待批量刷新到表格的帧，使用 QVector 便于清空时明确释放容量
     QByteArray m_buffer;
     ModeFrameConfig m_config;
     QTimer* m_timeoutTimer;

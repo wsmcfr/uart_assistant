@@ -15,9 +15,18 @@ SerialPort::SerialPort(const SerialConfig& config, QObject* parent)
     , m_config(config)
 {
     m_port = new QSerialPort(this);
+    m_transmitDrainWatchdog = new QTimer(this);
+    m_transmitDrainWatchdog->setSingleShot(true);
+    m_transmitLineTimer = new QTimer(this);
+    m_transmitLineTimer->setSingleShot(true);
 
     connect(m_port, &QSerialPort::readyRead, this, &SerialPort::onReadyRead);
+    connect(m_port, &QSerialPort::bytesWritten, this, &SerialPort::onBytesWritten);
     connect(m_port, SIGNAL(error(QSerialPort::SerialPortError)), this, SLOT(onError(QSerialPort::SerialPortError)));
+    connect(m_transmitDrainWatchdog, &QTimer::timeout,
+            this, &SerialPort::onTransmitDrainTimeout);
+    connect(m_transmitLineTimer, &QTimer::timeout,
+            this, &SerialPort::onTransmitLineDelayElapsed);
 }
 
 SerialPort::~SerialPort()
@@ -88,6 +97,14 @@ bool SerialPort::open()
 
 void SerialPort::close()
 {
+    /*
+     * 如果文件传输正在等待串口发空，关闭串口意味着该等待必然失败。
+     * 先发失败信号再关闭底层端口，避免 UI 继续停在“传输中”。
+     */
+    if (m_waitingTransmitDrain) {
+        completeTransmitDrain(false, tr("串口已关闭，发送未完成"));
+    }
+
     if (m_port->isOpen()) {
         m_port->close();
         LOG_INFO(QString("Serial port %1 closed").arg(m_config.portName));
@@ -117,6 +134,42 @@ qint64 SerialPort::write(const QByteArray& data)
     }
 
     return written;
+}
+
+bool SerialPort::waitForTransmitDrainedAsync(qint64 bytes)
+{
+    /*
+     * 文件传输每块只允许一个 drain 等待。若上层在上一块还没发完时又请求
+     * 下一块，说明状态机已经失去背压，必须拒绝以避免进度提前推进。
+     */
+    if (!isOpen()) {
+        m_lastError = tr("Port is not open");
+        return false;
+    }
+    if (m_waitingTransmitDrain) {
+        m_lastError = tr("串口发送缓冲仍在等待发空");
+        return false;
+    }
+
+    m_waitingTransmitDrain = true;
+    m_pendingTransmitDrainBytes = qMax<qint64>(0, bytes);
+
+    /*
+     * flush() 只尽量把 Qt 内部缓冲推给系统驱动，不保证硬件已经发完。
+     * 因此这里用 bytesToWrite() 观察 Qt/系统写缓冲，再额外等待线路时间。
+     */
+    m_port->flush();
+    /*
+     * 第一阶段 watchdog 只保护 Qt/系统写缓冲迟迟不清空的情况。写缓冲清空后
+     * 会在 startTransmitLineDelay() 中重启 watchdog，单独保护线路等待阶段。
+     */
+    const int watchdogMs = qMax(m_config.writeTimeout, 1000);
+    m_transmitDrainWatchdog->start(watchdogMs);
+
+    if (m_port->bytesToWrite() <= 0) {
+        startTransmitLineDelay();
+    }
+    return true;
 }
 
 QByteArray SerialPort::readAll()
@@ -282,6 +335,18 @@ void SerialPort::onReadyRead()
     }
 }
 
+void SerialPort::onBytesWritten(qint64 bytes)
+{
+    Q_UNUSED(bytes)
+    if (!m_waitingTransmitDrain) {
+        return;
+    }
+
+    if (m_port->bytesToWrite() <= 0) {
+        startTransmitLineDelay();
+    }
+}
+
 void SerialPort::onError(QSerialPort::SerialPortError error)
 {
     if (error == QSerialPort::NoError) {
@@ -291,12 +356,34 @@ void SerialPort::onError(QSerialPort::SerialPortError error)
     m_lastError = m_port->errorString();
     LOG_ERROR(QString("Serial port error: %1").arg(m_lastError));
 
+    if (m_waitingTransmitDrain) {
+        completeTransmitDrain(false, m_lastError);
+    }
+
     if (error == QSerialPort::ResourceError) {
         // 设备断开
         close();
     }
 
     emit errorOccurred(m_lastError);
+}
+
+void SerialPort::onTransmitDrainTimeout()
+{
+    if (!m_waitingTransmitDrain) {
+        return;
+    }
+
+    completeTransmitDrain(false, tr("串口发送缓冲等待发空超时"));
+}
+
+void SerialPort::onTransmitLineDelayElapsed()
+{
+    if (!m_waitingTransmitDrain) {
+        return;
+    }
+
+    completeTransmitDrain(true, QString());
 }
 
 void SerialPort::applyConfig()
@@ -307,6 +394,113 @@ void SerialPort::applyConfig()
     m_port->setParity(toQtParity(m_config.parity));
     m_port->setFlowControl(toQtFlowControl(m_config.flowControl));
     m_port->setReadBufferSize(m_config.readBufferSize);
+}
+
+void SerialPort::startTransmitLineDelay()
+{
+    if (!m_waitingTransmitDrain || m_transmitLineTimer->isActive()) {
+        return;
+    }
+
+    /*
+     * bytesToWrite()==0 只表示 Qt 写缓冲已经交给驱动。USB-串口芯片仍可能
+     * 正在按波特率把这些字节一个个移出 TX。为了让文件传输进度条绝不早于
+     * 真实线路发送，进入该阶段后重新等待完整线路时间，而不是扣减前面等待
+     * Qt/系统写缓冲清空所消耗的时间。
+     */
+    const int estimatedMs = estimateTransmitTimeMs(m_pendingTransmitDrainBytes);
+
+    if (estimatedMs <= 0) {
+        completeTransmitDrain(true, QString());
+        return;
+    }
+
+    /*
+     * 第二阶段 watchdog 随线路等待重启，避免低波特率或较大分块时，第一阶段
+     * 的“等缓冲清空”超时保护在线路定时器还没结束前误判失败。
+     */
+    m_transmitDrainWatchdog->start(estimatedMs + 1000);
+    m_transmitLineTimer->start(estimatedMs);
+}
+
+void SerialPort::completeTransmitDrain(bool success, const QString& errorMessage)
+{
+    if (!m_waitingTransmitDrain) {
+        return;
+    }
+
+    m_transmitDrainWatchdog->stop();
+    m_transmitLineTimer->stop();
+    m_pendingTransmitDrainBytes = 0;
+    m_waitingTransmitDrain = false;
+
+    if (!success) {
+        m_lastError = errorMessage.isEmpty()
+            ? tr("串口发送缓冲等待发空失败")
+            : errorMessage;
+    }
+
+    emit transmitDrained(success, success ? QString() : m_lastError);
+}
+
+double SerialPort::configuredBitsPerByte() const
+{
+    /*
+     * 串口线路发送一个字节通常包含 1 个起始位、N 个数据位、可选校验位
+     * 和停止位。OneAndHalfStop 按 1.5 位估算，最终向上取整到毫秒。
+     */
+    double bits = 1.0; // start bit
+    switch (m_config.dataBits) {
+    case DataBits::Five:
+        bits += 5.0;
+        break;
+    case DataBits::Six:
+        bits += 6.0;
+        break;
+    case DataBits::Seven:
+        bits += 7.0;
+        break;
+    case DataBits::Eight:
+    default:
+        bits += 8.0;
+        break;
+    }
+
+    if (m_config.parity != Parity::None) {
+        bits += 1.0;
+    }
+
+    switch (m_config.stopBits) {
+    case StopBits::OnePointFive:
+        bits += 1.5;
+        break;
+    case StopBits::Two:
+        bits += 2.0;
+        break;
+    case StopBits::One:
+    default:
+        bits += 1.0;
+        break;
+    }
+    return bits;
+}
+
+int SerialPort::estimateTransmitTimeMs(qint64 bytes) const
+{
+    if (bytes <= 0) {
+        return 0;
+    }
+
+    /*
+     * 为了避免依赖额外数学头，这里把半位停止位放大 2 倍后做整数向上取整。
+     * 公式等价于 ceil(bytes * bitsPerByte * 1000 / baudRate)。
+     */
+    const qint64 baudRate = qMax(1, m_config.baudRate);
+    const qint64 scaledBits =
+        static_cast<qint64>(bytes * configuredBitsPerByte() * 2.0 + 0.5);
+    const qint64 numerator = scaledBits * 1000;
+    const qint64 denominator = baudRate * 2;
+    return static_cast<int>((numerator + denominator - 1) / denominator);
 }
 
 QSerialPort::DataBits SerialPort::toQtDataBits(DataBits bits)

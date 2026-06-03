@@ -19,6 +19,7 @@
 #include <QMessageBox>
 #include <QPalette>
 #include <QSizePolicy>
+#include <QSignalBlocker>
 
 namespace ComAssistant {
 
@@ -109,6 +110,11 @@ void FrameModeWidget::setupUi()
 
     m_detailView = new QTextEdit;
     m_detailView->setReadOnly(true);
+    /*
+     * 详情区只展示当前选中帧，不需要撤销/重做历史。关闭 undo 可以避免
+     * 用户反复查看大帧时 QTextDocument 额外保留历史文本块。
+     */
+    m_detailView->document()->setUndoRedoEnabled(false);
     m_detailView->setFont(QFont("Consolas", 10));
     rightLayout->addWidget(m_detailView);
 
@@ -154,7 +160,11 @@ void FrameModeWidget::setupUi()
         QString text = m_sendEdit->text().simplified().remove(' ');
         if (text.isEmpty()) return;
 
-        QByteArray data = m_config.header + QByteArray::fromHex(text.toLatin1()) + m_config.footer;
+        /*
+         * “带帧头尾发送”表示按当前帧模式配置构造完整帧。启用校验时，
+         * 校验字节也应自动追加，否则发送侧和接收侧帧格式会不一致。
+         */
+        QByteArray data = buildFramePayloadForSending(QByteArray::fromHex(text.toLatin1()));
         emit sendDataRequested(data);
     });
     sendLayout->addWidget(m_sendWithHeaderBtn);
@@ -241,6 +251,17 @@ void FrameModeWidget::appendSentData(const QByteArray& data)
 
 void FrameModeWidget::processBuffer()
 {
+    /*
+     * 帧头和帧尾是解析循环前进的边界。若旧配置或异常调用把任一标记
+     * 置空，indexOf(empty) 会返回 0，导致循环无法可靠消耗缓冲区。
+     * 这里直接丢弃当前半包并返回，避免 UI 线程被空标记解析卡住。
+     */
+    if (m_config.header.isEmpty() || m_config.footer.isEmpty()) {
+        m_buffer.clear();
+        m_buffer.squeeze();
+        return;
+    }
+
     while (true) {
         // 查找帧头
         int headerPos = m_buffer.indexOf(m_config.header);
@@ -328,12 +349,81 @@ bool FrameModeWidget::validateFrame(const QByteArray& data, QString& error)
         return false;
     }
 
-    // 校验（如果启用）
-    if (m_config.checksumType > 0) {
-        // 简化实现：暂不验证校验和
+    /*
+     * 校验布局约定为：帧头 + 有效载荷 + 校验字节 + 帧尾。
+     * XOR/SUM 占 1 字节；CRC16 使用项目既有 Modbus CRC16，占 2 字节，
+     * 低字节在前。无校验时仅检查帧头和帧尾。
+     */
+    const int checksumSize = (m_config.checksumType == 3) ? 2 :
+                             (m_config.checksumType > 0 ? 1 : 0);
+    if (checksumSize > 0) {
+        const int payloadStart = m_config.header.size();
+        const int footerStart = data.size() - m_config.footer.size();
+        const int checksumStart = m_config.checksumPos >= 0
+            ? m_config.checksumPos
+            : footerStart - checksumSize;
+
+        if (checksumStart < payloadStart ||
+            checksumStart + checksumSize > footerStart) {
+            error = tr("校验位置错误");
+            return false;
+        }
+
+        const QByteArray payload = data.mid(payloadStart, checksumStart - payloadStart);
+        const QByteArray receivedChecksum = data.mid(checksumStart, checksumSize);
+        const QByteArray expectedChecksum = calculateChecksum(payload);
+
+        if (receivedChecksum != expectedChecksum) {
+            error = tr("校验失败");
+            return false;
+        }
     }
 
     return true;
+}
+
+QByteArray FrameModeWidget::calculateChecksum(const QByteArray& data)
+{
+    /*
+     * 根据 UI 当前校验类型生成校验字节。返回空数组表示未启用校验或未知
+     * 类型；调用方据此保持无校验帧格式不变。
+     */
+    if (m_config.checksumType == 1) {
+        return QByteArray(1, static_cast<char>(ChecksumUtils::xorChecksum(data)));
+    }
+    if (m_config.checksumType == 2) {
+        return QByteArray(1, static_cast<char>(ChecksumUtils::sumChecksum(data)));
+    }
+    if (m_config.checksumType == 3) {
+        const quint16 crc = ChecksumUtils::crc16Modbus(data);
+        QByteArray checksum;
+        checksum.append(static_cast<char>(crc & 0xFF));
+        checksum.append(static_cast<char>((crc >> 8) & 0xFF));
+        return checksum;
+    }
+
+    return QByteArray();
+}
+
+QByteArray FrameModeWidget::buildFramePayloadForSending(const QByteArray& payload) const
+{
+    /*
+     * 构帧只对“有效载荷”计算校验，避免把帧头/帧尾也算进去造成接收侧
+     * 和帮助文档描述不一致。calculateChecksum() 非 const，因此这里手动
+     * 复制同一套轻量分支，保持发送构帧不修改对象状态。
+     */
+    QByteArray checksum;
+    if (m_config.checksumType == 1) {
+        checksum.append(static_cast<char>(ChecksumUtils::xorChecksum(payload)));
+    } else if (m_config.checksumType == 2) {
+        checksum.append(static_cast<char>(ChecksumUtils::sumChecksum(payload)));
+    } else if (m_config.checksumType == 3) {
+        const quint16 crc = ChecksumUtils::crc16Modbus(payload);
+        checksum.append(static_cast<char>(crc & 0xFF));
+        checksum.append(static_cast<char>((crc >> 8) & 0xFF));
+    }
+
+    return m_config.header + payload + checksum + m_config.footer;
 }
 
 void FrameModeWidget::addFrame(const FrameData& frame)
@@ -505,8 +595,19 @@ void FrameModeWidget::onConfigChanged()
     QString header = m_headerEdit->text().simplified().remove(' ');
     QString footer = m_footerEdit->text().simplified().remove(' ');
 
-    m_config.header = QByteArray::fromHex(header.toLatin1());
-    m_config.footer = QByteArray::fromHex(footer.toLatin1());
+    /*
+     * 输入框是实时生效的，用户编辑过程中可能短暂清空内容。空帧头/帧尾
+     * 不能写入运行配置，否则接收解析会失去前进边界；此时保留上一组
+     * 有效配置，等用户输入新的非空 HEX 后再更新。
+     */
+    const QByteArray parsedHeader = QByteArray::fromHex(header.toLatin1());
+    const QByteArray parsedFooter = QByteArray::fromHex(footer.toLatin1());
+    if (!parsedHeader.isEmpty()) {
+        m_config.header = parsedHeader;
+    }
+    if (!parsedFooter.isEmpty()) {
+        m_config.footer = parsedFooter;
+    }
 }
 
 void FrameModeWidget::onClearFrames()
@@ -580,10 +681,16 @@ void FrameModeWidget::clear()
         m_frameFlushTimer->stop();
     }
     m_pendingFrames.clear();
+    m_pendingFrames.squeeze();
     m_frames.clear();
+    m_frames.squeeze();
     m_frameTable->setRowCount(0);
     m_detailView->clear();
+    if (m_detailView->document()) {
+        m_detailView->document()->clearUndoRedoStacks();
+    }
     m_buffer.clear();
+    m_buffer.squeeze();
     m_totalFrames = 0;
     m_validFrames = 0;
     m_invalidFrames = 0;
@@ -625,9 +732,23 @@ void FrameModeWidget::onDeactivated()
 
 void FrameModeWidget::setFrameConfig(const ModeFrameConfig& config)
 {
+    /*
+     * 外部恢复配置时同样拒绝空帧头/帧尾。使用 QSignalBlocker 是为了避免
+     * setText() 触发 onConfigChanged()，在帧头已更新但帧尾还没同步时产生
+     * 半更新状态。
+     */
     m_config = config;
-    m_headerEdit->setText(config.header.toHex().toUpper());
-    m_footerEdit->setText(config.footer.toHex().toUpper());
+    if (m_config.header.isEmpty()) {
+        m_config.header = QByteArray::fromHex("AA");
+    }
+    if (m_config.footer.isEmpty()) {
+        m_config.footer = QByteArray::fromHex("55");
+    }
+
+    const QSignalBlocker headerBlocker(m_headerEdit);
+    const QSignalBlocker footerBlocker(m_footerEdit);
+    m_headerEdit->setText(m_config.header.toHex().toUpper());
+    m_footerEdit->setText(m_config.footer.toHex().toUpper());
 }
 
 void FrameModeWidget::changeEvent(QEvent* event)

@@ -368,6 +368,7 @@ void WaterfallWidget::clearData()
         m_spectrumFlushTimer->stop();
     }
     m_pendingSpectra.clear();
+    m_pendingSpectra.squeeze();
     m_currentRow = 0;
 
     for (int x = 0; x < m_freqBins; ++x) {

@@ -70,6 +70,22 @@ public:
     virtual qint64 write(const QByteArray& data) = 0;
 
     /**
+     * @brief 异步等待最近一次发送的数据真正排空。
+     * @param bytes 本次需要等待发空的字节数，用于串口按波特率估算线路耗时。
+     * @return 成功接受等待请求返回 true；当前连接不可用或已有等待任务返回 false。
+     *
+     * 默认实现用于 TCP/UDP/HID 等没有串口线路“按波特率发空”概念的后端，
+     * 会立即发出成功信号。SerialPort 会覆盖该函数：先等待 Qt 写缓冲变空，
+     * 再根据串口帧格式和波特率等待线路传输时间，最后才发出 transmitDrained。
+     */
+    virtual bool waitForTransmitDrainedAsync(qint64 bytes)
+    {
+        Q_UNUSED(bytes)
+        emit transmitDrained(true, QString());
+        return true;
+    }
+
+    /**
      * @brief 读取所有可用数据
      * @return 读取到的数据
      */
@@ -159,6 +175,16 @@ signals:
      * @brief 数据已发送信号
      */
     void dataSent(const QByteArray& data);
+
+    /**
+     * @brief 最近一次发送请求已经排空或失败。
+     * @param success true 表示可认为本地发送链路已经排空。
+     * @param errorMessage success 为 false 时的失败原因。
+     *
+     * 该信号专门服务文件传输等需要“最后一个字节发完后再推进进度”的场景。
+     * 普通手动发送仍只依赖 dataSent，避免影响日常调试输入的即时反馈。
+     */
+    void transmitDrained(bool success, const QString& errorMessage);
 
     /**
      * @brief 错误发生信号

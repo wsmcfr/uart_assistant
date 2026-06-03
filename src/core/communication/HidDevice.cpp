@@ -74,6 +74,7 @@ bool HidDevice::open()
 
     m_open = true;
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
     LOG_INFO(QString("HID device opened: %1").arg(displayName()));
     emit connectionStatusChanged(true);
     return true;
@@ -81,6 +82,14 @@ bool HidDevice::open()
 
 void HidDevice::close()
 {
+    /*
+     * 先释放 readAll() 兼容缓存，再判断 worker/open 状态。这样即使设备
+     * 没有成功打开、或测试/异常路径只积累了输入报告缓存，调用 close()
+     * 仍能兑现“关闭后释放接收缓存”的语义。
+     */
+    m_readBuffer.clear();
+    m_readBuffer.squeeze();
+
     if (!m_worker || !m_open) {
         return;
     }
@@ -130,6 +139,7 @@ QByteArray HidDevice::readAll()
 {
     const QByteArray data = m_readBuffer;
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
     return data;
 }
 
@@ -152,6 +162,7 @@ int HidDevice::bufferSize() const
 void HidDevice::clearBuffer()
 {
     m_readBuffer.clear();
+    m_readBuffer.squeeze();
 }
 
 void HidDevice::setReadTimeout(int ms)
@@ -363,6 +374,8 @@ void HidDevice::stopWorkerThread()
         });
     }
     m_open = false;
+    m_readBuffer.clear();
+    m_readBuffer.squeeze();
 
     m_workerThread->quit();
     m_workerThread->wait();

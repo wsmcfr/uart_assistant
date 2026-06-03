@@ -125,6 +125,11 @@ void DebugModeWidget::setupUi()
 
     m_detailView = new QTextEdit;
     m_detailView->setReadOnly(true);
+    /*
+     * 调试详情是只读快照，用户不会在这里编辑文本。关闭 undo 避免查看
+     * 大包记录时 QTextDocument 额外保留历史内容。
+     */
+    m_detailView->document()->setUndoRedoEnabled(false);
     m_detailView->setFont(QFont("Consolas", 10));
     detailLayout->addWidget(m_detailView);
 
@@ -552,6 +557,7 @@ void DebugModeWidget::setPaused(bool paused)
         m_records.append(m_pendingRecords);
         m_recordsToFlush.append(m_pendingRecords);
         m_pendingRecords.clear();
+        m_pendingRecords.squeeze();
         trimRecordRows();
         scheduleRecordFlush();
     }
@@ -644,12 +650,20 @@ void DebugModeWidget::clear()
         m_recordFlushTimer->stop();
     }
     m_records.clear();
+    m_records.squeeze();
     m_recordsToFlush.clear();
+    m_recordsToFlush.squeeze();
     m_pendingRecords.clear();
+    m_pendingRecords.squeeze();
     m_recordTable->setRowCount(0);
     m_detailView->clear();
+    if (m_detailView->document()) {
+        m_detailView->document()->clearUndoRedoStacks();
+    }
     m_rxBuffer.clear();
+    m_rxBuffer.squeeze();
     m_txBuffer.clear();
+    m_txBuffer.squeeze();
     m_lastTimestamp = QDateTime();
     m_totalTx = 0;
     m_totalRx = 0;

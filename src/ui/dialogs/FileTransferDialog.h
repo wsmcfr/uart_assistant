@@ -58,6 +58,16 @@ public:
      */
     void notifyLocalSendResult(bool success, const QString& errorMessage);
 
+    /**
+     * @brief 当前传输是否需要等待串口发送排空后再推进进度。
+     * @return Raw/OTA 本地分块传输返回 true；X/YMODEM 等协议握手传输返回 false。
+     *
+     * Raw 和 OTA 的进度条由本地分块状态机推进，必须等当前块真正发空后
+     * 再显示进度增加；标准协议则由对端 ACK/NAK/G 握手驱动，不能额外用
+     * 本地 drain 回调限制连续发送，否则会破坏 YMODEM-G 的流式行为。
+     */
+    bool requiresTransmitDrainForCurrentTransfer() const;
+
 signals:
     /**
      * @brief 请求发送数据

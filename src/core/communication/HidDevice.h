@@ -125,6 +125,14 @@ public:
      */
     QThread* workerThreadForTest() const { return m_workerThread; }
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：获取 readAll() 兼容缓存容量。
+     * @return m_readBuffer 当前 capacity，用于验证清空或关闭后是否释放峰值容量。
+     */
+    int readBufferCapacityForTest() const { return m_readBuffer.capacity(); }
+#endif
+
 private slots:
     /**
      * @brief 处理 worker 线程读到的原始输入报告。

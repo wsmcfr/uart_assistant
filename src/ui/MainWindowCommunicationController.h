@@ -13,6 +13,7 @@
 #include "config/AppConfig.h"
 
 #include <QObject>
+#include <QMetaObject>
 #include <QString>
 
 #include <functional>
@@ -56,6 +57,13 @@ public:
      * @brief TCP Client 自动重连选项提供函数类型。
      */
     using TcpClientReconnectOptionsProvider = std::function<TcpClientReconnectOptions()>;
+
+    /**
+     * @brief 文件传输异步发送完成回调。
+     * @param success true 表示当前文件传输块已经完成本地发送排空。
+     * @param errorMessage success 为 false 时的失败原因。
+     */
+    using FileTransferSendCallback = std::function<void(bool success, const QString& errorMessage)>;
 
     explicit MainWindowCommunicationController(QObject* parent = nullptr);
     ~MainWindowCommunicationController() override;
@@ -101,6 +109,19 @@ public:
      * @return 成功写入或成功进入发送队列返回 true；未连接、入队失败或写入失败返回 false。
      */
     bool sendData(const QByteArray& data);
+
+    /**
+     * @brief 发送文件传输数据，并在本地发送排空后异步回调。
+     * @param data 当前文件传输块或 OTA 包。
+     * @param callback 排空完成或失败后调用的回调。
+     * @return 成功发起发送和排空等待返回 true；未连接、写入失败或已有等待返回 false。
+     *
+     * 普通发送只需要知道 write() 是否接受数据；文件传输进度条则必须等
+     * 串口缓冲按波特率真正排空后才能推进。该函数专门用于 Raw/OTA 文件
+     * 传输，避免改变普通手动发送、快捷发送和脚本发送的即时反馈行为。
+     */
+    bool sendFileTransferDataAsync(const QByteArray& data,
+                                   FileTransferSendCallback callback);
 
     /**
      * @brief 重试当前待发送队列。
@@ -194,6 +215,16 @@ private:
      */
     void bindSendDispatcher();
 
+    /**
+     * @brief 完成当前文件传输异步发送请求。
+     * @param requestId 请求编号，用于忽略旧连接或旧请求的迟到信号。
+     * @param success drain 是否成功。
+     * @param errorMessage 失败原因。
+     */
+    void completeFileTransferSend(qint64 requestId,
+                                  bool success,
+                                  const QString& errorMessage);
+
 private:
     CommunicationFactoryFn m_factory;  ///< 通信对象创建函数。
     TcpClientReconnectOptionsProvider m_tcpClientReconnectOptionsProvider; ///< TCP 自动重连配置来源。
@@ -201,6 +232,11 @@ private:
     SendDispatcher m_sendDispatcher;   ///< 统一发送队列调度器。
     bool m_connected = false;          ///< 控制器记录的连接状态。
     QString m_lastError;               ///< 最近一次错误信息。
+    qint64 m_nextFileTransferRequestId = 1; ///< 下一个文件传输异步发送请求编号。
+    qint64 m_activeFileTransferRequestId = 0; ///< 当前等待 drain 的文件传输请求编号。
+    QByteArray m_activeFileTransferPayload; ///< 当前等待 drain 的文件传输 payload，成功后用于统计 TX。
+    FileTransferSendCallback m_fileTransferSendCallback; ///< 当前等待 drain 的回调。
+    QMetaObject::Connection m_fileTransferDrainConnection; ///< 当前文件发送 drain 信号连接。
 };
 
 } // namespace ComAssistant

@@ -413,7 +413,8 @@
             <tr>
                 <td>校验 Checksum</td>
                 <td>无 None</td>
-                <td>可选XOR/SUM/CRC16</td>
+                <td>可选 XOR/SUM/CRC16；校验字节位于有效载荷之后、帧尾之前。XOR/SUM 为 1 字节，CRC16 为 Modbus CRC16 且低字节在前。<br>
+                    Optional XOR/SUM/CRC16; checksum bytes are placed after payload and before footer. XOR/SUM use 1 byte, CRC16 uses Modbus CRC16 with low byte first.</td>
             </tr>
         </table>
 
@@ -422,6 +423,10 @@
             <li><span style="color:#2ecc71;">✓</span> 有效帧 - 帧头帧尾正确，校验通过</li>
             <li><span style="color:#e74c3c;">✗</span> 无效帧 - 帧头帧尾错误、超时或校验失败</li>
         </ul>
+        <p><strong>发送说明 / Sending:</strong> 使用“带帧头尾发送”时会按当前校验类型自动追加校验字节；普通“发送”保持原始 HEX 数据不变。</p>
+        <p>When using "Send with header/footer", checksum bytes are appended according to the current checksum type; normal "Send" keeps the raw HEX payload unchanged.</p>
+        <p><strong>配置说明 / Configuration:</strong> 帧头和帧尾不能为空；编辑时若临时清空输入框，程序会保留上一组有效帧标记，避免接收解析失去边界。</p>
+        <p>Header and footer cannot be empty. If either field is temporarily cleared while editing, the previous valid marker remains active so frame parsing keeps a valid boundary.</p>
 
         <div class="tip">
             <strong>适用场景:</strong> Modbus调试、自定义二进制协议、传感器数据帧解析<br>

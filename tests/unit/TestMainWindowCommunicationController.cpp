@@ -99,6 +99,46 @@ public:
     }
 
     /**
+     * @brief 模拟异步等待发送缓冲排空。
+     * @param bytes 本次需要等待硬件发空的字节数。
+     * @return true 表示已接受 drain 请求。
+     *
+     * 文件传输测试用该函数区分“write 已经收下数据”和“串口真正发完”。
+     * autoCompleteDrain 为 false 时，测试可手动调用 completePendingDrain()
+     * 触发最终结果，从而验证控制器不会提前回调成功。
+     */
+    bool waitForTransmitDrainedAsync(qint64 bytes) override
+    {
+        ++drainRequestCount;
+        lastDrainBytes = bytes;
+        if (failNextDrainRequest) {
+            failNextDrainRequest = false;
+            m_lastError = drainErrorText.isEmpty()
+                ? QStringLiteral("drain request failed")
+                : drainErrorText;
+            return false;
+        }
+
+        if (autoCompleteDrain) {
+            emit transmitDrained(drainSuccess, drainErrorText);
+        } else {
+            pendingDrain = true;
+        }
+        return true;
+    }
+
+    /**
+     * @brief 手动完成一次挂起的 drain 请求。
+     * @param success drain 是否成功。
+     * @param errorText 失败原因。
+     */
+    void completePendingDrain(bool success, const QString& errorText = QString())
+    {
+        pendingDrain = false;
+        emit transmitDrained(success, errorText);
+    }
+
+    /**
      * @brief 模拟读取全部缓存数据。
      * @return 控制器测试不覆盖读取路径，因此始终返回空数据。
      */
@@ -182,9 +222,16 @@ public:
     int openCallCount = 0;         ///< open() 调用次数。
     int closeCallCount = 0;        ///< close() 调用次数。
     int writeCallCount = 0;        ///< write() 调用次数。
+    int drainRequestCount = 0;     ///< 异步 drain 请求次数。
     QByteArray lastWrittenData;    ///< 最近一次写入数据。
+    qint64 lastDrainBytes = 0;     ///< 最近一次 drain 等待的字节数。
     bool failNextWrite = false;    ///< 下一次 write() 是否模拟失败。
     QString writeErrorText;        ///< 模拟写入失败时返回的错误文本。
+    bool autoCompleteDrain = true; ///< drain 请求是否立即发出完成信号。
+    bool pendingDrain = false;     ///< 是否存在待手动完成的 drain 请求。
+    bool drainSuccess = true;      ///< 自动 drain 完成时使用的结果。
+    bool failNextDrainRequest = false; ///< 下一次 drain 请求是否直接失败。
+    QString drainErrorText;        ///< 模拟 drain 失败时返回的错误文本。
     int* m_externalCloseCallCount = nullptr; ///< 对象释放后仍可读取的关闭调用计数器。
 };
 
@@ -372,6 +419,98 @@ void TestMainWindowCommunicationController::testCloseCurrentClosesCommunicationA
     QVERIFY(!controller.isConnected());
     QCOMPARE(closeCallCount, 1);
     QVERIFY(controller.communication() == nullptr);
+}
+
+void TestMainWindowCommunicationController::testFileTransferSendWaitsForAsyncDrainBeforeSuccessCallback()
+{
+    /*
+     * 用户看到“文件发送完成”时，CH340 和 MCU 不应还在继续接收同一文件。
+     * 该回归测试把 write() 成功和串口 drain 完成拆开，确保控制器只在
+     * drain 信号到达后才把成功结果回调给文件传输状态机。
+     */
+    FakeCommunication* fake = nullptr;
+    MainWindowCommunicationController controller;
+    controller.setCommunicationFactory([&fake](CommType,
+                                               const SerialConfig&,
+                                               const NetworkConfig&,
+                                               const HidConfig&) {
+        FakeCommunicationHandle handle = makeFakeCommunication(true);
+        fake = handle.raw;
+        fake->autoCompleteDrain = false;
+        return std::move(handle.owned);
+    });
+
+    QVERIFY(controller.openCurrent(CommType::Serial,
+                                  SerialConfig(),
+                                  NetworkConfig(),
+                                  HidConfig()));
+    QVERIFY(fake != nullptr);
+
+    int callbackCount = 0;
+    bool callbackSuccess = false;
+    QString callbackError;
+    QVERIFY(controller.sendFileTransferDataAsync(
+        QByteArray("firmware"),
+        [&callbackCount, &callbackSuccess, &callbackError](bool success, const QString& error) {
+            ++callbackCount;
+            callbackSuccess = success;
+            callbackError = error;
+        }));
+
+    QCOMPARE(fake->writeCallCount, 1);
+    QCOMPARE(fake->drainRequestCount, 1);
+    QCOMPARE(fake->lastDrainBytes, static_cast<qint64>(8));
+    QCOMPARE(callbackCount, 0);
+    QVERIFY(fake->pendingDrain);
+
+    fake->completePendingDrain(true);
+
+    QCOMPARE(callbackCount, 1);
+    QVERIFY(callbackSuccess);
+    QVERIFY(callbackError.isEmpty());
+}
+
+void TestMainWindowCommunicationController::testFileTransferSendReportsDrainFailure()
+{
+    /*
+     * drain 超时意味着数据可能仍停在系统或 USB-串口驱动缓冲里。文件传输
+     * 必须把它当成本地发送失败，避免继续推进下一块或显示完成。
+     */
+    FakeCommunication* fake = nullptr;
+    MainWindowCommunicationController controller;
+    controller.setCommunicationFactory([&fake](CommType,
+                                               const SerialConfig&,
+                                               const NetworkConfig&,
+                                               const HidConfig&) {
+        FakeCommunicationHandle handle = makeFakeCommunication(true);
+        fake = handle.raw;
+        fake->autoCompleteDrain = false;
+        return std::move(handle.owned);
+    });
+
+    QVERIFY(controller.openCurrent(CommType::Serial,
+                                  SerialConfig(),
+                                  NetworkConfig(),
+                                  HidConfig()));
+    QVERIFY(fake != nullptr);
+
+    int callbackCount = 0;
+    bool callbackSuccess = true;
+    QString callbackError;
+    QVERIFY(controller.sendFileTransferDataAsync(
+        QByteArray("block"),
+        [&callbackCount, &callbackSuccess, &callbackError](bool success, const QString& error) {
+            ++callbackCount;
+            callbackSuccess = success;
+            callbackError = error;
+        }));
+
+    fake->completePendingDrain(false, QStringLiteral("串口发送缓冲等待发空超时"));
+
+    QCOMPARE(callbackCount, 1);
+    QVERIFY(!callbackSuccess);
+    QVERIFY(callbackError.contains(QStringLiteral("发空超时")));
+    QVERIFY(controller.lastError().contains(QStringLiteral("发空超时")));
 }
 
 #include "TestMainWindowCommunicationController.moc"

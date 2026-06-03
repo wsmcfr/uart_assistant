@@ -42,6 +42,16 @@ private slots:
      * @brief 验证运行中调小 bufferSize 会立即裁剪已有 readAll() 兼容缓存。
      */
     void testSetBufferSizeTrimsExistingReceiveBuffers();
+
+    /**
+     * @brief 验证 clearBuffer()/readAll()/close() 会释放兼容缓存历史容量。
+     */
+    void testClearingAndClosingReleaseReceiveBufferCapacity();
+
+    /**
+     * @brief 验证 TCP Server 关闭后立即断开并清空客户端对象引用。
+     */
+    void testTcpServerCloseClearsClientListSynchronously();
 };
 
 #endif // TESTCOMMUNICATIONRECEIVEBUFFERS_H
