@@ -327,6 +327,52 @@ bool SerialPort::isValidBaudRate(int baudRate)
     return baudRate > 0 && baudRate <= 10000000;
 }
 
+#ifdef COMASSISTANT_TESTS
+void SerialPort::prepareTransmitDrainForTest(qint64 pendingBytes)
+{
+    /*
+     * 测试只需要复现“文件发送 drain 已经开始、Qt 写缓冲刚清空”的内部状态。
+     * 不打开真实串口可以让回归测试稳定运行在 CI 中，也避免占用用户机器 COM 口。
+     */
+    m_waitingTransmitDrain = true;
+    m_pendingTransmitDrainBytes = qMax<qint64>(0, pendingBytes);
+}
+
+void SerialPort::startTransmitLineDelayForTest()
+{
+    /*
+     * 通过测试专用公开包装调用私有状态机，避免使用 #define private public。
+     * MSVC 会把成员访问权限编码进符号名，强行改写 private 会导致测试链接到
+     * public 版符号，而实现文件生成 private 版符号，最终出现 LNK2019。
+     */
+    startTransmitLineDelay();
+}
+
+int SerialPort::estimateTransmitTimeMsForTest(qint64 bytes) const
+{
+    /*
+     * 暴露纯估算结果给测试断言，确保测试不需要直接链接私有辅助函数。
+     */
+    return estimateTransmitTimeMs(bytes);
+}
+
+bool SerialPort::transmitLineTimerActiveForTest() const
+{
+    /*
+     * 定时器对象仍由 SerialPort 管理，测试只读取状态，不接管其生命周期。
+     */
+    return m_transmitLineTimer->isActive();
+}
+
+int SerialPort::transmitLineTimerIntervalForTest() const
+{
+    /*
+     * 返回当前 interval，用于确认线路等待没有扣减前一阶段等待写缓冲的耗时。
+     */
+    return m_transmitLineTimer->interval();
+}
+#endif
+
 void SerialPort::onReadyRead()
 {
     QByteArray data = m_port->readAll();
@@ -396,7 +442,7 @@ void SerialPort::applyConfig()
     m_port->setReadBufferSize(m_config.readBufferSize);
 }
 
-Q_NEVER_INLINE void SerialPort::startTransmitLineDelay()
+void SerialPort::startTransmitLineDelay()
 {
     if (!m_waitingTransmitDrain || m_transmitLineTimer->isActive()) {
         return;
@@ -485,7 +531,7 @@ double SerialPort::configuredBitsPerByte() const
     return bits;
 }
 
-Q_NEVER_INLINE int SerialPort::estimateTransmitTimeMs(qint64 bytes) const
+int SerialPort::estimateTransmitTimeMs(qint64 bytes) const
 {
     if (bytes <= 0) {
         return 0;

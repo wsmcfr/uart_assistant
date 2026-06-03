@@ -157,6 +157,46 @@ public:
      */
     static bool isValidBaudRate(int baudRate);
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：模拟已经进入串口发送排空等待状态。
+     * @param pendingBytes 当前文件块需要按线路时间继续等待的字节数。
+     *
+     * 主要流程：设置 drain 状态标志并保存待估算字节数，供单元测试在不打开
+     * 真实串口的情况下复现“Qt/系统写缓冲刚清空”的边界。该接口只在测试目标
+     * 定义 COMASSISTANT_TESTS 时可见，避免测试用 private/public 宏改写 MSVC
+     * 成员访问属性后产生链接符号不一致。
+     */
+    void prepareTransmitDrainForTest(qint64 pendingBytes);
+
+    /**
+     * @brief 测试专用：触发线路发送等待阶段。
+     *
+     * 主要流程：直接调用内部 startTransmitLineDelay()，用于验证写缓冲清空后
+     * 是否重新等待完整线路时间。返回值通过定时器探针读取。
+     */
+    void startTransmitLineDelayForTest();
+
+    /**
+     * @brief 测试专用：估算指定字节数在线路上发送完成所需时间。
+     * @param bytes 需要估算的字节数。
+     * @return 按当前波特率、数据位、校验位和停止位估算出的毫秒数。
+     */
+    int estimateTransmitTimeMsForTest(qint64 bytes) const;
+
+    /**
+     * @brief 测试专用：判断线路等待定时器是否正在运行。
+     * @return true 表示已经进入按线路时间等待发送完成的阶段。
+     */
+    bool transmitLineTimerActiveForTest() const;
+
+    /**
+     * @brief 测试专用：获取线路等待定时器当前间隔。
+     * @return 定时器间隔毫秒数，用于验证没有扣减前一阶段等待耗时。
+     */
+    int transmitLineTimerIntervalForTest() const;
+#endif
+
 signals:
     /**
      * @brief 波特率变更信号
@@ -177,15 +217,10 @@ private slots:
 
 private:
     void applyConfig();
-    /*
-     * 测试会直接探测 drain 状态机的线路等待阶段。MSVC Release 编译可能把
-     * 私有辅助函数完全内联到本翻译单元，导致测试目标跨翻译单元链接不到符号；
-     * 因此显式保留函数体，产品运行逻辑不受影响。
-     */
-    Q_NEVER_INLINE void startTransmitLineDelay();
+    void startTransmitLineDelay();
     void completeTransmitDrain(bool success, const QString& errorMessage);
     double configuredBitsPerByte() const;
-    Q_NEVER_INLINE int estimateTransmitTimeMs(qint64 bytes) const;
+    int estimateTransmitTimeMs(qint64 bytes) const;
     static QSerialPort::DataBits toQtDataBits(DataBits bits);
     static QSerialPort::StopBits toQtStopBits(StopBits bits);
     static QSerialPort::Parity toQtParity(Parity parity);
