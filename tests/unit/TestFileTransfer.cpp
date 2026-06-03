@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QMetaType>
+#include <QMetaObject>
 #include <QObject>
 #include <QRadioButton>
 #include <QSignalSpy>
@@ -581,7 +582,17 @@ void TestFileTransfer::testXModemSendRetransmitsEotOnTimeout()
     QCOMPARE(sendSpy.count(), 2);
     QCOMPARE(lastSentPacket(sendSpy), QByteArray(1, static_cast<char>(0x04)));
 
-    transfer.onTimeout();
+    /*
+     * 这里通过 Qt 元对象触发私有槽，而不是直接调用 onTimeout()。
+     * 测试文件为了检查缓存策略临时把 private 暴露为 public；MinGW 的
+     * C++ 符号不编码访问级别，直接调用可以链接，但 MSVC 会把测试侧
+     * 看到的 public 成员和生产侧实际 private 成员编码成不同符号，导致
+     * CI 链接失败。元对象调用会走 moc 生成的类内分发代码，既保持槽的
+     * 真实访问级别，又能稳定触发同一条超时逻辑。
+     */
+    QVERIFY(QMetaObject::invokeMethod(&transfer,
+                                      "onTimeout",
+                                      Qt::DirectConnection));
 
     QCOMPARE(sendSpy.count(), 3);
     QCOMPARE(lastSentPacket(sendSpy), QByteArray(1, static_cast<char>(0x04)));
