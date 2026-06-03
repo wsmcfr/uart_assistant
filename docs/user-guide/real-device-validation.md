@@ -10,7 +10,7 @@
 | 日志模板 | 使用 [真实设备验证日志模板](real-device-validation-log-template.md) 记录每次验证 |
 | 串口设备 | 至少准备一个可回显或可接收文件的 MCU/Bootloader，记录芯片型号、固件版本和串口参数 |
 | OTA 设备 | 准备能解析自定义 OTA 文件头、数据包、结束包和可选 ACK 的 Bootloader |
-| X/YMODEM 设备 | 准备能返回 `C`、`NAK`、`ACK`、`CAN` 的标准 Bootloader 或终端工具 |
+| X/YMODEM 设备 | 准备能返回 `C`、`G`、`NAK`、`ACK`、`CAN` 的标准 Bootloader 或终端工具；YMODEM-G 需优先使用硬件流控或低误码链路 |
 | HID 设备 | 准备已知 Input、Output、Feature Report 长度和 Report ID 的 HID 设备 |
 
 ## 通用记录字段
@@ -67,14 +67,18 @@
 | XMODEM-CRC | 设备端进入接收并发送 `C`，应用选择 XMODEM-CRC | 开始握手后发送 128 字节包，ACK 后推进 |
 | XMODEM-1K | 设备端支持 1K 包时选择 XMODEM-1K | 每包 1024 字节，最后不足部分使用 `0x1A` 填充 |
 | YMODEM | 选择 YMODEM 并发送文件 | 先发送文件头，再发送数据包，最后发送结束头 |
+| YMODEM-G | 选择 YMODEM-G 并发送文件 | 接收端用 `G` 请求头包和数据流；应用不等待逐数据包 ACK，逐包发送数据并在 EOT 后等待 ACK+G |
+| YMODEM-G 接收 | 应用选择 YMODEM-G 接收，设备端发送文件 | 应用先发送 `G`，成功数据包不逐包 ACK，EOT 后发送 `ACK+G` 请求下一文件头 |
+| YMODEM-G 错误 | 设备端故意发送坏 CRC 或错包号 | 应用发送多字节 `CAN`，释放目标文件并显示失败原因 |
 | 接收方取消 | 设备端发送 `CAN` | 应用停止传输并显示接收方取消 |
 | 校验失败 | 设备端故意返回 `NAK` | 应用重发当前包，超过最大重试后失败 |
 
 失败定位重点：
 
-- 一直等待开始时，抓取设备端是否发送 `C` 或 `NAK`。
+- 一直等待开始时，抓取设备端是否发送 `C`、`G` 或 `NAK`。
 - 重试次数增长时，记录包号、校验方式和设备端返回字节。
 - 传输完成但文件不一致时，确认 Bootloader 是否剥离 `0x1A` 填充。
+- YMODEM-G 不支持 NAK 重传；如果链路会频繁出错，应改用普通 YMODEM 或降低速率。
 
 ## HID Report 验证
 
@@ -100,7 +104,7 @@
 |------|----------|
 | 自动化测试 | `ComAssistant_tests.exe` 和 `ctest` 全部通过 |
 | Raw/OTA | 大文件不一次性占用异常内存，暂停/继续/取消/失败状态可见且准确 |
-| X/YMODEM | 握手、重发、取消、完成路径均能被设备端验证 |
+| X/YMODEM/YMODEM-G | 握手、重发或 G 模式中止、取消、完成路径均能被设备端验证 |
 | HID | Input/Output/Feature 均可用，关闭和并发 Feature 操作稳定 |
 | 诊断记录 | 每个失败都能在日志中定位到阶段、参数和错误文本 |
 

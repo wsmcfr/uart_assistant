@@ -53,7 +53,6 @@
 #include "macro/MacroRecorder.h"
 #include "communication/MultiPortManager.h"
 #include "transfer/FileTransfer.h"
-#include "upgrade/IAPUpgrader.h"
 #include "upgrade/AppUpdateChecker.h"
 #include "version.h"
 
@@ -853,6 +852,7 @@ void MainWindow::onDataReceived(const QByteArray& data)
     if (m_statistics) {
         m_statistics->addRxBytes(data.size());
     }
+    appendExportHistoryRecord(data, true);
 
     // 数据分窗路由
     if (m_dataWindowManager && m_dataWindowManager->hasRules()) {
@@ -915,20 +915,53 @@ void MainWindow::onDataReceived(const QByteArray& data)
 
 void MainWindow::onDataSent(const QByteArray& data)
 {
+    recordSentData(data);
+}
+
+/**
+ * @brief 统一记录已经成功发送的数据。
+ * @param data 实际被本地发送接口接受的字节。
+ * @param note 导出备注，用于区分 Feature Report、广播等专用路径。
+ * @param updateVisibleDisplay 是否同步刷新当前可见发送显示区。
+ */
+void MainWindow::recordSentData(const QByteArray& data,
+                                const QString& note,
+                                bool updateVisibleDisplay)
+{
     // 串口类型继续进入当前显示模式；网络/HID 类型进入对应专用工作台。
-    if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
-        m_currentModeWidget->appendSentData(data);
-    } else if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
-        workspace->appendSentData(data);
+    if (updateVisibleDisplay) {
+        if (m_currentCommType == CommType::Serial && m_currentModeWidget) {
+            m_currentModeWidget->appendSentData(data);
+        } else if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
+            workspace->appendSentData(data);
+        }
     }
 
     if (m_statistics) {
         m_statistics->addTxBytes(data.size());
     }
+    appendExportHistoryRecord(data, false, note);
 
     // 数据表格视图更新
     if (m_dataTableWidget) {
         m_dataTableWidget->addSentData(data, currentProtocolDisplayName());
+    }
+}
+
+/**
+ * @brief 记录不走普通接收解析链路的辅助接收数据。
+ * @param data 实际收到的数据。
+ * @param note 导出备注。
+ */
+void MainWindow::recordAuxiliaryReceivedData(const QByteArray& data, const QString& note)
+{
+    if (m_statistics) {
+        m_statistics->addRxBytes(data.size());
+    }
+    appendExportHistoryRecord(data, true, note);
+
+    if (m_dataTableWidget) {
+        m_dataTableWidget->addReceivedData(data, currentProtocolDisplayName());
     }
 }
 
@@ -1338,27 +1371,155 @@ QString MainWindow::currentProtocolDisplayName() const
     return m_protocolState.protocol() ? m_protocolState.protocol()->name() : QString();
 }
 
-void MainWindow::onExportData()
+/**
+ * @brief 返回当前通信端点的导出来源名称。
+ * @return 用于 DataRecord::source 的稳定文本，帮助用户在导出文件里区分端口或端点。
+ */
+QString MainWindow::currentCommunicationSourceLabel() const
 {
-    QString fileName = QFileDialog::getSaveFileName(this, tr("导出数据"),
-        QString(), tr("文本文件 (*.txt);;所有文件 (*)"));
+    switch (m_currentCommType) {
+        case CommType::Serial:
+            return m_serialConfig.portName.isEmpty()
+                ? tr("串口")
+                : m_serialConfig.portName;
+        case CommType::TcpClient:
+            return QStringLiteral("TCP Client %1:%2")
+                .arg(m_networkConfig.serverIp)
+                .arg(m_networkConfig.serverPort);
+        case CommType::TcpServer:
+            return QStringLiteral("TCP Server :%1").arg(m_networkConfig.listenPort);
+        case CommType::Udp:
+            if (!m_networkConfig.remoteIp.isEmpty() && m_networkConfig.remotePort > 0) {
+                return QStringLiteral("UDP :%1 -> %2:%3")
+                    .arg(m_networkConfig.listenPort)
+                    .arg(m_networkConfig.remoteIp)
+                    .arg(m_networkConfig.remotePort);
+            }
+            return QStringLiteral("UDP :%1").arg(m_networkConfig.listenPort);
+        case CommType::Hid:
+            if (!m_hidConfig.name.isEmpty()) {
+                return m_hidConfig.name;
+            }
+            if (m_hidConfig.vendorId != 0 || m_hidConfig.productId != 0) {
+                return QStringLiteral("HID VID:%1 PID:%2")
+                    .arg(m_hidConfig.vendorId, 4, 16, QLatin1Char('0'))
+                    .arg(m_hidConfig.productId, 4, 16, QLatin1Char('0'))
+                    .toUpper();
+            }
+            return QStringLiteral("HID");
+    }
 
-    if (fileName.isEmpty()) {
+    return QString();
+}
+
+/**
+ * @brief 追加一条主窗口增强导出历史记录。
+ * @param data 收到或发送的原始字节。
+ * @param isReceive true 表示 RX，false 表示 TX。
+ * @param note 附加说明，例如 TCP Client ID、UDP 目标或 HID Feature 类型。
+ */
+void MainWindow::appendExportHistoryRecord(const QByteArray& data,
+                                           bool isReceive,
+                                           const QString& note)
+{
+    if (data.isEmpty()) {
         return;
     }
 
-    // 使用当前模式组件导出
-    if (m_currentModeWidget) {
-        m_currentModeWidget->exportToFile(fileName);
+    DataRecord record = isReceive
+        ? DataRecord::fromReceive(data, currentCommunicationSourceLabel())
+        : DataRecord::fromSend(data, currentCommunicationSourceLabel());
+    record.note = note.isEmpty()
+        ? QStringLiteral("#%1").arg(++m_exportHistoryNextIndex)
+        : QStringLiteral("#%1 %2").arg(++m_exportHistoryNextIndex).arg(note);
+
+    m_exportHistoryRecords.append(record);
+    m_exportHistoryBytes += record.data.size();
+    trimExportHistory();
+}
+
+/**
+ * @brief 裁剪增强导出历史，保证长期运行不会形成新的无界缓存。
+ */
+void MainWindow::trimExportHistory()
+{
+    /*
+     * 记录条数和 payload 字节数双上限同时生效：小包高频场景靠条数裁剪，
+     * 大包低频场景靠字节裁剪。裁剪时只删除最旧记录，保留最近上下文。
+     */
+    int removeCount = 0;
+    qint64 bytesAfterRemoval = m_exportHistoryBytes;
+    while (removeCount < m_exportHistoryRecords.size() &&
+           (m_exportHistoryRecords.size() - removeCount > kMaxExportHistoryRecords ||
+            bytesAfterRemoval > kMaxExportHistoryBytes)) {
+        bytesAfterRemoval -= m_exportHistoryRecords.at(removeCount).data.size();
+        ++removeCount;
     }
+
+    if (removeCount <= 0) {
+        return;
+    }
+
+    m_exportHistoryRecords.erase(m_exportHistoryRecords.begin(),
+                                 m_exportHistoryRecords.begin() + removeCount);
+    m_exportHistoryBytes = qMax<qint64>(0, bytesAfterRemoval);
+}
+
+/**
+ * @brief 清空增强导出历史并释放历史峰值容量。
+ */
+void MainWindow::clearExportHistory()
+{
+    m_exportHistoryRecords.clear();
+    m_exportHistoryRecords.squeeze();
+    m_exportHistoryBytes = 0;
+    m_exportHistoryNextIndex = 0;
+    refreshExportDialogRecords();
+}
+
+/**
+ * @brief 同步已打开导出对话框中的记录。
+ */
+void MainWindow::refreshExportDialogRecords()
+{
+    if (m_exportDialog) {
+        m_exportDialog->setRecords(m_exportHistoryRecords);
+    }
+}
+
+void MainWindow::onExportData()
+{
+    syncCurrentWorkspaceToConfig();
+
+    if (m_exportHistoryRecords.isEmpty()) {
+        QMessageBox::information(this,
+                                 tr("导出数据"),
+                                 tr("当前没有可导出的收发记录。"));
+        return;
+    }
+
+    if (!m_exportDialog) {
+        m_exportDialog = new ExportDialog(this);
+        connect(m_exportDialog, &QObject::destroyed, this, [this]() {
+            m_exportDialog = nullptr;
+        });
+    }
+
+    refreshExportDialogRecords();
+    m_exportDialog->exec();
 }
 
 void MainWindow::onClearAll()
 {
-    // 清空当前模式组件
-    if (m_currentModeWidget) {
+    // 清空当前通信工作台或串口显示模式，保持用户点击“清空”时只清当前可见数据面板。
+    if (m_currentCommType != CommType::Serial) {
+        if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
+            workspace->clear();
+        }
+    } else if (m_currentModeWidget) {
         m_currentModeWidget->clear();
     }
+    clearExportHistory();
 }
 
 void MainWindow::onSettings()
@@ -2491,6 +2652,15 @@ void MainWindow::connectCommunicationWorkspace(CommunicationWorkspaceWidget* wid
                     const qint64 written = tcpServer->writeToClient(clientId, data);
                     if (written < 0) {
                         statusBar()->showMessage(tr("发送失败: %1").arg(tcpServer->lastError()), 5000);
+                    } else if (written > 0) {
+                        /*
+                         * TCP Server 定向发送不经过 SendDispatcher，底层 dataSent
+                         * 信号也没有绑定到控制器转发，因此这里把实际已接受的
+                         * 字节纳入统计和增强导出历史。
+                         */
+                        recordSentData(
+                            data.left(static_cast<int>(qMin<qint64>(written, data.size()))),
+                            tr("TCP Server client %1").arg(clientId));
                     }
                 }, Qt::UniqueConnection);
                 connect(tcpServerWorkspace, &TcpServerWorkspaceWidget::broadcastDataRequested,
@@ -2508,6 +2678,13 @@ void MainWindow::connectCommunicationWorkspace(CommunicationWorkspaceWidget* wid
                         statusBar()->showMessage(tr("广播失败: %1").arg(tcpServer->lastError()), 5000);
                     } else if (written == 0) {
                         statusBar()->showMessage(tr("当前没有已连接客户端。"), 3000);
+                    } else {
+                        /*
+                         * 广播可能写入多个客户端，written 是累计字节数，不能
+                         * 用它截断单条 payload。只要至少一个客户端接受数据，
+                         * 导出历史记录一次用户发起的广播内容。
+                         */
+                        recordSentData(data, tr("TCP Server broadcast"));
                     }
                 }, Qt::UniqueConnection);
                 connect(tcpServerWorkspace, &TcpServerWorkspaceWidget::disconnectClientRequested,
@@ -2544,6 +2721,15 @@ void MainWindow::connectCommunicationWorkspace(CommunicationWorkspaceWidget* wid
                     const qint64 written = udpSocket->writeTo(data, ip, port);
                     if (written < 0) {
                         statusBar()->showMessage(tr("UDP 发送失败: %1").arg(udpSocket->lastError()), 5000);
+                    } else if (written > 0) {
+                        /*
+                         * UDP 工作台使用指定目标发送，不走 SendDispatcher。
+                         * 底层 dataSent 信号不会由控制器转发，因此这里记录
+                         * 实际写入的数据报，保持主导出历史覆盖 UDP 发送。
+                         */
+                        recordSentData(
+                            data.left(static_cast<int>(qMin<qint64>(written, data.size()))),
+                            tr("UDP %1:%2").arg(ip).arg(port));
                     }
                 }, Qt::UniqueConnection);
             }
@@ -2573,6 +2759,9 @@ void MainWindow::connectCommunicationWorkspace(CommunicationWorkspaceWidget* wid
                         if (hidWorkspaceGuard) {
                             hidWorkspaceGuard->appendFeatureReportSentData(report);
                         }
+                        recordSentData(report,
+                                       tr("HID Feature Report"),
+                                       false);
                     } else {
                         statusBar()->showMessage(tr("Feature Report 发送失败: %1").arg(hidDevice->lastError()), 5000);
                     }
@@ -2595,6 +2784,7 @@ void MainWindow::connectCommunicationWorkspace(CommunicationWorkspaceWidget* wid
                     if (hidWorkspaceGuard) {
                         hidWorkspaceGuard->appendFeatureReportData(report);
                     }
+                    recordAuxiliaryReceivedData(report, tr("HID Feature Report"));
                 }, Qt::UniqueConnection);
             }
             break;

@@ -81,9 +81,14 @@ qint64 TcpServer::bytesAvailable() const
 
 void TcpServer::setBufferSize(int size)
 {
-    m_bufferSize = size;
+    /*
+     * Qt 底层 readBufferSize 和 readAll() 兼容缓存使用同一配置上限。
+     * 负数没有明确业务含义，统一归零表示“不限制”，避免传给 Qt 后端。
+     */
+    m_bufferSize = qMax(0, size);
+    trimReceiveBuffer(m_readBuffer);
     for (auto socket : m_clients) {
-        socket->setReadBufferSize(size);
+        socket->setReadBufferSize(m_bufferSize);
     }
 }
 
@@ -257,7 +262,12 @@ void TcpServer::onClientReadyRead()
     QByteArray data = socket->readAll();
 
     if (!data.isEmpty()) {
-        m_readBuffer.append(data);
+        /*
+         * dataReceived 是主接收路径；m_readBuffer 只为旧 readAll() 调用保留
+         * 最近数据。追加后立即按 bufferSize 裁剪，避免未调用 readAll() 时
+         * TCP Server 隐藏缓存长期增长。
+         */
+        appendToReceiveBuffer(m_readBuffer, data);
         emit clientDataReceived(clientId, data);
         emit dataReceived(data);
     }

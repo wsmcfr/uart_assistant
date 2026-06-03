@@ -118,6 +118,17 @@ public:
      */
     int configVersion() const;
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：重置单例到未初始化状态。
+     *
+     * 主要流程：先同步并释放当前 QSettings，再恢复默认内存配置和初始化标记。
+     * 该接口只在单元测试目标中编译，避免测试自定义配置文件路径污染
+     * 后续主窗口测试或真实应用配置。
+     */
+    void resetForTest();
+#endif
+
 signals:
     /**
      * @brief 配置变更信号
@@ -141,6 +152,7 @@ private:
     ConfigManager& operator=(const ConfigManager&) = delete;
 
     void loadDefaults();
+    bool writeConfigToSettings(QSettings& settings);      ///< 将当前内存配置写入指定 QSettings，支持默认保存和显式路径导出复用
     void migrateConfig(int fromVersion, int toVersion);
 
     std::unique_ptr<QSettings> m_settings;

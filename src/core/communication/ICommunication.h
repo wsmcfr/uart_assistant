@@ -11,6 +11,7 @@
 #include <QObject>
 #include <QByteArray>
 #include <QString>
+#include <QtGlobal>
 
 namespace ComAssistant {
 
@@ -170,6 +171,36 @@ signals:
     void connectionStatusChanged(bool connected);
 
 protected:
+    /**
+     * @brief 追加数据到 readAll() 兼容缓存，并按缓冲区上限裁剪。
+     * @param buffer 要维护的兼容缓存。
+     * @param data 本次刚收到、已经通过 dataReceived 信号分发的数据。
+     *
+     * 主窗口主要通过 dataReceived 信号消费数据，但旧调用者仍可能依赖
+     * readAll()。因此各后端保留一份兼容缓存；为了避免信号路径已经消费
+     * 后缓存仍长期增长，这里只保留 bufferSize() 指定的尾部数据。
+     * m_bufferSize <= 0 表示不限制，沿用现有 HID 行为，避免破坏旧配置。
+     */
+    void appendToReceiveBuffer(QByteArray& buffer, const QByteArray& data) const
+    {
+        buffer.append(data);
+        trimReceiveBuffer(buffer);
+    }
+
+    /**
+     * @brief 按当前 m_bufferSize 裁剪 readAll() 兼容缓存。
+     * @param buffer 要裁剪的兼容缓存。
+     *
+     * 该函数用于 setBufferSize() 调小上限时立即释放旧数据，避免已经积累的
+     * 缓存必须等下一包到达才被裁剪。
+     */
+    void trimReceiveBuffer(QByteArray& buffer) const
+    {
+        if (m_bufferSize > 0 && buffer.size() > m_bufferSize) {
+            buffer = buffer.right(m_bufferSize);
+        }
+    }
+
     QString m_lastError;
     int m_readTimeout = 100;
     int m_writeTimeout = 100;

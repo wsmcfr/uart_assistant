@@ -28,6 +28,11 @@ private slots:
      * @brief 滑动条控件应给数值、单位和范围文本预留足够布局空间。
      */
     void testSliderControlLayoutAvoidsTextOverlap();
+
+    /**
+     * @brief 数据表格清空后应释放已落屏记录和待刷新记录的历史容量。
+     */
+    void testDataTableClearReleasesRecordCapacities();
 };
 
 #endif // TESTMEMORYAWAREUIBEHAVIOR_H

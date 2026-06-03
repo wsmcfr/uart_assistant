@@ -100,6 +100,148 @@ private slots:
      * progress.errorMessage 保留失败原因。
      */
     void testRawTransferLocalFailureUsesFailedState();
+
+    /**
+     * @brief XMODEM 发送启动后不能把整文件缓存到内存。
+     *
+     * 主要流程：创建超过单个协议块的文件，启动发送但不完成握手，检查
+     * 传输对象没有把整个文件内容放入 m_fileData。随后模拟接收端发起
+     * CRC 模式，验证首包仍按文件内容正确发送。
+     */
+    void testXModemSendStreamsFileWithoutWholeFileCache();
+
+    /**
+     * @brief XMODEM EOT 阶段超时应重发 EOT 而不是上一数据包。
+     *
+     * 主要流程：发送一个小文件到数据包 ACK 后进入 EOT 阶段，手动触发
+     * 超时回调，验证最后一次 sendData 是 EOT 控制字节。
+     */
+    void testXModemSendRetransmitsEotOnTimeout();
+
+    /**
+     * @brief YMODEM 发送头包阶段不能把整文件缓存到内存。
+     *
+     * 主要流程：创建超过单个 1K 块的文件，启动 YMODEM 并模拟接收端
+     * 请求头包，检查头包发送后 m_fileData 仍不持有整文件，同时首个
+     * 数据包可以从文件读取正确内容。
+     */
+    void testYModemSendStreamsFileWithoutWholeFileCache();
+
+    /**
+     * @brief YMODEM 发送收到 NAK 时必须重发当前数据包。
+     *
+     * 主要流程：完成头包握手并发出第一个数据包后，模拟接收端返回 NAK，
+     * 验证发送器不会读取下一包，而是重发当前待确认的数据包。
+     */
+    void testYModemSendRetransmitsCurrentPacketOnNak();
+
+    /**
+     * @brief YMODEM 每个数据包 ACK 后应重置重试计数。
+     *
+     * 主要流程：限制最大重试为 1，先让第一个数据包 NAK 后 ACK，再让
+     * 第二个数据包 NAK；验证第二个包仍可重发，不会继承上一包的重试数
+     * 而直接失败。
+     */
+    void testYModemSendResetsRetryCountAfterPacketAck();
+
+    /**
+     * @brief YMODEM-G 发送应由 G 握手启动并连续发送数据包。
+     *
+     * 主要流程：启动 YMODEM-G 发送，先用接收端的 G 请求文件头，再用
+     * 第二个 G 请求数据流；验证发送端不等待每个数据包 ACK，而是连续
+     * 发出所有数据包和 EOT，最后收到 ACK+G 后发送空头结束批次。
+     */
+    void testYModemGSendStreamsPacketsWithoutPerPacketAck();
+
+    /**
+     * @brief YMODEM-G 接收应使用 G 握手且不对每个数据包返回 ACK。
+     *
+     * 主要流程：接收端启动后先发送 G；收到文件头后再次发送 G；收到
+     * 数据包时直接写入文件但不 ACK；收到 EOT 后才 ACK 并发送下一个 G。
+     */
+    void testYModemGReceiveUsesGHandshakeAndSkipsDataAcks();
+
+    /**
+     * @brief YMODEM-G 接收发现错误包时必须中止而不是请求重传。
+     *
+     * 主要流程：接收合法头包后输入 CRC 损坏的数据包，验证接收端发送
+     * 多字节 CAN 中止序列、释放文件句柄并进入 Failed 状态。
+     */
+    void testYModemGReceiveAbortsOnCorruptDataPacket();
+
+    /**
+     * @brief 文件传输对话框标准协议列表必须暴露 YMODEM-G。
+     *
+     * 主要流程：构造对话框并切到 XMODEM/YMODEM 模式，检查协议下拉框
+     * 包含 YMODEM-G，且接收方向仍可选，避免枚举存在但 UI 无入口。
+     */
+    void testFileTransferDialogExposesYModemGProtocol();
+
+    /**
+     * @brief XMODEM 接收应边校验边写入文件，不再累计整文件数据。
+     *
+     * 主要流程：启动 XMODEM-CRC 接收，喂入一个合法 128 字节包，验证
+     * 接收端立即 ACK、`m_fileData` 不增长；收到 EOT 后输出文件包含
+     * 完整协议块内容。
+     */
+    void testXModemReceiveWritesPacketsWithoutAccumulatingFileData();
+
+    /**
+     * @brief XMODEM 接收应保留半包直到后续数据补齐。
+     *
+     * 主要流程：把一个合法 XMODEM 包拆成两段输入，验证第一段不会被
+     * 清空丢失，第二段到达后能完成校验并返回 ACK。
+     */
+    void testXModemReceiveKeepsPartialPacketUntilComplete();
+
+    /**
+     * @brief XMODEM 接收收到发送方取消时必须释放目标文件。
+     *
+     * 主要流程：开始接收后模拟发送方发送 CAN，验证状态为 Cancelled，
+     * 完成信号为失败，且内部文件句柄已经释放。
+     */
+    void testXModemReceiveSenderCancelReleasesOpenFile();
+
+    /**
+     * @brief XMODEM 接收校验失败超限时必须释放目标文件。
+     *
+     * 主要流程：最大重试设为 0 后输入 CRC 错误包，验证传输进入 Failed，
+     * 错误文本保留，并且目标文件句柄释放。
+     */
+    void testXModemReceiveFailureReleasesOpenFile();
+
+    /**
+     * @brief YMODEM 接收应完整处理文件头、数据包、EOT 和空头结束。
+     *
+     * 主要流程：接收端先发送 C 握手；收到 0 号文件头后 ACK 并再次发送 C；
+     * 收到数据包后写入声明大小的数据；EOT 按 NAK/ACK+C 双阶段收尾；
+     * 最后收到空文件头后 ACK 完成批次。
+     */
+    void testYModemReceiveCompletesSingleFileBatch();
+
+    /**
+     * @brief YMODEM 接收应把无效文件头 NAK 后继续等待正确头包。
+     *
+     * 主要流程：先发送 CRC 错误的 0 号头包，验证接收端返回 NAK 且不创建
+     * 输出文件；随后发送正确头包，验证状态机可以继续推进。
+     */
+    void testYModemReceiveRejectsCorruptHeaderAndAcceptsRetry();
+
+    /**
+     * @brief YMODEM 接收必须阻止文件名路径穿越保存目录。
+     *
+     * 主要流程：发送包含上级目录的文件名，验证接收端失败并且不会在
+     * 保存目录之外创建文件。
+     */
+    void testYModemReceiveRejectsUnsafeFileName();
+
+    /**
+     * @brief YMODEM 接收收到 CAN 后必须释放已打开的目标文件。
+     *
+     * 主要流程：先接收合法头包打开目标文件，再模拟发送方取消，验证状态
+     * 进入 Cancelled，且 Windows 下可以立即删除目标文件。
+     */
+    void testYModemReceiveSenderCancelReleasesOpenFile();
 };
 
 #endif // COMASSISTANT_TESTFILETRANSFER_H

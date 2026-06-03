@@ -79,23 +79,83 @@ void SendDispatcher::dispatchPending()
 
     while (m_queue.hasPending()) {
         const SendQueueItem item = m_queue.peek();
-        const qint64 written = m_writeHandler(item.payload);
+        const QByteArray remainingPayload = m_queue.headRemainingPayload();
+        if (remainingPayload.isEmpty()) {
+            /*
+             * 如果队首已没有剩余字节，说明上一次部分写入刚好写完但还没
+             * 走到完成分支。这里直接完成队首，保证恢复调度时状态能收敛。
+             */
+            if (m_queue.completeHead(SendCompletion::success())) {
+                m_lastError.clear();
+                emit itemCompleted(item.id, item.payload);
+                emitQueueChanged();
+                continue;
+            }
+
+            m_lastError = m_queue.lastError().isEmpty()
+                ? tr("发送任务状态异常")
+                : m_queue.lastError();
+            emit itemFailed(item.id, item.payload, m_lastError);
+            emitQueueChanged();
+            return;
+        }
+
+        const qint64 written = m_writeHandler(remainingPayload);
         if (written < 0) {
             /*
              * 底层明确失败时保留队首。这里先复制 item，是为了 completeHead()
              * 更新队首 attemptCount 后仍能用原始 payload 发出失败信号。
              */
-            m_lastError = m_errorProvider ? m_errorProvider() : QString();
-            if (m_lastError.isEmpty()) {
-                m_lastError = tr("发送失败");
-            }
+            m_lastError = resolveWriteError(tr("发送失败"));
             m_queue.completeHead(SendCompletion::failed(m_lastError));
             emit itemFailed(item.id, item.payload, m_lastError);
             emitQueueChanged();
             return;
         }
 
-        m_queue.completeHead(SendCompletion::success());
+        if (written == 0) {
+            /*
+             * 0 字节写入不会推进状态。如果继续循环会形成忙等，如果当成
+             * 成功则会丢整包；因此明确按停滞失败处理，等待上层恢复后重试。
+             */
+            m_lastError = resolveWriteError(tr("底层写入返回 0 字节，发送停滞"));
+            m_queue.completeHead(SendCompletion::failed(m_lastError));
+            emit itemFailed(item.id, item.payload, m_lastError);
+            emitQueueChanged();
+            return;
+        }
+
+        if (!m_queue.markHeadBytesWritten(written)) {
+            /*
+             * 返回值超过剩余长度等异常会由队列记录具体错误。这里保留
+             * 队首并通知上层，避免把未知后端行为误判为发送成功。
+             */
+            m_lastError = m_queue.lastError().isEmpty()
+                ? tr("发送写入状态异常")
+                : m_queue.lastError();
+            emit itemFailed(item.id, item.payload, m_lastError);
+            emitQueueChanged();
+            return;
+        }
+
+        if (m_queue.peek().bytesWritten < m_queue.peek().payload.size()) {
+            /*
+             * 部分写入是正常情况。调度器继续 while 循环，下一轮只把剩余
+             * 尾部传给底层 write()，避免重复发送已被接受的前缀。
+             */
+            emitQueueChanged();
+            continue;
+        }
+
+        if (!m_queue.completeHead(SendCompletion::success())) {
+            m_lastError = m_queue.lastError().isEmpty()
+                ? tr("发送任务无法完成")
+                : m_queue.lastError();
+            emit itemFailed(item.id, item.payload, m_lastError);
+            emitQueueChanged();
+            return;
+        }
+
         m_lastError.clear();
         emit itemCompleted(item.id, item.payload);
         emitQueueChanged();
@@ -134,6 +194,19 @@ QString SendDispatcher::lastError() const
 void SendDispatcher::emitQueueChanged()
 {
     emit queueChanged(m_queue.size(), m_queue.queuedBytes());
+}
+
+QString SendDispatcher::resolveWriteError(const QString& fallback) const
+{
+    /*
+     * 不同通信后端的 write() 只提供数字结果，真实原因通常保存在
+     * lastError()。这里集中处理错误文本，避免每个失败分支重复兜底逻辑。
+     */
+    QString error = m_errorProvider ? m_errorProvider() : QString();
+    if (error.isEmpty()) {
+        error = fallback;
+    }
+    return error;
 }
 
 } // namespace ComAssistant

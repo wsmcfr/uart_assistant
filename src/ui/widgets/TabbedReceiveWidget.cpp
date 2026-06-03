@@ -977,6 +977,15 @@ void TabbedReceiveWidget::flushPendingReceiveViews()
                 m_mainTextEdit->verticalScrollBar()->maximum());
         }
         m_mainTextEdit->setUpdatesEnabled(true);
+
+        /*
+         * 过滤视图依赖主文本区当前文档。接收区采用 pending 队列批量落屏后，
+         * 文档内容可能晚于过滤词变化；这里在真正写入主文档后重算过滤结果，
+         * 保证用户先输入过滤词再继续接收数据时，匹配行也能实时出现。
+         */
+        if (m_filterInput && !m_filterInput->text().isEmpty()) {
+            updateFilterView();
+        }
     }
 
     if (m_hexTable && m_hexModel && !m_pendingHexData.isEmpty()) {
@@ -1077,6 +1086,14 @@ void TabbedReceiveWidget::refreshMainView()
             m_mainTextEdit->verticalScrollBar()->maximum());
     }
     m_mainTextEdit->setUpdatesEnabled(true);
+
+    /*
+     * refreshMainView() 会在 HEX/文本显示切换、暂停恢复等场景重建整份主
+     * 文档。过滤结果必须跟随重建后的文档，而不是停留在重建前的内容。
+     */
+    if (m_filterInput && !m_filterInput->text().isEmpty()) {
+        updateFilterView();
+    }
 
 }
 

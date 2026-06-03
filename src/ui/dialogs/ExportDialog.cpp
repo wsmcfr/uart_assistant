@@ -67,6 +67,9 @@ void ExportDialog::setupUi()
     m_totalRecordsLabel = new QLabel(tr("总记录: 0"), this);
     m_filteredRecordsLabel = new QLabel(tr("过滤后: 0"), this);
     m_totalBytesLabel = new QLabel(tr("数据量: 0 bytes"), this);
+    m_totalRecordsLabel->setObjectName(QStringLiteral("exportTotalRecordsLabel"));
+    m_filteredRecordsLabel->setObjectName(QStringLiteral("exportFilteredRecordsLabel"));
+    m_totalBytesLabel->setObjectName(QStringLiteral("exportTotalBytesLabel"));
     m_totalRecordsLabel->setProperty("role", "muted");
     m_filteredRecordsLabel->setProperty("role", "muted");
     m_totalBytesLabel->setProperty("role", "muted");
@@ -114,6 +117,7 @@ void ExportDialog::setupFormatTab()
 
     // 格式选择
     m_formatCombo = new QComboBox(this);
+    m_formatCombo->setObjectName(QStringLiteral("exportFormatCombo"));
     m_formatCombo->addItem(tr("纯文本 (.txt)"), static_cast<int>(ExportFormat::PlainText));
     m_formatCombo->addItem(tr("CSV表格 (.csv)"), static_cast<int>(ExportFormat::Csv));
     m_formatCombo->addItem(tr("HTML网页 (.html)"), static_cast<int>(ExportFormat::Html));
@@ -128,6 +132,7 @@ void ExportDialog::setupFormatTab()
     // 文件路径
     auto* pathLayout = new QHBoxLayout();
     m_pathEdit = new QLineEdit(this);
+    m_pathEdit->setObjectName(QStringLiteral("exportPathEdit"));
     m_browseBtn = new QPushButton(tr("浏览..."), this);
     connect(m_browseBtn, &QPushButton::clicked, this, &ExportDialog::onBrowseClicked);
     pathLayout->addWidget(m_pathEdit);
@@ -243,18 +248,23 @@ void ExportDialog::setupFilterTab()
     auto* dirLayout = new QVBoxLayout(dirGroup);
 
     m_filterDirectionCheck = new QCheckBox(tr("启用方向过滤"), this);
+    m_filterDirectionCheck->setObjectName(QStringLiteral("exportFilterDirectionCheck"));
     connect(m_filterDirectionCheck, &QCheckBox::toggled, this, &ExportDialog::onFilterChanged);
     dirLayout->addWidget(m_filterDirectionCheck);
 
     m_receiveOnlyRadio = new QRadioButton(tr("仅接收数据"), this);
+    m_receiveOnlyRadio->setObjectName(QStringLiteral("exportReceiveOnlyRadio"));
     m_receiveOnlyRadio->setChecked(true);
     m_receiveOnlyRadio->setEnabled(false);
     dirLayout->addWidget(m_receiveOnlyRadio);
 
     m_sendOnlyRadio = new QRadioButton(tr("仅发送数据"), this);
+    m_sendOnlyRadio->setObjectName(QStringLiteral("exportSendOnlyRadio"));
     m_sendOnlyRadio->setEnabled(false);
     dirLayout->addWidget(m_sendOnlyRadio);
 
+    connect(m_receiveOnlyRadio, &QRadioButton::toggled, this, &ExportDialog::onFilterChanged);
+    connect(m_sendOnlyRadio, &QRadioButton::toggled, this, &ExportDialog::onFilterChanged);
     connect(m_filterDirectionCheck, &QCheckBox::toggled, m_receiveOnlyRadio, &QWidget::setEnabled);
     connect(m_filterDirectionCheck, &QCheckBox::toggled, m_sendOnlyRadio, &QWidget::setEnabled);
 
@@ -265,17 +275,24 @@ void ExportDialog::setupFilterTab()
     auto* timeLayout = new QFormLayout(timeGroup);
 
     m_filterTimeCheck = new QCheckBox(tr("启用时间过滤"), this);
+    m_filterTimeCheck->setObjectName(QStringLiteral("exportFilterTimeCheck"));
     connect(m_filterTimeCheck, &QCheckBox::toggled, this, &ExportDialog::onFilterChanged);
     timeLayout->addRow(m_filterTimeCheck);
 
     m_startTimeEdit = new QDateTimeEdit(QDateTime::currentDateTime().addSecs(-3600), this);
+    m_startTimeEdit->setObjectName(QStringLiteral("exportStartTimeEdit"));
     m_startTimeEdit->setDisplayFormat("yyyy-MM-dd hh:mm:ss");
     m_startTimeEdit->setEnabled(false);
+    connect(m_startTimeEdit, &QDateTimeEdit::dateTimeChanged,
+            this, &ExportDialog::onFilterChanged);
     timeLayout->addRow(tr("开始时间:"), m_startTimeEdit);
 
     m_endTimeEdit = new QDateTimeEdit(QDateTime::currentDateTime(), this);
+    m_endTimeEdit->setObjectName(QStringLiteral("exportEndTimeEdit"));
     m_endTimeEdit->setDisplayFormat("yyyy-MM-dd hh:mm:ss");
     m_endTimeEdit->setEnabled(false);
+    connect(m_endTimeEdit, &QDateTimeEdit::dateTimeChanged,
+            this, &ExportDialog::onFilterChanged);
     timeLayout->addRow(tr("结束时间:"), m_endTimeEdit);
 
     connect(m_filterTimeCheck, &QCheckBox::toggled, m_startTimeEdit, &QWidget::setEnabled);
@@ -288,16 +305,23 @@ void ExportDialog::setupFilterTab()
     auto* contentLayout = new QFormLayout(contentGroup);
 
     m_filterContentCheck = new QCheckBox(tr("启用内容过滤"), this);
+    m_filterContentCheck->setObjectName(QStringLiteral("exportFilterContentCheck"));
     connect(m_filterContentCheck, &QCheckBox::toggled, this, &ExportDialog::onFilterChanged);
     contentLayout->addRow(m_filterContentCheck);
 
     m_contentFilterEdit = new QLineEdit(this);
+    m_contentFilterEdit->setObjectName(QStringLiteral("exportContentFilterEdit"));
     m_contentFilterEdit->setPlaceholderText(tr("正则表达式"));
     m_contentFilterEdit->setEnabled(false);
+    connect(m_contentFilterEdit, &QLineEdit::textChanged,
+            this, &ExportDialog::onFilterChanged);
     contentLayout->addRow(tr("过滤规则:"), m_contentFilterEdit);
 
     m_invertFilterCheck = new QCheckBox(tr("反转过滤 (排除匹配项)"), this);
+    m_invertFilterCheck->setObjectName(QStringLiteral("exportInvertFilterCheck"));
     m_invertFilterCheck->setEnabled(false);
+    connect(m_invertFilterCheck, &QCheckBox::toggled,
+            this, &ExportDialog::onFilterChanged);
     contentLayout->addRow(m_invertFilterCheck);
 
     connect(m_filterContentCheck, &QCheckBox::toggled, m_contentFilterEdit, &QWidget::setEnabled);
@@ -478,11 +502,18 @@ void ExportDialog::updatePreview()
         return;
     }
 
-    // 使用前10条记录预览
+    /*
+     * 统计和筛选直接复用成员 exporter 已持有的完整记录，避免预览时再
+     * 复制一份全量历史；临时 exporter 只用于格式化前 10 条预览记录。
+     */
+    const ExportOptions options = exportOptions();
+    m_exporter->setOptions(options);
+    const int filteredCount = m_exporter->filteredRecordCount();
+    const QVector<DataRecord> previewRecords = m_exporter->filteredRecords(10);
+
     DataExporter previewExporter;
-    QVector<DataRecord> previewRecords = m_records.mid(0, 10);
     previewExporter.addRecords(previewRecords);
-    previewExporter.setOptions(exportOptions());
+    previewExporter.setOptions(options);
 
     QString preview = previewExporter.exportToString();
 
@@ -491,8 +522,9 @@ void ExportDialog::updatePreview()
         preview = preview.left(2000) + "\n...";
     }
 
-    if (m_records.size() > 10) {
-        preview += tr("\n\n--- 还有 %1 条记录未显示 ---").arg(m_records.size() - 10);
+    if (filteredCount > previewRecords.size()) {
+        preview += tr("\n\n--- 还有 %1 条记录未显示 ---")
+            .arg(filteredCount - previewRecords.size());
     }
 
     m_previewEdit->setPlainText(preview);
@@ -502,19 +534,16 @@ void ExportDialog::updateStatistics()
 {
     m_totalRecordsLabel->setText(tr("总记录: %1").arg(m_records.size()));
 
-    // 计算过滤后的记录数
-    m_exporter->clearRecords();
-    m_exporter->addRecords(m_records);
+    // 计算过滤后的记录数。记录本身由 setRecords() 同步，这里只更新选项。
     m_exporter->setOptions(exportOptions());
 
-    // 获取过滤后数量 (通过导出到字符串并计算)
-    // 这里简化处理，实际应该有更好的方法
+    const int filteredRecords = m_exporter->filteredRecordCount();
     qint64 totalBytes = 0;
     for (const auto& record : m_records) {
         totalBytes += record.data.size();
     }
 
-    m_filteredRecordsLabel->setText(tr("过滤后: %1").arg(m_records.size()));
+    m_filteredRecordsLabel->setText(tr("过滤后: %1").arg(filteredRecords));
     m_totalBytesLabel->setText(tr("数据量: %1 bytes").arg(totalBytes));
 }
 

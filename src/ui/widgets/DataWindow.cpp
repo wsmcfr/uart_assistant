@@ -124,6 +124,7 @@ void DataWindow::appendData(const QString& data)
     if (!text.isEmpty()) {
         m_textEdit->moveCursor(QTextCursor::End);
         m_textEdit->insertPlainText(text);
+        trimTextDocument();
 
         // 智能滚屏：仅在未暂停时滚动到底部
         if (m_autoScrollEnabled && !m_smartScrollPaused) {
@@ -139,6 +140,13 @@ void DataWindow::appendData(const QString& data)
 void DataWindow::clear()
 {
     m_textEdit->clear();
+    /*
+     * 分窗没有撤销需求。清空后主动清理 QTextDocument 的 undo 栈，
+     * 避免已经删除的历史内容仍被文档内部缓存持有。
+     */
+    if (m_textEdit->document()) {
+        m_textEdit->document()->clearUndoRedoStacks();
+    }
     m_lineCount = 0;
     m_needTimestamp = true;
     m_smartScrollPaused = false;
@@ -173,6 +181,42 @@ bool DataWindow::exportToFile(const QString& fileName)
     stream << m_textEdit->toPlainText();
     file.close();
     return true;
+}
+
+void DataWindow::trimTextDocument()
+{
+    if (!m_textEdit) {
+        return;
+    }
+
+    QTextDocument* document = m_textEdit->document();
+    if (!document) {
+        return;
+    }
+
+    /*
+     * maximumBlockCount 已经负责“很多行”的场景；这里补上“单行极长”的
+     * 场景。QTextDocument::characterCount() 通常包含一个隐式结尾字符，
+     * 因此允许保留值略小于上限，避免边界处反复裁剪一个字符。
+     */
+    const int charCount = document->characterCount();
+    if (charCount <= m_maxTextChars) {
+        return;
+    }
+
+    const int removeChars = charCount - m_maxTextChars;
+    QTextCursor cursor(document);
+    cursor.beginEditBlock();
+    cursor.setPosition(0);
+    cursor.setPosition(removeChars, QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
+    cursor.endEditBlock();
+
+    /*
+     * 裁剪掉最早文本后清理撤销栈，防止 QTextDocument 为已经删除的历史
+     * 继续保留撤销数据，削弱本次内存优化效果。
+     */
+    document->clearUndoRedoStacks();
 }
 
 void DataWindow::closeEvent(QCloseEvent* event)

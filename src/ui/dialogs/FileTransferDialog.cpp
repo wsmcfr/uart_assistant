@@ -97,6 +97,7 @@ void FileTransferDialog::setupUi()
     m_protocolCombo->addItem("XMODEM-CRC", (int)TransferProtocol::XModemCRC);
     m_protocolCombo->addItem("XMODEM-1K", (int)TransferProtocol::XModem1K);
     m_protocolCombo->addItem("YMODEM", (int)TransferProtocol::YModem);
+    m_protocolCombo->addItem("YMODEM-G", (int)TransferProtocol::YModemG);
     m_protocolCombo->setCurrentIndex(1);  // 默认XMODEM-CRC
     protocolLayout->addWidget(m_protocolCombo);
     protocolLayout->addStretch();
@@ -542,7 +543,7 @@ int FileTransferDialog::currentBlockSize() const
 {
     /*
      * 标准协议的块大小由协议决定：XMODEM/XMODEM-CRC 为 128，
-     * XMODEM-1K/YMODEM 为 1024。裸流和 OTA 则使用用户配置。
+     * XMODEM-1K/YMODEM/YMODEM-G 为 1024。裸流和 OTA 则使用用户配置。
      */
     const DialogTransferMode mode = currentMode();
     if (mode == DialogTransferMode::RawStream) {
@@ -554,7 +555,9 @@ int FileTransferDialog::currentBlockSize() const
 
     const TransferProtocol protocol =
         static_cast<TransferProtocol>(m_protocolCombo->currentData().toInt());
-    return (protocol == TransferProtocol::XModem1K || protocol == TransferProtocol::YModem)
+    return (protocol == TransferProtocol::XModem1K ||
+            protocol == TransferProtocol::YModem ||
+            protocol == TransferProtocol::YModemG)
         ? 1024
         : 128;
 }

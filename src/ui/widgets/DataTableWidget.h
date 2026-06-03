@@ -140,6 +140,42 @@ public:
      */
     int recordCount() const { return m_records.size(); }
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：立即刷新待显示记录。
+     *
+     * 主要流程：直接调用批量刷新逻辑，把 pending 队列落到表格模型。
+     * 该接口只在单元测试目标中编译，生产程序不会暴露。
+     */
+    void flushPendingRecordsForTest() { updateDisplay(); }
+
+    /**
+     * @brief 测试专用：获取已落屏记录容器容量。
+     * @return m_records 当前 capacity，用于验证清空后是否释放历史峰值容量。
+     */
+    int recordCapacityForTest() const { return m_records.capacity(); }
+
+    /**
+     * @brief 测试专用：获取待刷新记录容器容量。
+     * @return m_pendingRecords 当前 capacity，用于验证清空 pending 队列后是否释放容量。
+     */
+    int pendingRecordCapacityForTest() const { return m_pendingRecords.capacity(); }
+
+    /**
+     * @brief 测试专用：获取源模型行数。
+     * @return QStandardItemModel 当前行数，用于验证清屏后表格模型仍可复用。
+     */
+    int sourceRowCountForTest() const { return m_model ? m_model->rowCount() : 0; }
+
+    /**
+     * @brief 测试专用：读取源模型指定单元格文本。
+     * @param row 源模型行号。
+     * @param column 源模型列号。
+     * @return 单元格显示文本；模型不存在或索引无效时返回空字符串。
+     */
+    QString sourceCellTextForTest(int row, int column) const;
+#endif
+
     /**
      * @brief 获取选中的记录
      * @return 选中的记录列表
@@ -196,6 +232,9 @@ private:
     void setupToolBar();
     void setupTable();
     void retranslateUi();
+    QStringList tableHeaderLabels() const;                    ///< 生成表格表头文本，供初始化、清空重建和翻译刷新复用
+    QStandardItemModel* createEmptyTableModel();               ///< 创建空表格模型，确保清空后可替换旧模型并释放内部容量
+    void replaceTableModelWithEmptyModel();                    ///< 用全新的空模型替换旧模型，释放 QStandardItemModel 历史分配
     void addRecords(const QVector<TableDataRecord>& records);  ///< 批量添加记录到模型，减少高频接收时的表格刷新开销
     void trimRecords();
     QString formatHexString(const QByteArray& data);

@@ -171,64 +171,82 @@ bool ConfigManager::saveConfig(const QString& filePath)
 
     QString savePath = filePath.isEmpty() ? m_configPath : filePath;
 
-    // 写入版本信息
-    m_settings->setValue("General/ConfigVersion", CONFIG_VERSION_MAJOR);
-    m_settings->setValue("General/AppVersion", APP_VERSION);
+    if (!filePath.isEmpty()) {
+        /*
+         * 显式传入 filePath 时，这是“把当前内存配置另存到指定文件”，
+         * 不是切换 ConfigManager 正在管理的主配置。使用临时 QSettings
+         * 写目标路径，避免误写 m_settings 指向的当前配置文件。
+         */
+        QSettings explicitSettings(savePath, QSettings::IniFormat);
+        const bool success = writeConfigToSettings(explicitSettings);
+        LOG_INFO(QString("Configuration saved to: %1").arg(savePath));
+        return success;
+    }
 
-    // 写入全局配置
-    m_settings->beginGroup("Global");
-    m_settings->setValue("Language", m_globalConfig.language);
-    m_settings->setValue("ThemeIndex", m_globalConfig.themeIndex);
-    m_settings->setValue("WindowTitleSuffix", m_globalConfig.windowTitleSuffix);
-    m_settings->setValue("HighDpiScaling", m_globalConfig.highDpiScaling);
-    m_settings->setValue("FirstRun", m_globalConfig.firstRun);
-    m_settings->setValue("LastActivatedTab", m_globalConfig.lastActivatedTab);
-    m_settings->endGroup();
-
-    // 写入串口配置
-    m_settings->beginGroup("Serial");
-    m_settings->setValue("PortName", m_serialConfig.portName);
-    m_settings->setValue("BaudRate", m_serialConfig.baudRate);
-    m_settings->setValue("DataBits", static_cast<int>(m_serialConfig.dataBits));
-    m_settings->setValue("StopBits", static_cast<int>(m_serialConfig.stopBits));
-    m_settings->setValue("Parity", static_cast<int>(m_serialConfig.parity));
-    m_settings->setValue("FlowControl", static_cast<int>(m_serialConfig.flowControl));
-    m_settings->setValue("ReadTimeout", m_serialConfig.readTimeout);
-    m_settings->setValue("WriteTimeout", m_serialConfig.writeTimeout);
-    m_settings->endGroup();
-
-    // 写入网络配置
-    m_settings->beginGroup("Network");
-    m_settings->setValue("Mode", static_cast<int>(m_networkConfig.mode));
-    m_settings->setValue("ServerIP", m_networkConfig.serverIp);
-    m_settings->setValue("ServerPort", m_networkConfig.serverPort);
-    m_settings->setValue("ListenPort", m_networkConfig.listenPort);
-    m_settings->setValue("ConnectTimeout", m_networkConfig.connectTimeout);
-    m_settings->setValue("MaxConnections", m_networkConfig.maxConnections);
-    m_settings->endGroup();
-
-    // 写入HID配置
-    m_settings->beginGroup("HID");
-    m_settings->setValue("Name", m_hidConfig.name);
-    m_settings->setValue("Path", m_hidConfig.path);
-    m_settings->setValue("VendorId", m_hidConfig.vendorId);
-    m_settings->setValue("ProductId", m_hidConfig.productId);
-    m_settings->setValue("InterfaceNumber", m_hidConfig.interfaceNumber);
-    m_settings->setValue("UsagePage", m_hidConfig.usagePage);
-    m_settings->setValue("Usage", m_hidConfig.usage);
-    m_settings->setValue("InputReportLength", m_hidConfig.inputReportLength);
-    m_settings->setValue("OutputReportLength", m_hidConfig.outputReportLength);
-    m_settings->setValue("FeatureReportLength", m_hidConfig.featureReportLength);
-    m_settings->setValue("FirstDataIsLength", m_hidConfig.firstDataIsLength);
-    m_settings->setValue("OutReportId", m_hidConfig.outReportId);
-    m_settings->setValue("FeatureReportId", m_hidConfig.featureReportId);
-    m_settings->setValue("RemoveInReportId", m_hidConfig.removeInReportId);
-    m_settings->endGroup();
-
-    m_settings->sync();
+    const bool success = writeConfigToSettings(*m_settings);
 
     LOG_INFO(QString("Configuration saved to: %1").arg(savePath));
-    return true;
+    return success;
+}
+
+bool ConfigManager::writeConfigToSettings(QSettings& settings)
+{
+    // 写入版本信息
+    settings.setValue("General/ConfigVersion", CONFIG_VERSION_MAJOR);
+    settings.setValue("General/AppVersion", APP_VERSION);
+
+    // 写入全局配置
+    settings.beginGroup("Global");
+    settings.setValue("Language", m_globalConfig.language);
+    settings.setValue("ThemeIndex", m_globalConfig.themeIndex);
+    settings.setValue("WindowTitleSuffix", m_globalConfig.windowTitleSuffix);
+    settings.setValue("HighDpiScaling", m_globalConfig.highDpiScaling);
+    settings.setValue("FirstRun", m_globalConfig.firstRun);
+    settings.setValue("LastActivatedTab", m_globalConfig.lastActivatedTab);
+    settings.endGroup();
+
+    // 写入串口配置
+    settings.beginGroup("Serial");
+    settings.setValue("PortName", m_serialConfig.portName);
+    settings.setValue("BaudRate", m_serialConfig.baudRate);
+    settings.setValue("DataBits", static_cast<int>(m_serialConfig.dataBits));
+    settings.setValue("StopBits", static_cast<int>(m_serialConfig.stopBits));
+    settings.setValue("Parity", static_cast<int>(m_serialConfig.parity));
+    settings.setValue("FlowControl", static_cast<int>(m_serialConfig.flowControl));
+    settings.setValue("ReadTimeout", m_serialConfig.readTimeout);
+    settings.setValue("WriteTimeout", m_serialConfig.writeTimeout);
+    settings.endGroup();
+
+    // 写入网络配置
+    settings.beginGroup("Network");
+    settings.setValue("Mode", static_cast<int>(m_networkConfig.mode));
+    settings.setValue("ServerIP", m_networkConfig.serverIp);
+    settings.setValue("ServerPort", m_networkConfig.serverPort);
+    settings.setValue("ListenPort", m_networkConfig.listenPort);
+    settings.setValue("ConnectTimeout", m_networkConfig.connectTimeout);
+    settings.setValue("MaxConnections", m_networkConfig.maxConnections);
+    settings.endGroup();
+
+    // 写入HID配置
+    settings.beginGroup("HID");
+    settings.setValue("Name", m_hidConfig.name);
+    settings.setValue("Path", m_hidConfig.path);
+    settings.setValue("VendorId", m_hidConfig.vendorId);
+    settings.setValue("ProductId", m_hidConfig.productId);
+    settings.setValue("InterfaceNumber", m_hidConfig.interfaceNumber);
+    settings.setValue("UsagePage", m_hidConfig.usagePage);
+    settings.setValue("Usage", m_hidConfig.usage);
+    settings.setValue("InputReportLength", m_hidConfig.inputReportLength);
+    settings.setValue("OutputReportLength", m_hidConfig.outputReportLength);
+    settings.setValue("FeatureReportLength", m_hidConfig.featureReportLength);
+    settings.setValue("FirstDataIsLength", m_hidConfig.firstDataIsLength);
+    settings.setValue("OutReportId", m_hidConfig.outReportId);
+    settings.setValue("FeatureReportId", m_hidConfig.featureReportId);
+    settings.setValue("RemoveInReportId", m_hidConfig.removeInReportId);
+    settings.endGroup();
+
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }
 
 void ConfigManager::resetToDefault()
@@ -390,6 +408,25 @@ int ConfigManager::configVersion() const
     }
     return 1;
 }
+
+#ifdef COMASSISTANT_TESTS
+void ConfigManager::resetForTest()
+{
+    /*
+     * ConfigManager 是进程级单例。单元测试会用临时配置路径初始化它，
+     * 如果不恢复未初始化状态，后续 MainWindow 测试会继续使用测试路径。
+     * 这里只在测试目标编译，生产程序不暴露这种生命周期入口。
+     */
+    if (m_settings) {
+        m_settings->sync();
+        m_settings.reset();
+    }
+
+    m_configPath.clear();
+    m_initialized = false;
+    loadDefaults();
+}
+#endif
 
 void ConfigManager::migrateConfig(int fromVersion, int toVersion)
 {

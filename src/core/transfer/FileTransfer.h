@@ -489,6 +489,23 @@ private:
     quint8 calculateChecksum(const QByteArray& data);
     void processReceiveData();  // 处理接收模式下的数据
 
+    /**
+     * @brief 关闭并释放当前打开的 XMODEM 文件句柄。
+     *
+     * 发送和接收路径共用 m_file。该函数集中处理 close/delete/nullptr，
+     * 避免完成、取消、失败和析构路径重复释放文件句柄。
+     */
+    void closeActiveFile();
+
+    /**
+     * @brief 以失败状态结束 XMODEM 传输。
+     * @param message 失败原因，写入 progress 并通过完成信号通知 UI。
+     *
+     * 失败时必须停止超时计时器并释放文件句柄，避免传输已经结束但后台
+     * 仍持有待发送或待写入文件。
+     */
+    void failTransferWithMessage(const QString& message);
+
 private:
     bool m_useCRC;
     bool m_use1K;
@@ -548,9 +565,125 @@ private:
     void sendFileHeader();
     void sendNextPacket();
     void sendEndOfBatch();
+
+    /**
+     * @brief 启动 YMODEM-G 的无逐包 ACK 数据流。
+     *
+     * 普通 YMODEM 每个数据包都等待 ACK；YMODEM-G 在收到接收端第二个
+     * G 后直接连续发送数据包。这里单独封装，避免把 G 模式误接到
+     * WaitingDataAck 分支。
+     */
+    void startYModemGStream();
+
+    /**
+     * @brief 发送下一个 YMODEM-G 数据包或 EOT。
+     *
+     * 该函数由 0ms 定时器逐包调用。这样仍然符合 YMODEM-G 不等 ACK 的
+     * 语义，同时给 Qt 事件循环和主窗口发送队列机会处理前一包，避免
+     * 一次性把整文件对应的所有协议包堆入内存。
+     */
+    void sendNextYModemGStreamPacket();
+
     QByteArray buildHeaderPacket(const QString& fileName, qint64 fileSize);
     QByteArray buildDataPacket(int packetNum, const QByteArray& data);
-    quint16 calculateCRC16(const QByteArray& data);
+    quint16 calculateCRC16(const QByteArray& data) const;
+
+    /**
+     * @brief 处理 YMODEM 接收模式下积累到 m_receiveBuffer 的协议数据。
+     */
+    void processReceiveData();
+
+    /**
+     * @brief 验证接收包的包号反码和 CRC16。
+     * @param packet 完整 YMODEM 包。
+     * @return 校验通过返回 true。
+     */
+    bool verifyReceivePacket(const QByteArray& packet) const;
+
+    /**
+     * @brief 解析 YMODEM 0 号文件头 payload。
+     * @param payload 128 字节头包数据区。
+     * @param fileName 输出文件名；空文件名表示批次结束。
+     * @param fileSize 输出文件大小。
+     * @return 头包格式有效返回 true。
+     */
+    bool parseReceiveHeader(const QByteArray& payload, QString& fileName, qint64& fileSize) const;
+
+    /**
+     * @brief 检查对端给出的 YMODEM 文件名是否只包含安全的单文件名。
+     * @param fileName 对端头包里的文件名。
+     * @return 可以在保存目录内创建时返回 true。
+     */
+    bool isSafeReceiveFileName(const QString& fileName) const;
+
+    /**
+     * @brief 根据用户选择的保存路径和对端文件名计算最终保存路径。
+     * @param fileName 对端头包里的安全文件名。
+     * @return 最终写入路径。
+     */
+    QString resolveReceiveFilePath(const QString& fileName) const;
+
+    /**
+     * @brief 打开当前 YMODEM 接收文件并初始化进度。
+     * @param fileName 对端头包声明的文件名。
+     * @param fileSize 对端头包声明的文件大小。
+     * @return 成功打开返回 true。
+     */
+    bool openReceiveFile(const QString& fileName, qint64 fileSize);
+
+    /**
+     * @brief 写入一个 YMODEM 数据包 payload 中仍属于文件内容的部分。
+     * @param payload 当前数据包的 1024 字节数据区。
+     * @return 写入成功返回 true。
+     */
+    bool writeReceivePayload(const QByteArray& payload);
+
+    /**
+     * @brief 关闭当前正在接收的文件并计入已接收文件数。
+     */
+    void finishCurrentReceiveFile();
+
+    /**
+     * @brief 完成整个 YMODEM 接收批次。
+     * @param message 完成提示文本。
+     */
+    void completeReceiveBatch(const QString& message);
+
+    /**
+     * @brief 以失败状态结束 YMODEM 传输并释放当前接收文件。
+     * @param message 失败原因。
+     */
+    void failTransferWithMessage(const QString& message);
+
+    /**
+     * @brief 发送 YMODEM-G 接收错误中止序列并进入失败状态。
+     * @param message 失败原因。
+     *
+     * YMODEM-G 没有 NAK 重传语义。接收端一旦发现校验、包序号或协议
+     * 状态错误，必须用 CAN 明确中止发送端继续流式发送。
+     */
+    void abortYModemGReceiveWithMessage(const QString& message);
+
+    /**
+     * @brief 发送一个 YMODEM/XMODEM 控制字节。
+     * @param value 控制字节，例如 ACK、NAK、CAN 或 'C'。
+     */
+    void sendControlByte(char value);
+
+    /**
+     * @brief 判断当前传输是否已经处于终止状态。
+     * @return 完成、取消或失败时返回 true。
+     */
+    bool isTerminalState() const;
+
+    /**
+     * @brief 关闭并释放当前打开的 YMODEM 文件句柄。
+     *
+     * 发送路径按块读取源文件，接收路径按包写入目标文件。两条路径都使用
+     * m_file，因此所有状态切换统一走这里释放句柄，避免切换批量文件或
+     * 失败取消时留下打开文件。
+     */
+    void closeActiveFile();
 
 private:
     bool m_useG;
@@ -558,11 +691,17 @@ private:
     int m_currentFileIndex = 0;
 
     QFile* m_file = nullptr;
+    QTimer* m_streamTimer = nullptr;
     QByteArray m_fileData;
     int m_packetNumber = 0;
     int m_retryCount = 0;
     QByteArray m_receiveBuffer;
+    QByteArray m_lastPacket;
     QString m_savePath;
+    QString m_currentReceiveFilePath;
+    qint64 m_receiveFileSize = 0;
+    qint64 m_receiveBytes = 0;
+    int m_receivedFileCount = 0;
 
     enum class SendState {
         WaitingC,
@@ -580,6 +719,7 @@ private:
         Starting,
         WaitingHeader,
         ReceivingData,
+        WaitingSecondEot,
         Done
     };
 

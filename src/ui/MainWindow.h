@@ -37,6 +37,7 @@
 #include "modes/IModeWidget.h"
 #include "session/SessionManager.h"
 #include "session/SessionData.h"
+#include "core/export/DataExporter.h"
 #include "widgets/ThemeButton.h"
 #include "core/protocol/PlotProtocolDetector.h"
 
@@ -224,6 +225,18 @@ private:
     void syncProtocolActionCheckedState(); ///< 同步绘图协议菜单的选中状态
     void syncReceiveProtocolActionCheckedState(); ///< 同步接收协议菜单的选中状态
     QString currentProtocolDisplayName() const; ///< 当前协议用于表格和日志显示的名称
+    QString currentCommunicationSourceLabel() const; ///< 当前通信端点用于导出记录来源列的名称
+    void appendExportHistoryRecord(const QByteArray& data,
+                                   bool isReceive,
+                                   const QString& note = QString()); ///< 追加一条有界导出历史记录
+    void recordSentData(const QByteArray& data,
+                        const QString& note = QString(),
+                        bool updateVisibleDisplay = true); ///< 统一记录发送成功的数据
+    void recordAuxiliaryReceivedData(const QByteArray& data,
+                                     const QString& note = QString()); ///< 记录不进入普通接收解析链路的接收数据
+    void trimExportHistory(); ///< 按记录数和字节数裁剪导出历史
+    void clearExportHistory(); ///< 清空导出历史并释放历史峰值容量
+    void refreshExportDialogRecords(); ///< 把最新导出历史同步到已打开的导出对话框
 
     // 应用更新
     void scheduleAutoUpdateCheck();
@@ -324,6 +337,13 @@ private:
     DataWindowManager* m_dataWindowManager = nullptr;  ///< 数据分窗管理器
     ControlPanel* m_controlPanel = nullptr;  ///< 控件面板
     DataTableWidget* m_dataTableWidget = nullptr;  ///< 数据表格视图
+
+    // 增强导出历史
+    QVector<DataRecord> m_exportHistoryRecords; ///< 主窗口最近收发记录，供增强导出对话框使用
+    qint64 m_exportHistoryBytes = 0;             ///< 导出历史中 payload 字节总量，用于字节上限裁剪
+    int m_exportHistoryNextIndex = 0;            ///< 导出历史递增序号，写入 note 便于导出后追溯顺序
+    static constexpr int kMaxExportHistoryRecords = 10000;      ///< 导出历史最多保留最近 10000 条记录
+    static constexpr qint64 kMaxExportHistoryBytes = 16 * 1024 * 1024; ///< 导出历史最多保留最近 16MB payload
 
     // 接收协议相关
     MainWindowProtocolState m_protocolState; ///< 稳定协议 ID 与旧版绘图枚举的当前事实源

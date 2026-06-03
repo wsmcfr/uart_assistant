@@ -213,8 +213,8 @@
 
     <div class="tip">
         <strong>内存与长时间运行 / Memory and Long Runs:</strong><br>
-        中文：终端、帧模式、调试模式以及 TCP/UDP/HID 工作台会在首次使用时按需加载，切换离开后会释放不用的高级模式或工作台；串口接收区、HEX 缓存、网络/HID/文件传输/脚本输出日志和宏录制事件只保留最近历史，超过上限会删除最早数据，清屏会释放可重建缓存。暂停显示期间仍会接收数据，但只保留最近一段待显示内容，继续显示后补刷近期数据，避免长时间暂停造成内存持续增长。<br>
-        English: Terminal, frame, debug, TCP/UDP and HID workspaces are loaded only when first used, then released after switching away. The serial receive area, HEX cache, network/HID/file-transfer/script logs and macro recording events keep bounded recent history; oldest data is removed after the limit, and clearing releases rebuildable caches. Paused display still receives data, but only keeps the latest pending content and flushes that recent content after resume to avoid unbounded memory growth.
+        中文：终端、帧模式、调试模式以及 TCP/UDP/HID 工作台会在首次使用时按需加载，切换离开后会释放不用的高级模式或工作台；串口接收区、HEX 缓存、数据表格、网络/HID/文件传输/脚本输出日志和宏录制事件只保留最近历史，超过上限会删除最早数据，清屏会释放可重建缓存。TCP 服务器、UDP 和 HID 后端的旧 readAll 兼容缓存也只保留最近数据，不会在主界面已经通过信号接收后继续无限增长。暂停显示期间仍会接收数据，但只保留最近一段待显示内容，继续显示后补刷近期数据，避免长时间暂停造成内存持续增长。<br>
+        English: Terminal, frame, debug, TCP/UDP and HID workspaces are loaded only when first used, then released after switching away. The serial receive area, HEX cache, data table, network/HID/file-transfer/script logs and macro recording events keep bounded recent history; oldest data is removed after the limit, and clearing releases rebuildable caches. TCP Server, UDP and HID also bound their legacy readAll compatibility buffers, so data already delivered to the UI through receive signals will not keep accumulating in hidden backend buffers. Paused display still receives data, but only keeps the latest pending content and flushes that recent content after resume to avoid unbounded memory growth.
     </div>
 
     <h3>串口连接 / Serial Connection</h3>
@@ -325,9 +325,9 @@
 
     <ul>
         <li><strong>裸流分块 / Raw Chunks:</strong> 按指定“每包字节”和“包间隔”直接发送文件内容，适合 MCU 程序自行顺序接收。</li>
-        <li><strong>XMODEM/YMODEM:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader。</li>
+        <li><strong>XMODEM/YMODEM/YMODEM-G:</strong> 使用标准握手协议，适合会返回 <code>C</code>、<code>G</code>、<code>NAK</code>、<code>ACK</code> 的 Bootloader；发送时按协议块读取文件，只保留当前待确认包或当前 G 流式包，标准协议模式可切换为接收文件。</li>
         <li><strong>自定义 OTA / Custom OTA:</strong> 发送文件头、分块数据和结束包，可选择等待 <code>ACK</code>、设置超时和重试。</li>
-        <li><strong>流式发送 / Streaming:</strong> 裸流和自定义 OTA 会按块读取文件，并等待本地发送队列确认后再推进下一块，适合较大的固件文件。</li>
+        <li><strong>流式发送 / Streaming:</strong> 裸流、自定义 OTA、XMODEM、YMODEM 和 YMODEM-G 都会按块读取文件；普通标准协议只缓存当前待 ACK 包，NAK 或超时时重发当前包；YMODEM-G 不等待逐包 ACK，但仍逐包读取，适合低误码链路的大固件文件。</li>
         <li><strong>可靠状态 / Reliable State:</strong> 文件传输会区分传输中、已暂停、正在取消、已取消、已完成和失败状态；失败时保留本地发送、连接或 ACK 超时等错误原因。</li>
     </ul>
 
@@ -335,6 +335,10 @@
         <strong>⚠️ 注意 / Warning:</strong> 发送固件前请确认串口已打开、设备已进入接收或 Bootloader 状态，并按设备处理能力设置块大小和包间隔；如果队列拒绝、写入失败或连接断开，当前文件传输会停止并显示失败原因。<br>
         Before firmware transfer, make sure the port is open and the device is ready. Choose block size and interval according to device capacity. If the queue rejects data, writing fails or the connection drops, the transfer stops with the failure reason.
     </div>
+
+    <h3>接收文件 / Receive File</h3>
+    <p><strong>中文：</strong>在文件传输中心选择 <strong>XMODEM/YMODEM</strong>，切换到“接收文件”，选择保存目录或保存文件路径后开始。XMODEM 会在校验通过后直接写入目标文件，不再把接收内容完整缓存在内存；标准 XMODEM 没有文件大小字段，因此最后一包的 <code>CPMEOF</code> 填充会按协议块原样保存。YMODEM 会按对端文件头中的文件名和大小保存数据，并在批次结束空头后完成。YMODEM-G 使用 <code>G</code> 握手，不对成功数据包逐包 ACK，发现校验或序号错误会 CAN 中止；裸流分块和自定义 OTA 当前仍只支持发送。</p>
+    <p><strong>English:</strong> In the file transfer center, select <strong>XMODEM/YMODEM</strong>, switch to "Receive File", choose a save folder or file path, then start. XMODEM writes verified packets directly to the target file instead of keeping the full received content in memory; standard XMODEM has no file-size field, so final-packet <code>CPMEOF</code> padding is saved as part of the protocol block. YMODEM saves data according to the peer filename and size header and completes after the empty end-of-batch header. YMODEM-G uses the <code>G</code> handshake, skips per-packet ACK for valid data, and aborts with CAN on checksum or sequence errors. Raw chunks and custom OTA remain send-only.</p>
 
     <h3>示例 / Examples:</h3>
     <p><strong>文本发送 / Text Send:</strong></p>
@@ -352,6 +356,8 @@
         <li><strong>十六进制标签 / Hex Tab:</strong> 显示HEX格式 / Display HEX format</li>
         <li><strong>过滤标签 / Filter Tab:</strong> 根据关键词过滤 / Filter by keywords</li>
         <li><strong>右键菜单 / Context Menu:</strong> 可复制、全选、清屏、暂停/继续显示，并快速切换自动滚动、HEX 显示、时间戳和高亮；暂停显示不会丢弃接收数据，继续后会补刷暂停期间收到的内容 / Copy, select all, clear screen, pause/resume display, and toggle auto scroll, HEX display, timestamp and highlighting. Pausing display keeps received data and flushes it after resume.</li>
+        <li><strong>数据分窗 / Data Windows:</strong> 可按关键字或正则把匹配数据路由到独立窗口；分窗按行数和字符数保留最近内容，无换行长流超过上限时删除最早文本并保留最新文本，导出时只导出当前保留内容 / Route matching data to separate windows by keyword or regex. Data windows keep recent content by line and character limits, drop oldest text for long unbroken streams, and export only retained content.</li>
+        <li><strong>数据表格 / Data Table:</strong> 结构化追踪 RX/TX 记录；清空会释放已显示记录、待刷新记录和表格缓存容量，后续新记录从 1 重新计数 / Track RX/TX records in a structured table. Clearing releases displayed records, pending records and rebuildable table cache, then new records start again from index 1.</li>
     </ul>
 
     <h3>接收协议 / Receive Protocol</h3>
@@ -393,6 +399,14 @@
         <strong>💡 提示 / Tip:</strong> 快捷发送配置会自动保存，下次启动时恢复。<br>
         Quick send configuration is automatically saved and restored on next launch.
     </div>
+
+    <h3>数据导出 / Data Export</h3>
+    <p><strong>中文：</strong>点击 <code>文件 -&gt; 导出数据</code> 会打开增强导出对话框，使用主窗口最近的结构化收发历史导出串口、TCP、UDP 和 HID 的 RX/TX 数据。支持 TXT、CSV、HTML、JSON、XML、二进制和十六进制转储，可选择时间戳、方向、来源、行号、HEX 显示，并可按方向、时间和内容正则过滤。</p>
+    <p><strong>English:</strong> Use <code>File -&gt; Export Data</code> to open the enhanced export dialog. It exports the main window's recent structured RX/TX history for serial, TCP, UDP and HID data. TXT, CSV, HTML, JSON, XML, binary and hex dump formats are supported, with timestamp, direction, source, line number, HEX display, direction/time/content filters.</p>
+    <p><strong>中文：</strong>导出历史按记录数和字节数保留最近数据；点击清空当前数据时会同步释放导出历史，避免长时间运行后隐藏导出缓存无限增长。</p>
+    <p><strong>English:</strong> Export history keeps bounded recent records by count and payload bytes. Clearing current data also releases the export history, preventing hidden export buffers from growing without limit.</p>
+    <p><strong>中文：</strong>真实保存文件时，导出器会按过滤结果逐条写入 TXT、CSV、HTML、JSON、XML、二进制或十六进制转储，不再先生成完整过滤副本和完整导出文本，因此大量历史记录导出时峰值内存更低；预览窗口仍只显示前几条记录。</p>
+    <p><strong>English:</strong> When saving a real file, the exporter streams matching records into TXT, CSV, HTML, JSON, XML, binary or hex dump output instead of building a full filtered copy and full export text first, reducing peak memory for large histories. The preview window still shows only the first records.</p>
 
     <h3>关键词高亮 / Keyword Highlight</h3>
     <p><strong>中文：</strong>在接收区可以设置关键词高亮，方便快速识别重要信息。</p>
@@ -451,9 +465,9 @@
     <strong>English:</strong> Download <code>ComAssistant_*_Windows_x64_Portable.zip</code> from GitHub Releases and run directly.</p>
 
     <!-- LATEST_RELEASE_HELP:START -->
-    <p><strong>当前版本 / Current Version:</strong> v1.8.1（发布于 2026-06-02 / released on 2026-06-02）</p>
-    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.1/ComAssistant_v1.8.1_Windows_x64_Portable.zip">ComAssistant_v1.8.1_Windows_x64_Portable.zip</a><br>
-    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.8.1/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
+    <p><strong>当前版本 / Current Version:</strong> v1.9.0（发布于 2026-06-03 / released on 2026-06-03）</p>
+    <p><strong>直链下载 / Direct Download:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.0/ComAssistant_v1.9.0_Windows_x64_Portable.zip">ComAssistant_v1.9.0_Windows_x64_Portable.zip</a><br>
+    <strong>校验文件 / Checksum:</strong> <a href="https://github.com/wsmcfr/uart_assistant/releases/download/v1.9.0/SHA256SUMS.txt">SHA256SUMS.txt</a></p>
 <!-- LATEST_RELEASE_HELP:END -->
 
     <div class="warning">

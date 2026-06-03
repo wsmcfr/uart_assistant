@@ -85,13 +85,26 @@ QByteArray UdpSocket::readAll()
 
 qint64 UdpSocket::bytesAvailable() const
 {
-    return m_readBuffer.size() + m_socket->pendingDatagramSize();
+    /*
+     * pendingDatagramSize() 在没有待处理数据报时返回 -1，不能直接与内部
+     * 缓存相加，否则会低估可读字节数。这里只在确实存在 pending 数据报时
+     * 统计底层队列中的下一包大小。
+     */
+    const qint64 pendingSize = m_socket->hasPendingDatagrams()
+        ? m_socket->pendingDatagramSize()
+        : 0;
+    return m_readBuffer.size() + qMax<qint64>(0, pendingSize);
 }
 
 void UdpSocket::setBufferSize(int size)
 {
-    m_bufferSize = size;
-    m_socket->setReadBufferSize(size);
+    /*
+     * UDP 兼容缓存和 Qt 底层读缓冲采用同一上限。归零表示不限制，保持
+     * ICommunication 旧语义，并避免把负数传递给 Qt。
+     */
+    m_bufferSize = qMax(0, size);
+    trimReceiveBuffer(m_readBuffer);
+    m_socket->setReadBufferSize(m_bufferSize);
 }
 
 int UdpSocket::bufferSize() const
@@ -258,7 +271,11 @@ void UdpSocket::onReadyRead()
             m_lastSenderIp = datagram.senderAddress().toString();
             m_lastSenderPort = datagram.senderPort();
 
-            m_readBuffer.append(data);
+            /*
+             * dataReceived/datagramReceived 已经把完整数据报交给主流程；
+             * m_readBuffer 只为旧 readAll() 调用保留最近数据，并按上限裁剪。
+             */
+            appendToReceiveBuffer(m_readBuffer, data);
             emit datagramReceived(data, m_lastSenderIp, m_lastSenderPort);
             emit dataReceived(data);
         }

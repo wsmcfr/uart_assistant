@@ -26,7 +26,7 @@
 | Raw 块大小/间隔 |  |
 | OTA magic/块大小/间隔 |  |
 | OTA ACK token/超时/重试 |  |
-| X/YMODEM 模式 |  |
+| X/YMODEM/YMODEM-G 模式 |  |
 | HID VID/PID/接口号 |  |
 | HID Input/Output/Feature 长度 |  |
 | HID Report ID |  |
@@ -67,6 +67,9 @@
 | XMODEM-CRC |  |  |  |
 | XMODEM-1K |  |  |  |
 | YMODEM |  |  |  |
+| YMODEM-G 发送 |  |  |  |
+| YMODEM-G 接收 |  |  |  |
+| YMODEM-G 错误中止 |  |  |  |
 | NAK 重发 |  |  |  |
 | CAN 取消 |  |  |  |
 

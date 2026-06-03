@@ -151,6 +151,13 @@ private:
      */
     void emitQueueChanged();
 
+    /**
+     * @brief 生成底层写入失败时使用的错误文本。
+     * @param fallback 当错误提供器没有返回文本时使用的兜底说明。
+     * @return 可展示给用户或写入诊断日志的错误文本。
+     */
+    QString resolveWriteError(const QString& fallback) const;
+
 private:
     SendQueue m_queue;          ///< 纯发送队列，负责容量和失败保持。
     WriteHandler m_writeHandler;///< 底层通信写入回调。

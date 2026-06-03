@@ -70,7 +70,8 @@ void TestTabbedReceiveWidget::testHexToggleRebuildsMainViewFromBufferedData()
 
     const QByteArray payload("Alpha\nBeta\n");
     widget.appendData(payload);
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("Alpha")), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("Beta")), 300);
 
     const QString initialText = mainViewText(widget);
     QVERIFY2(initialText.contains(QStringLiteral("Alpha")),
@@ -79,7 +80,8 @@ void TestTabbedReceiveWidget::testHexToggleRebuildsMainViewFromBufferedData()
              "文本模式应显示第二行原始文本");
 
     widget.setHexDisplayEnabled(true);
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("41 6C 70 68 61 0A")), 300);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("42 65 74 61 0A")), 300);
 
     const QString hexText = mainViewText(widget);
     QVERIFY2(hexText.contains(QStringLiteral("41 6C 70 68 61 0A")),
@@ -88,7 +90,7 @@ void TestTabbedReceiveWidget::testHexToggleRebuildsMainViewFromBufferedData()
              "切到 HEX 显示后，应看到 Beta 的十六进制内容");
 
     widget.setHexDisplayEnabled(false);
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget) == initialText, 300);
 
     const QString rebuiltText = mainViewText(widget);
     QCOMPARE(rebuiltText, initialText);
@@ -102,13 +104,13 @@ void TestTabbedReceiveWidget::testFilterViewFindsMatchingLinesFromCurrentDocumen
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     widget.appendData(QByteArray("INFO start\nERROR failed\nWARN retry\n"));
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("ERROR failed")), 300);
 
     QLineEdit* filterInput = widget.findChild<QLineEdit*>();
     QVERIFY(filterInput != nullptr);
 
     filterInput->setText(QStringLiteral("ERROR"));
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(filterViewText(widget).contains(QStringLiteral("ERROR failed")), 300);
 
     const QString filteredText = filterViewText(widget);
     QVERIFY2(filteredText.contains(QStringLiteral("ERROR failed")),
@@ -117,6 +119,33 @@ void TestTabbedReceiveWidget::testFilterViewFindsMatchingLinesFromCurrentDocumen
              "过滤结果不应包含未匹配的 INFO 行");
     QVERIFY2(!filteredText.contains(QStringLiteral("WARN retry")),
              "过滤结果不应包含未匹配的 WARN 行");
+}
+
+void TestTabbedReceiveWidget::testFilterViewUpdatesWhenBufferedDataFlushesAfterFilterIsSet()
+{
+    TabbedReceiveWidget widget;
+    widget.resize(900, 600);
+    widget.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&widget));
+
+    /*
+     * 先设置过滤词，再接收数据。旧实现只在 QLineEdit::textChanged 时
+     * 调用 updateFilterView()，因此此时过滤结果会基于空文档计算。
+     * 接收刷新定时器稍后把 pending 文本落到主文档后，过滤结果也应
+     * 重新计算，保证用户打开过滤页后继续收数时能看到新匹配行。
+     */
+    QLineEdit* filterInput = widget.findChild<QLineEdit*>();
+    QVERIFY(filterInput != nullptr);
+    filterInput->setText(QStringLiteral("ERROR"));
+
+    widget.appendData(QByteArray("INFO start\nERROR arrived later\n"));
+    QTRY_VERIFY_WITH_TIMEOUT(filterViewText(widget).contains(QStringLiteral("ERROR arrived later")), 300);
+
+    const QString filteredText = filterViewText(widget);
+    QVERIFY2(filteredText.contains(QStringLiteral("ERROR arrived later")),
+             "过滤词已存在时，后续批量刷新落屏的数据也应同步进入过滤结果。");
+    QVERIFY2(!filteredText.contains(QStringLiteral("INFO start")),
+             "过滤结果仍只能包含匹配过滤词的行。");
 }
 
 void TestTabbedReceiveWidget::testReceiveContextMenuContainsOperationalActions()
@@ -151,7 +180,7 @@ void TestTabbedReceiveWidget::testReceiveContextMenuActionsOperateOnDisplayState
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
 
     widget.appendData(QByteArray("first\n"));
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("first")), 300);
     QVERIFY2(mainViewText(widget).contains(QStringLiteral("first")),
              "测试前应先有可清除的接收内容");
 
@@ -190,7 +219,7 @@ void TestTabbedReceiveWidget::testReceiveContextMenuActionsOperateOnDisplayState
 
     resumeAction->trigger();
     QVERIFY2(!widget.isDisplayPaused(), "触发继续动作后应退出显示暂停状态");
-    QTest::qWait(30);
+    QTRY_VERIFY_WITH_TIMEOUT(mainViewText(widget).contains(QStringLiteral("70 61 75 73 65 64")), 300);
     QVERIFY2(mainViewText(widget).contains(QStringLiteral("70 61 75 73 65 64")),
              "继续显示后应按当前 HEX 显示设置补刷暂停期间收到的数据");
 

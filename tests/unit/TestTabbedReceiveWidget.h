@@ -43,6 +43,15 @@ private slots:
     void testFilterViewFindsMatchingLinesFromCurrentDocument();
 
     /**
+     * @brief 过滤词已设置时，后续批量刷新的接收数据也应更新过滤结果。
+     *
+     * 接收区现在会先把高频数据放入 pending 队列，再由定时器统一落屏。
+     * 该测试覆盖“过滤词先变化、文档稍后变化”的顺序，避免过滤结果
+     * 停留在旧文档状态。
+     */
+    void testFilterViewUpdatesWhenBufferedDataFlushesAfterFilterIsSet();
+
+    /**
      * @brief 接收区右键菜单应包含可操作的显示控制项。
      *
      * 菜单需要保留常用文本操作，同时补充清屏、暂停/继续显示、

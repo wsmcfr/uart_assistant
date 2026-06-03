@@ -56,3 +56,30 @@ void TestReleaseMetadata::testLatestReleaseDateMatchesBuildDate()
     QVERIFY2(quickstart.contains(expectedDate),
              qPrintable(QStringLiteral("quickstart latest release date should match %1.").arg(expectedDate)));
 }
+
+void TestReleaseMetadata::testUnusedLegacyModulesAreExcludedFromBuildTargets()
+{
+    /*
+     * 这些模块目前没有生产入口：旧 LuaEngine 已被 LuaSandbox 取代，
+     * AutoSaveManager 未接到会话恢复流程，IAPUpgrader 与现有文件传输
+     * 中心也没有 UI/控制器入口。继续编译会增加体积和误用面，因此
+     * 构建清单必须保持不包含这些源文件。
+     */
+    const QString rootCMake = readProjectFile(QStringLiteral("CMakeLists.txt"));
+    const QString testsCMake = readProjectFile(QStringLiteral("tests/CMakeLists.txt"));
+    QVERIFY2(!rootCMake.isEmpty(), "Root CMakeLists.txt must be readable.");
+    QVERIFY2(!testsCMake.isEmpty(), "tests/CMakeLists.txt must be readable.");
+
+    const QStringList legacySources = {
+        QStringLiteral("src/core/utils/AutoSaveManager.cpp"),
+        QStringLiteral("src/core/script/LuaEngine.cpp"),
+        QStringLiteral("src/core/upgrade/IAPUpgrader.cpp")
+    };
+
+    for (const QString& source : legacySources) {
+        QVERIFY2(!rootCMake.contains(source),
+                 qPrintable(QStringLiteral("Root build target must not compile unused legacy source: %1").arg(source)));
+        QVERIFY2(!testsCMake.contains(source),
+                 qPrintable(QStringLiteral("Test target must not compile unused legacy source: %1").arg(source)));
+    }
+}

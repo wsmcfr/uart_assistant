@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.14)
 
 # 项目信息
 project(ComAssistant
-    VERSION 1.8.1
+    VERSION 1.9.0
     DESCRIPTION "串口调试助手 - Serial Port Debug Assistant"
     LANGUAGES CXX
 )
@@ -138,14 +138,12 @@ set(CORE_SOURCES
     src/core/config/ConfigManager.cpp
     src/core/config/DisplaySettingsPolicy.cpp
     src/core/utils/CrashHandler.cpp
-    src/core/utils/AutoSaveManager.cpp
     src/core/utils/FFTUtils.cpp
     src/core/utils/FilterUtils.cpp
     src/core/utils/ChecksumUtils.cpp
     src/core/utils/ConversionUtils.cpp
     src/core/utils/EncodingUtils.cpp
     src/core/utils/MemoryUtils.cpp
-    src/core/script/LuaEngine.cpp
     src/core/script/LuaSandbox.cpp
     src/core/theme/ThemeManager.cpp
     src/core/session/SessionSerializer.cpp
@@ -153,7 +151,6 @@ set(CORE_SOURCES
     src/core/export/DataExporter.cpp
     src/core/macro/MacroRecorder.cpp
     src/core/transfer/FileTransfer.cpp
-    src/core/upgrade/IAPUpgrader.cpp
     src/core/upgrade/AppUpdateChecker.cpp
 )
 
@@ -164,14 +161,12 @@ set(CORE_HEADERS
     src/core/config/DisplaySettingsPolicy.h
     src/core/config/AppConfig.h
     src/core/utils/CrashHandler.h
-    src/core/utils/AutoSaveManager.h
     src/core/utils/FFTUtils.h
     src/core/utils/FilterUtils.h
     src/core/utils/ChecksumUtils.h
     src/core/utils/ConversionUtils.h
     src/core/utils/EncodingUtils.h
     src/core/utils/MemoryUtils.h
-    src/core/script/LuaEngine.h
     src/core/script/LuaSandbox.h
     src/core/theme/ThemeManager.h
     src/core/session/SessionData.h
@@ -180,7 +175,6 @@ set(CORE_HEADERS
     src/core/export/DataExporter.h
     src/core/macro/MacroRecorder.h
     src/core/transfer/FileTransfer.h
-    src/core/upgrade/IAPUpgrader.h
     src/core/upgrade/AppUpdateChecker.h
 )
 

@@ -3396,6 +3396,26 @@ Time spent: % 4</translation>
         <translation>Connected</translation>
     </message>
     <message>
+        <source>当前没有可导出的收发记录。</source>
+        <translation>There are no RX/TX records to export.</translation>
+    </message>
+    <message>
+        <source>TCP Server client %1</source>
+        <translation>TCP Server client %1</translation>
+    </message>
+    <message>
+        <source>TCP Server broadcast</source>
+        <translation>TCP Server broadcast</translation>
+    </message>
+    <message>
+        <source>UDP %1:%2</source>
+        <translation>UDP %1:%2</translation>
+    </message>
+    <message>
+        <source>HID Feature Report</source>
+        <translation>HID Feature Report</translation>
+    </message>
+    <message>
         <source>Open Port</source>
         <translation type="vanished">Open Port</translation>
     </message>
@@ -8624,9 +8644,99 @@ Alarm with Temperature Range</translation>
         <translation>Transfer canceled</translation>
     </message>
     <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1388" />
+        <source>保存路径无效</source>
+        <translation>Invalid save path</translation>
+    </message>
+    <message>
         <location filename="../../src/core/transfer/FileTransfer.cpp" line="628" />
         <source>无法打开文件</source>
         <translation>Cannot open file</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1672" />
+        <source>发送方取消</source>
+        <translation>Sender canceled</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1714" />
+        <source>校验错误次数超限</source>
+        <translation>Checksum error retries exceeded</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1730" />
+        <source>YMODEM文件头无效</source>
+        <translation>Invalid YMODEM file header</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1777" />
+        <source>包序号错误次数超限</source>
+        <translation>Packet number error retries exceeded</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1900" />
+        <source>YMODEM文件名不安全</source>
+        <translation>Unsafe YMODEM filename</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1911" />
+        <source>无法创建保存目录</source>
+        <translation>Cannot create save directory</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1918" />
+        <source>无法创建文件: %1</source>
+        <translation>Cannot create file: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1943" />
+        <source>接收文件未打开</source>
+        <translation>Receive file is not open</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1952" />
+        <source>写入文件失败: %1</source>
+        <translation>Failed to write file: %1</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1983" />
+        <source>接收完成</source>
+        <translation>Receive completed</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="1979" />
+        <source>YMODEM-G 收到异常 EOT</source>
+        <translation>YMODEM-G received an unexpected EOT</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2021" />
+        <source>YMODEM-G 数据包校验失败，已中止传输</source>
+        <translation>YMODEM-G packet checksum failed; transfer aborted</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2045" />
+        <source>YMODEM-G 文件头无效，已中止传输</source>
+        <translation>Invalid YMODEM-G file header; transfer aborted</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2076" />
+        <source>YMODEM-G 在非数据阶段收到数据包</source>
+        <translation>YMODEM-G received a data packet outside the data stage</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2096" />
+        <source>YMODEM-G 数据包序号错误，已中止传输</source>
+        <translation>YMODEM-G packet sequence error; transfer aborted</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2411" />
+        <source>YMODEM-G 接收超时，已中止传输</source>
+        <translation>YMODEM-G receive timed out; transfer aborted</translation>
+    </message>
+    <message>
+        <location filename="../../src/core/transfer/FileTransfer.cpp" line="2428" />
+        <source>YMODEM-G 发送超时</source>
+        <translation>YMODEM-G send timed out</translation>
     </message>
     <message>
         <location filename="../../src/core/transfer/FileTransfer.cpp" line="687" />

@@ -9,6 +9,7 @@
 #include "utils/Logger.h"
 #include "utils/ChecksumUtils.h"
 #include <QFileInfo>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QtGlobal>
 
@@ -920,10 +921,7 @@ XModemTransfer::XModemTransfer(bool useCRC, bool use1K, QObject* parent)
 
 XModemTransfer::~XModemTransfer()
 {
-    if (m_file) {
-        m_file->close();
-        delete m_file;
-    }
+    closeActiveFile();
 }
 
 TransferProtocol XModemTransfer::protocol() const
@@ -943,26 +941,25 @@ bool XModemTransfer::startSend(const QString& filePath)
     m_file = new QFile(filePath);
     if (!m_file->open(QIODevice::ReadOnly)) {
         LOG_ERROR(QString("Cannot open file: %1").arg(filePath));
-        m_progress.errorMessage = tr("无法打开文件");
-        setState(TransferState::Error);
-        emit transferCompleted(false, m_progress.errorMessage);
+        failTransferWithMessage(tr("无法打开文件"));
         return false;
     }
 
-    m_fileData = m_file->readAll();
-    m_file->close();
-
     QFileInfo fileInfo(filePath);
     m_progress.fileName = fileInfo.fileName();
-    m_progress.fileSize = m_fileData.size();
+    m_progress.fileSize = fileInfo.size();
     m_progress.bytesTransferred = 0;
-    m_progress.totalPackets = (m_fileData.size() + m_blockSize - 1) / m_blockSize;
+    m_progress.totalPackets = (m_progress.fileSize + m_blockSize - 1) / m_blockSize;
     m_progress.currentPacket = 0;
+    m_progress.retryCount = 0;
+    m_progress.errorMessage.clear();
 
     m_packetNumber = 1;
     m_retryCount = 0;
     m_direction = TransferDirection::Send;
     m_sendState = SendState::WaitingC;
+    m_lastPacket.clear();
+    m_fileData.clear();
 
     setState(TransferState::WaitingStart);
     m_timeoutTimer->start(m_timeoutMs);
@@ -985,9 +982,7 @@ bool XModemTransfer::startReceive(const QString& savePath)
     m_file = new QFile(savePath);
     if (!m_file->open(QIODevice::WriteOnly)) {
         LOG_ERROR(QString("Cannot create file: %1").arg(savePath));
-        m_progress.errorMessage = tr("无法创建文件");
-        setState(TransferState::Error);
-        emit transferCompleted(false, m_progress.errorMessage);
+        failTransferWithMessage(tr("无法创建文件"));
         return false;
     }
 
@@ -996,6 +991,9 @@ bool XModemTransfer::startReceive(const QString& savePath)
     m_progress.fileName = QFileInfo(savePath).fileName();
     m_progress.fileSize = 0;
     m_progress.bytesTransferred = 0;
+    m_progress.currentPacket = 0;
+    m_progress.retryCount = 0;
+    m_progress.errorMessage.clear();
 
     m_packetNumber = 1;
     m_retryCount = 0;
@@ -1026,11 +1024,7 @@ void XModemTransfer::cancel()
     canData.append(CAN);
     emit sendData(canData);
 
-    if (m_file) {
-        m_file->close();
-        delete m_file;
-        m_file = nullptr;
-    }
+    closeActiveFile();
 
     setState(TransferState::Cancelled);
     emit transferCompleted(false, tr("传输已取消"));
@@ -1054,6 +1048,7 @@ void XModemTransfer::processReceivedData(const QByteArray& data)
                     setState(TransferState::Transferring);
                     sendNextPacket();
                 } else if (c == CAN) {
+                    closeActiveFile();
                     setState(TransferState::Cancelled);
                     emit transferCompleted(false, tr("接收方取消"));
                     return;
@@ -1070,13 +1065,13 @@ void XModemTransfer::processReceivedData(const QByteArray& data)
                     // 重发当前包
                     m_retryCount++;
                     if (m_retryCount > m_maxRetries) {
-                        setState(TransferState::Error);
-                        emit transferCompleted(false, tr("重试次数超限"));
+                        failTransferWithMessage(tr("重试次数超限"));
                         return;
                     }
                     emit sendData(m_lastPacket);
                     m_timeoutTimer->start(m_timeoutMs);
                 } else if (c == CAN) {
+                    closeActiveFile();
                     setState(TransferState::Cancelled);
                     emit transferCompleted(false, tr("接收方取消"));
                     return;
@@ -1085,6 +1080,7 @@ void XModemTransfer::processReceivedData(const QByteArray& data)
 
             case SendState::SendingEOT:
                 if (c == ACK) {
+                    closeActiveFile();
                     setState(TransferState::Completed);
                     emit transferCompleted(true, tr("传输完成"));
                     return;
@@ -1106,7 +1102,13 @@ void XModemTransfer::processReceivedData(const QByteArray& data)
         processReceiveData();
     }
 
-    m_receiveBuffer.clear();
+    if (m_direction == TransferDirection::Send) {
+        /*
+         * 发送模式逐字节处理对端 ACK/NAK/CAN，处理完即可清空响应缓存。
+         * 接收模式必须保留半包，不能在这里无条件 clear。
+         */
+        m_receiveBuffer.clear();
+    }
 }
 
 void XModemTransfer::processReceiveData()
@@ -1118,20 +1120,29 @@ void XModemTransfer::processReceiveData()
 
         if (header == EOT) {
             // 传输结束
+            m_receiveBuffer.remove(0, 1);
             QByteArray ack;
             ack.append(ACK);
             emit sendData(ack);
 
-            // 写入文件
-            m_file->write(m_fileData);
-            m_file->close();
+            /*
+             * 合法数据包已经在接收过程中直接写入文件。EOT 阶段只负责
+             * 刷盘并关闭句柄，不再把 m_fileData 再写一遍。
+             */
+            if (m_file) {
+                m_file->flush();
+            }
+            closeActiveFile();
 
             setState(TransferState::Completed);
+            updateProgress();
             emit transferCompleted(true, tr("接收完成"));
             return;
         }
 
         if (header == CAN) {
+            m_receiveBuffer.remove(0, 1);
+            closeActiveFile();
             setState(TransferState::Cancelled);
             emit transferCompleted(false, tr("发送方取消"));
             return;
@@ -1157,7 +1168,14 @@ void XModemTransfer::processReceiveData()
         if (verifyPacket(packet, m_packetNumber)) {
             // 提取数据
             QByteArray blockData = packet.mid(3, blockSize);
-            m_fileData.append(blockData);
+            if (!m_file || !m_file->isOpen()) {
+                failTransferWithMessage(tr("文件未打开"));
+                return;
+            }
+            if (m_file->write(blockData) != static_cast<qint64>(blockData.size())) {
+                failTransferWithMessage(tr("写入文件失败"));
+                return;
+            }
 
             m_progress.bytesTransferred += blockSize;
             m_progress.currentPacket = m_packetNumber;
@@ -1176,8 +1194,7 @@ void XModemTransfer::processReceiveData()
             // 校验失败，发送NAK
             m_retryCount++;
             if (m_retryCount > m_maxRetries) {
-                setState(TransferState::Error);
-                emit transferCompleted(false, tr("校验错误次数超限"));
+                failTransferWithMessage(tr("校验错误次数超限"));
                 return;
             }
 
@@ -1192,10 +1209,19 @@ void XModemTransfer::processReceiveData()
 
 void XModemTransfer::sendNextPacket()
 {
-    int offset = (m_packetNumber - 1) * m_blockSize;
+    /*
+     * 标准 XMODEM 发送按 ACK 推进。这里只读取当前包对应的文件片段，
+     * 并把完整协议包保存到 m_lastPacket 供 NAK/超时重发；不再把整个
+     * 固件读入 m_fileData，降低大文件发送峰值内存。
+     */
+    const qint64 offset = static_cast<qint64>(m_packetNumber - 1) * m_blockSize;
 
-    if (offset >= m_fileData.size()) {
-        // 所有数据发送完成，发送EOT
+    if (offset >= m_progress.fileSize) {
+        /*
+         * 文件内容已经全部读完。EOT 阶段只需要控制字节和 m_lastPacket
+         * 不再需要源文件，立即关闭句柄，方便用户删除或覆盖源文件。
+         */
+        closeActiveFile();
         m_sendState = SendState::SendingEOT;
         QByteArray eot;
         eot.append(EOT);
@@ -1204,7 +1230,21 @@ void XModemTransfer::sendNextPacket()
         return;
     }
 
-    QByteArray blockData = m_fileData.mid(offset, m_blockSize);
+    if (!m_file || !m_file->isOpen()) {
+        failTransferWithMessage(tr("文件未打开"));
+        return;
+    }
+
+    if (!m_file->seek(offset)) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
+
+    QByteArray blockData = m_file->read(m_blockSize);
+    if (blockData.isEmpty() && offset < m_progress.fileSize) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
 
     // 填充到块大小
     while (blockData.size() < m_blockSize) {
@@ -1214,7 +1254,8 @@ void XModemTransfer::sendNextPacket()
     m_lastPacket = buildPacket(m_packetNumber, blockData);
     emit sendData(m_lastPacket);
 
-    m_progress.bytesTransferred = qMin((qint64)offset + m_blockSize, m_progress.fileSize);
+    m_progress.bytesTransferred = qMin(offset + static_cast<qint64>(m_blockSize),
+                                       m_progress.fileSize);
     m_progress.currentPacket = m_packetNumber;
     updateProgress();
 
@@ -1276,6 +1317,35 @@ bool XModemTransfer::verifyPacket(const QByteArray& packet, int expectedNum)
     }
 }
 
+void XModemTransfer::closeActiveFile()
+{
+    /*
+     * QFile 指针在发送和接收路径共用。集中释放可以保证所有终止路径都把
+     * 句柄置空，后续 cancel()/析构再次调用时不会重复 delete。
+     */
+    if (!m_file) {
+        return;
+    }
+
+    m_file->close();
+    delete m_file;
+    m_file = nullptr;
+}
+
+void XModemTransfer::failTransferWithMessage(const QString& message)
+{
+    /*
+     * 失败路径必须同时停止计时器、释放文件句柄并写入 progress，确保 UI
+     * 看到稳定错误状态，且超时回调不会在失败后继续重发旧包。
+     */
+    m_timeoutTimer->stop();
+    closeActiveFile();
+    m_progress.errorMessage = message;
+    setState(TransferState::Failed);
+    updateProgress();
+    emit transferCompleted(false, message);
+}
+
 quint16 XModemTransfer::calculateCRC16(const QByteArray& data)
 {
     quint16 crc = 0;
@@ -1303,13 +1373,16 @@ quint8 XModemTransfer::calculateChecksum(const QByteArray& data)
 
 void XModemTransfer::onTimeout()
 {
+    /*
+     * 超时重发必须按当前发送阶段选择内容：数据阶段重发 m_lastPacket，
+     * EOT 阶段重发 EOT 控制字节。旧实现只看 m_lastPacket，导致文件
+     * 数据发送完后 EOT 超时会错误重发最后一个数据包。
+     */
     m_retryCount++;
     m_progress.retryCount = m_retryCount;
 
     if (m_retryCount > m_maxRetries) {
-        setState(TransferState::Error);
-        m_progress.errorMessage = tr("传输超时");
-        emit transferCompleted(false, m_progress.errorMessage);
+        failTransferWithMessage(tr("传输超时"));
         return;
     }
 
@@ -1320,6 +1393,10 @@ void XModemTransfer::onTimeout()
         QByteArray startChar;
         startChar.append(m_useCRC ? CRC_START : NAK);
         emit sendData(startChar);
+    } else if (m_sendState == SendState::SendingEOT) {
+        QByteArray eot;
+        eot.append(EOT);
+        emit sendData(eot);
     } else if (!m_lastPacket.isEmpty()) {
         // 重发上一个包
         emit sendData(m_lastPacket);
@@ -1336,14 +1413,23 @@ YModemTransfer::YModemTransfer(bool useG, QObject* parent)
     , m_useG(useG)
 {
     connect(m_timeoutTimer, &QTimer::timeout, this, &YModemTransfer::onTimeout);
+    /*
+     * YMODEM-G 数据阶段不等待逐包 ACK，但仍要避免同步循环一次性构造并
+     * 发送所有数据包。0ms 单次定时器可以在事件循环中逐包推进，降低
+     * UI 卡顿和发送队列瞬时内存峰值。
+     */
+    m_streamTimer = new QTimer(this);
+    m_streamTimer->setSingleShot(true);
+    connect(m_streamTimer, &QTimer::timeout,
+            this, &YModemTransfer::sendNextYModemGStreamPacket);
 }
 
 YModemTransfer::~YModemTransfer()
 {
-    if (m_file) {
-        m_file->close();
-        delete m_file;
+    if (m_streamTimer) {
+        m_streamTimer->stop();
     }
+    closeActiveFile();
 }
 
 TransferProtocol YModemTransfer::protocol() const
@@ -1369,6 +1455,11 @@ bool YModemTransfer::startSendBatch(const QStringList& filePaths)
     m_currentFileIndex = 0;
     m_direction = TransferDirection::Send;
     m_sendState = SendState::WaitingC;
+    m_retryCount = 0;
+    m_receiveBuffer.clear();
+    if (m_streamTimer) {
+        m_streamTimer->stop();
+    }
 
     setState(TransferState::WaitingStart);
     m_timeoutTimer->start(m_timeoutMs);
@@ -1384,16 +1475,39 @@ bool YModemTransfer::startReceive(const QString& savePath)
     }
 
     m_savePath = savePath;
+    const QFileInfo saveInfo(savePath);
+    const bool receiveToDirectory = saveInfo.exists() && saveInfo.isDir();
+    const bool receiveToExplicitFile = !receiveToDirectory && !savePath.trimmed().isEmpty();
+    if (!receiveToDirectory && !receiveToExplicitFile) {
+        m_progress.errorMessage = tr("保存路径无效");
+        setState(TransferState::Error);
+        emit transferCompleted(false, m_progress.errorMessage);
+        return false;
+    }
+
     m_direction = TransferDirection::Receive;
     m_receiveState = ReceiveState::Starting;
     m_receiveBuffer.clear();
+    if (m_streamTimer) {
+        m_streamTimer->stop();
+    }
+    m_currentReceiveFilePath.clear();
+    m_receiveFileSize = 0;
+    m_receiveBytes = 0;
+    m_receivedFileCount = 0;
+    m_retryCount = 0;
+    m_packetNumber = 0;
+    m_progress = TransferProgress();
+    m_progress.fileName = receiveToExplicitFile ? saveInfo.fileName() : QString();
+    m_progress.state = TransferState::WaitingStart;
 
     setState(TransferState::WaitingStart);
 
-    // 发送C开始
-    QByteArray startChar;
-    startChar.append(CRC_START);
-    emit sendData(startChar);
+    /*
+     * 普通 YMODEM 通过 'C' 请求 CRC 模式；YMODEM-G 通过 'G' 告诉发送端
+     * 进入无逐包 ACK 的流式模式。
+     */
+    sendControlByte(m_useG ? 'G' : CRC_START);
 
     m_timeoutTimer->start(m_timeoutMs);
 
@@ -1404,6 +1518,9 @@ bool YModemTransfer::startReceive(const QString& savePath)
 void YModemTransfer::cancel()
 {
     m_timeoutTimer->stop();
+    if (m_streamTimer) {
+        m_streamTimer->stop();
+    }
 
     QByteArray canData;
     canData.append(CAN);
@@ -1411,11 +1528,7 @@ void YModemTransfer::cancel()
     canData.append(CAN);
     emit sendData(canData);
 
-    if (m_file) {
-        m_file->close();
-        delete m_file;
-        m_file = nullptr;
-    }
+    closeActiveFile();
 
     setState(TransferState::Cancelled);
     emit transferCompleted(false, tr("传输已取消"));
@@ -1423,6 +1536,10 @@ void YModemTransfer::cancel()
 
 void YModemTransfer::processReceivedData(const QByteArray& data)
 {
+    if (isTerminalState()) {
+        return;
+    }
+
     m_receiveBuffer.append(data);
     m_timeoutTimer->stop();
 
@@ -1431,41 +1548,94 @@ void YModemTransfer::processReceivedData(const QByteArray& data)
         for (char c : m_receiveBuffer) {
             switch (m_sendState) {
             case SendState::WaitingC:
-                if (c == CRC_START) {
+                if ((!m_useG && c == CRC_START) || (m_useG && c == 'G')) {
                     sendFileHeader();
+                } else if (c == CAN) {
+                    closeActiveFile();
+                    setState(TransferState::Cancelled);
+                    emit transferCompleted(false, tr("接收方取消"));
+                    return;
                 }
                 break;
 
             case SendState::WaitingHeaderAck:
                 if (c == ACK) {
                     // 等待C开始数据传输
-                } else if (c == CRC_START) {
+                } else if ((!m_useG && c == CRC_START) || (m_useG && c == 'G')) {
                     m_sendState = SendState::SendingData;
                     m_packetNumber = 1;
                     setState(TransferState::Transferring);
-                    sendNextPacket();
+                    if (m_useG) {
+                        startYModemGStream();
+                    } else {
+                        sendNextPacket();
+                    }
+                } else if (c == CAN) {
+                    closeActiveFile();
+                    setState(TransferState::Cancelled);
+                    emit transferCompleted(false, tr("接收方取消"));
+                    return;
                 }
                 break;
 
             case SendState::WaitingDataAck:
+                if (m_useG) {
+                    /*
+                     * G 模式正常情况下不会进入该分支；保留 CAN 处理是为了
+                     * 兼容接收端发现错误后立即中止的场景。
+                     */
+                    if (c == CAN) {
+                        closeActiveFile();
+                        if (m_streamTimer) {
+                            m_streamTimer->stop();
+                        }
+                        setState(TransferState::Cancelled);
+                        emit transferCompleted(false, tr("接收方取消"));
+                        return;
+                    }
+                    break;
+                }
                 if (c == ACK) {
+                    /*
+                     * 重试次数属于当前待确认包。一个包最终 ACK 后必须清零，
+                     * 否则多个不同包的偶发 NAK 会累加，导致后续包过早失败。
+                     */
+                    m_retryCount = 0;
+                    m_progress.retryCount = 0;
                     m_packetNumber++;
                     m_sendState = SendState::SendingData;
                     sendNextPacket();
                 } else if (c == NAK) {
-                    // 重发
+                    /*
+                     * 数据包可能因线路噪声损坏。流式发送只缓存当前待 ACK
+                     * 的完整协议包，收到 NAK 时直接重发，不重新读下一块。
+                     */
+                    if (!m_lastPacket.isEmpty()) {
+                        ++m_retryCount;
+                        m_progress.retryCount = m_retryCount;
+                        if (m_retryCount > m_maxRetries) {
+                            failTransferWithMessage(tr("重试次数超限"));
+                            return;
+                        }
+                        emit sendData(m_lastPacket);
+                    }
+                } else if (c == CAN) {
+                    closeActiveFile();
+                    setState(TransferState::Cancelled);
+                    emit transferCompleted(false, tr("接收方取消"));
+                    return;
                 }
                 break;
 
             case SendState::WaitingEOTAck:
                 if (c == NAK) {
-                    // 发送第二个EOT
+                    // G 模式没有双 EOT 流程；若对端返回 NAK，按普通模式重发 EOT。
                     QByteArray eot;
                     eot.append(EOT);
                     emit sendData(eot);
                 } else if (c == ACK) {
                     // 等待C准备下一个文件或结束
-                } else if (c == CRC_START) {
+                } else if ((!m_useG && c == CRC_START) || (m_useG && c == 'G')) {
                     m_currentFileIndex++;
                     if (m_currentFileIndex < m_filesToSend.size()) {
                         m_sendState = SendState::WaitingC;
@@ -1473,6 +1643,11 @@ void YModemTransfer::processReceivedData(const QByteArray& data)
                     } else {
                         sendEndOfBatch();
                     }
+                } else if (c == CAN) {
+                    closeActiveFile();
+                    setState(TransferState::Cancelled);
+                    emit transferCompleted(false, tr("接收方取消"));
+                    return;
                 }
                 break;
 
@@ -1480,10 +1655,20 @@ void YModemTransfer::processReceivedData(const QByteArray& data)
                 break;
             }
         }
+    } else {
+        processReceiveData();
     }
 
-    m_receiveBuffer.clear();
-    m_timeoutTimer->start(m_timeoutMs);
+    if (m_direction == TransferDirection::Send) {
+        m_receiveBuffer.clear();
+    }
+
+    if (!isTerminalState() &&
+        !(m_direction == TransferDirection::Send &&
+          m_useG &&
+          m_sendState == SendState::SendingData)) {
+        m_timeoutTimer->start(m_timeoutMs);
+    }
 }
 
 void YModemTransfer::sendFileHeader()
@@ -1493,22 +1678,33 @@ void YModemTransfer::sendFileHeader()
         return;
     }
 
-    QString filePath = m_filesToSend[m_currentFileIndex];
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        setState(TransferState::Error);
-        emit transferCompleted(false, tr("无法打开文件"));
+    /*
+     * 每个文件发送前都关闭上一轮可能遗留的句柄，再打开当前源文件。头包
+     * 只需要文件名和大小，不能 readAll() 整个文件；数据包阶段再按 1K
+     * 从 QFile 读取。
+     */
+    closeActiveFile();
+
+    const QString filePath = m_filesToSend[m_currentFileIndex];
+    m_file = new QFile(filePath);
+    if (!m_file->open(QIODevice::ReadOnly)) {
+        delete m_file;
+        m_file = nullptr;
+        failTransferWithMessage(tr("无法打开文件"));
         return;
     }
 
-    m_fileData = file.readAll();
-    file.close();
-
     QFileInfo fileInfo(filePath);
     m_progress.fileName = fileInfo.fileName();
-    m_progress.fileSize = m_fileData.size();
+    m_progress.fileSize = fileInfo.size();
     m_progress.bytesTransferred = 0;
-    m_progress.totalPackets = (m_fileData.size() + 1023) / 1024;
+    m_progress.totalPackets = (m_progress.fileSize + 1023) / 1024;
+    m_progress.currentPacket = 0;
+    m_progress.retryCount = 0;
+    m_progress.errorMessage.clear();
+    m_retryCount = 0;
+    m_lastPacket.clear();
+    m_fileData.clear();
 
     QByteArray headerPacket = buildHeaderPacket(m_progress.fileName, m_progress.fileSize);
     emit sendData(headerPacket);
@@ -1521,10 +1717,19 @@ void YModemTransfer::sendFileHeader()
 
 void YModemTransfer::sendNextPacket()
 {
-    int offset = (m_packetNumber - 1) * 1024;
+    /*
+     * YMODEM 数据包固定 1024 字节。这里仅读取当前包对应的文件片段，并把
+     * 完整协议包保存到 m_lastPacket 供 NAK 或超时重发，避免整文件常驻
+     * m_fileData。
+     */
+    const qint64 offset = static_cast<qint64>(m_packetNumber - 1) * 1024;
 
-    if (offset >= m_fileData.size()) {
-        // 发送EOT
+    if (offset >= m_progress.fileSize) {
+        /*
+         * 文件数据已经全部发送完，EOT 只需要控制字节。此时关闭源文件，
+         * 后续 NAK 重发 EOT 不需要再读取文件。
+         */
+        closeActiveFile();
         m_sendState = SendState::WaitingEOTAck;
         QByteArray eot;
         eot.append(EOT);
@@ -1533,15 +1738,30 @@ void YModemTransfer::sendNextPacket()
         return;
     }
 
-    QByteArray blockData = m_fileData.mid(offset, 1024);
+    if (!m_file || !m_file->isOpen()) {
+        failTransferWithMessage(tr("文件未打开"));
+        return;
+    }
+
+    if (!m_file->seek(offset)) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
+
+    QByteArray blockData = m_file->read(1024);
+    if (blockData.isEmpty() && offset < m_progress.fileSize) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
+
     while (blockData.size() < 1024) {
         blockData.append(CPMEOF);
     }
 
-    QByteArray packet = buildDataPacket(m_packetNumber, blockData);
-    emit sendData(packet);
+    m_lastPacket = buildDataPacket(m_packetNumber, blockData);
+    emit sendData(m_lastPacket);
 
-    m_progress.bytesTransferred = qMin((qint64)offset + 1024, m_progress.fileSize);
+    m_progress.bytesTransferred = qMin(offset + static_cast<qint64>(1024), m_progress.fileSize);
     m_progress.currentPacket = m_packetNumber;
     updateProgress();
 
@@ -1549,9 +1769,95 @@ void YModemTransfer::sendNextPacket()
     m_timeoutTimer->start(m_timeoutMs);
 }
 
+void YModemTransfer::startYModemGStream()
+{
+    /*
+     * 收到第二个 G 后进入数据流。包号从 1 开始，后续由定时器逐包读文件
+     * 并发送；不设置 WaitingDataAck，避免误把 ACK 当成推进条件。
+     */
+    if (!m_useG) {
+        sendNextPacket();
+        return;
+    }
+
+    m_sendState = SendState::SendingData;
+    m_packetNumber = 1;
+    m_retryCount = 0;
+    m_progress.retryCount = 0;
+    m_timeoutTimer->stop();
+    if (m_streamTimer) {
+        m_streamTimer->start(0);
+    } else {
+        sendNextYModemGStreamPacket();
+    }
+}
+
+void YModemTransfer::sendNextYModemGStreamPacket()
+{
+    /*
+     * 终止状态或非发送方向下忽略定时器残留回调，避免完成/取消后继续读
+     * 文件。普通 YMODEM 不走这里。
+     */
+    if (!m_useG || m_direction != TransferDirection::Send || isTerminalState()) {
+        return;
+    }
+
+    const qint64 offset = static_cast<qint64>(m_packetNumber - 1) * 1024;
+    if (offset >= m_progress.fileSize) {
+        closeActiveFile();
+        m_lastPacket.clear();
+        m_sendState = SendState::WaitingEOTAck;
+        sendControlByte(EOT);
+        m_timeoutTimer->start(m_timeoutMs);
+        return;
+    }
+
+    if (!m_file || !m_file->isOpen()) {
+        failTransferWithMessage(tr("文件未打开"));
+        return;
+    }
+
+    if (!m_file->seek(offset)) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
+
+    QByteArray blockData = m_file->read(1024);
+    if (blockData.isEmpty() && offset < m_progress.fileSize) {
+        failTransferWithMessage(tr("读取文件失败"));
+        return;
+    }
+
+    while (blockData.size() < 1024) {
+        blockData.append(CPMEOF);
+    }
+
+    m_lastPacket = buildDataPacket(m_packetNumber, blockData);
+    emit sendData(m_lastPacket);
+
+    m_progress.bytesTransferred = qMin(offset + static_cast<qint64>(1024), m_progress.fileSize);
+    m_progress.currentPacket = m_packetNumber;
+    updateProgress();
+
+    ++m_packetNumber;
+    if (m_streamTimer) {
+        m_streamTimer->start(0);
+    } else {
+        sendNextYModemGStreamPacket();
+    }
+}
+
 void YModemTransfer::sendEndOfBatch()
 {
-    // 发送空文件头表示结束
+    /*
+     * 空 0 号头包表示批次结束。发送前确保没有源文件句柄残留；完成后
+     * 清空当前重发包，避免后续串口残留字节误触发旧包重发。
+     */
+    closeActiveFile();
+    if (m_streamTimer) {
+        m_streamTimer->stop();
+    }
+    m_lastPacket.clear();
     QByteArray endPacket = buildHeaderPacket("", 0);
     emit sendData(endPacket);
 
@@ -1605,7 +1911,7 @@ QByteArray YModemTransfer::buildDataPacket(int packetNum, const QByteArray& data
     return packet;
 }
 
-quint16 YModemTransfer::calculateCRC16(const QByteArray& data)
+quint16 YModemTransfer::calculateCRC16(const QByteArray& data) const
 {
     quint16 crc = 0;
     for (char byte : data) {
@@ -1621,16 +1927,514 @@ quint16 YModemTransfer::calculateCRC16(const QByteArray& data)
     return crc;
 }
 
+void YModemTransfer::processReceiveData()
+{
+    /*
+     * YMODEM 接收采用以下阶段：
+     * 1. 主动发送 'C' 请求 CRC 模式；
+     * 2. 等待 0 号文件头，解析文件名和文件大小；
+     * 3. ACK 头包并再次发送 'C' 请求数据包；
+     * 4. 接收 1..N 号 1024 字节数据包，按头包声明大小写入文件；
+     * 5. 第一个 EOT 返回 NAK，第二个 EOT 返回 ACK + 'C'；
+     * 6. 收到空 0 号头包后 ACK 并完成批次。
+     *
+     * YMODEM-G 在此基础上把起始字符改为 'G'，数据包不逐包 ACK，
+     * 并在发现错误时立即 CAN 中止，因为 G 模式没有 NAK 重传语义。
+     */
+    while (!m_receiveBuffer.isEmpty()) {
+        const char header = m_receiveBuffer.at(0);
+
+        if (header == CAN) {
+            /*
+             * 对端取消时可能已经打开目标文件。必须释放文件句柄后再进入
+             * Cancelled，避免 Windows 下残留文件被本进程锁住。
+             */
+            m_timeoutTimer->stop();
+            if (m_file) {
+                m_file->close();
+                delete m_file;
+                m_file = nullptr;
+            }
+            setState(TransferState::Cancelled);
+            emit transferCompleted(false, tr("发送方取消"));
+            return;
+        }
+
+        if (header == EOT) {
+            m_receiveBuffer.remove(0, 1);
+            if (m_useG) {
+                /*
+                 * G 模式单 EOT 后直接确认，并发送 G 请求下一文件头。普通
+                 * YMODEM 的双 EOT/NAK 流程不适用于无逐包 ACK 的高速模式。
+                 */
+                if (m_receiveState == ReceiveState::ReceivingData ||
+                    m_receiveState == ReceiveState::WaitingHeader) {
+                    finishCurrentReceiveFile();
+                    sendControlByte(ACK);
+                    sendControlByte('G');
+                    m_receiveState = ReceiveState::WaitingHeader;
+                    m_packetNumber = 0;
+                    m_retryCount = 0;
+                } else {
+                    abortYModemGReceiveWithMessage(tr("YMODEM-G 收到异常 EOT"));
+                    return;
+                }
+                continue;
+            }
+
+            if (m_receiveState == ReceiveState::ReceivingData) {
+                m_receiveState = ReceiveState::WaitingSecondEot;
+                sendControlByte(NAK);
+            } else if (m_receiveState == ReceiveState::WaitingSecondEot) {
+                finishCurrentReceiveFile();
+                sendControlByte(ACK);
+                sendControlByte(CRC_START);
+                m_receiveState = ReceiveState::WaitingHeader;
+                m_packetNumber = 0;
+                m_retryCount = 0;
+            } else {
+                sendControlByte(NAK);
+            }
+            continue;
+        }
+
+        if (header != SOH && header != STX) {
+            /*
+             * 线路上可能混入状态字符或噪声。丢弃非包头字节并继续寻找
+             * 下一个合法包头，避免一个无关字节阻塞整个接收状态机。
+             */
+            m_receiveBuffer.remove(0, 1);
+            continue;
+        }
+
+        const int blockSize = (header == STX) ? 1024 : 128;
+        const int packetSize = 3 + blockSize + 2;
+        if (m_receiveBuffer.size() < packetSize) {
+            return;
+        }
+
+        const QByteArray packet = m_receiveBuffer.left(packetSize);
+        m_receiveBuffer.remove(0, packetSize);
+
+        if (!verifyReceivePacket(packet)) {
+            if (m_useG) {
+                abortYModemGReceiveWithMessage(tr("YMODEM-G 数据包校验失败，已中止传输"));
+                return;
+            }
+            ++m_retryCount;
+            m_progress.retryCount = m_retryCount;
+            updateProgress();
+            if (m_retryCount > m_maxRetries) {
+                failTransferWithMessage(tr("校验错误次数超限"));
+                return;
+            }
+            sendControlByte(NAK);
+            continue;
+        }
+
+        const int packetNum = static_cast<quint8>(packet.at(1));
+        const QByteArray payload = packet.mid(3, blockSize);
+        m_retryCount = 0;
+        m_progress.retryCount = 0;
+
+        if (packetNum == 0) {
+            QString fileName;
+            qint64 fileSize = 0;
+            if (!parseReceiveHeader(payload, fileName, fileSize)) {
+                if (m_useG) {
+                    abortYModemGReceiveWithMessage(tr("YMODEM-G 文件头无效，已中止传输"));
+                } else {
+                    failTransferWithMessage(tr("YMODEM文件头无效"));
+                }
+                return;
+            }
+
+            if (fileName.isEmpty()) {
+                if (m_file) {
+                    finishCurrentReceiveFile();
+                }
+                sendControlByte(ACK);
+                completeReceiveBatch(tr("接收完成"));
+                return;
+            }
+
+            if (!openReceiveFile(fileName, fileSize)) {
+                return;
+            }
+
+            sendControlByte(ACK);
+            sendControlByte(m_useG ? 'G' : CRC_START);
+            m_receiveState = ReceiveState::ReceivingData;
+            m_packetNumber = 1;
+            setState(TransferState::Running);
+            updateProgress();
+            continue;
+        }
+
+        if (m_receiveState != ReceiveState::ReceivingData) {
+            if (m_useG) {
+                abortYModemGReceiveWithMessage(tr("YMODEM-G 在非数据阶段收到数据包"));
+                return;
+            }
+            sendControlByte(NAK);
+            continue;
+        }
+
+        const int expectedPacketNumber = m_packetNumber & 0xFF;
+        const int previousPacketNumber = (m_packetNumber - 1) & 0xFF;
+        if (packetNum == previousPacketNumber) {
+            /*
+             * 发送端可能因为没有收到 ACK 而重发上一包。上一包已经写入时
+             * 只补 ACK，不能重复写入文件，否则接收内容会被放大。
+             */
+            sendControlByte(ACK);
+            continue;
+        }
+
+        if (packetNum != expectedPacketNumber) {
+            if (m_useG) {
+                abortYModemGReceiveWithMessage(tr("YMODEM-G 数据包序号错误，已中止传输"));
+                return;
+            }
+            ++m_retryCount;
+            m_progress.retryCount = m_retryCount;
+            updateProgress();
+            if (m_retryCount > m_maxRetries) {
+                failTransferWithMessage(tr("包序号错误次数超限"));
+                return;
+            }
+            sendControlByte(NAK);
+            continue;
+        }
+
+        if (!writeReceivePayload(payload)) {
+            return;
+        }
+
+        m_packetNumber = (m_packetNumber + 1) & 0xFF;
+        if (!m_useG) {
+            sendControlByte(ACK);
+        }
+        setState(TransferState::Running);
+        updateProgress();
+    }
+}
+
+bool YModemTransfer::verifyReceivePacket(const QByteArray& packet) const
+{
+    /*
+     * YMODEM 包格式为 header + packet number + number complement +
+     * payload + CRC16。接收端必须同时验证包号反码和 CRC，否则错误包
+     * 可能被当成数据写入文件。
+     */
+    if (packet.size() < 3 + 128 + 2) {
+        return false;
+    }
+
+    const char header = packet.at(0);
+    const int blockSize = (header == STX) ? 1024 : 128;
+    if (header != SOH && header != STX) {
+        return false;
+    }
+    if (packet.size() != 3 + blockSize + 2) {
+        return false;
+    }
+
+    const int packetNum = static_cast<quint8>(packet.at(1));
+    const int packetNumComp = static_cast<quint8>(packet.at(2));
+    if ((packetNum ^ packetNumComp) != 0xFF) {
+        return false;
+    }
+
+    const QByteArray payload = packet.mid(3, blockSize);
+    const int crcOffset = 3 + blockSize;
+    const quint16 receivedCrc =
+        static_cast<quint16>(static_cast<quint8>(packet.at(crcOffset)) << 8) |
+        static_cast<quint16>(static_cast<quint8>(packet.at(crcOffset + 1)));
+    return receivedCrc == calculateCRC16(payload);
+}
+
+bool YModemTransfer::parseReceiveHeader(const QByteArray& payload,
+                                        QString& fileName,
+                                        qint64& fileSize) const
+{
+    /*
+     * YMODEM 0 号包 payload 形如：
+     *   filename\0filesize [mtime mode serial]\0...
+     * 本实现只强制解析文件名和大小，其余元数据保留兼容但不使用。
+     */
+    const int nameEnd = payload.indexOf('\0');
+    if (nameEnd < 0) {
+        return false;
+    }
+
+    fileName = QString::fromUtf8(payload.left(nameEnd)).trimmed();
+    if (fileName.isEmpty()) {
+        fileSize = 0;
+        return true;
+    }
+
+    const QByteArray rest = payload.mid(nameEnd + 1);
+    const QList<QByteArray> fields = rest.split(' ');
+    if (fields.isEmpty() || fields.first().isEmpty()) {
+        return false;
+    }
+
+    bool ok = false;
+    fileSize = fields.first().toLongLong(&ok, 10);
+    return ok && fileSize >= 0;
+}
+
+bool YModemTransfer::isSafeReceiveFileName(const QString& fileName) const
+{
+    /*
+     * 文件名来自对端设备，必须视为不可信输入。这里只允许单个文件名，
+     * 不接受绝对路径、盘符、目录分隔符或 ".."，防止写出用户选择目录。
+     */
+    if (fileName.isEmpty()) {
+        return false;
+    }
+    if (fileName.contains(QLatin1Char('/')) ||
+        fileName.contains(QLatin1Char('\\')) ||
+        fileName.contains(QStringLiteral("..")) ||
+        fileName.contains(QLatin1Char(':'))) {
+        return false;
+    }
+
+    const QFileInfo info(fileName);
+    return info.fileName() == fileName;
+}
+
+QString YModemTransfer::resolveReceiveFilePath(const QString& fileName) const
+{
+    /*
+     * 用户可能选择保存目录，也可能通过保存对话框指定完整文件路径。
+     * 选择目录时使用对端文件名；选择文件时尊重用户显式路径。
+     */
+    const QFileInfo saveInfo(m_savePath);
+    if (saveInfo.exists() && saveInfo.isDir()) {
+        return QDir(saveInfo.absoluteFilePath()).filePath(fileName);
+    }
+    return saveInfo.absoluteFilePath();
+}
+
+bool YModemTransfer::openReceiveFile(const QString& fileName, qint64 fileSize)
+{
+    /*
+     * 收到 0 号头包后才知道真实文件名和大小，此时打开目标文件并初始化
+     * 进度。若正在接收上一文件，先完成上一文件，支持后续批量扩展。
+     */
+    if (!isSafeReceiveFileName(fileName)) {
+        failTransferWithMessage(tr("YMODEM文件名不安全"));
+        return false;
+    }
+
+    if (m_file) {
+        finishCurrentReceiveFile();
+    }
+
+    const QString targetPath = resolveReceiveFilePath(fileName);
+    const QDir targetDir = QFileInfo(targetPath).absoluteDir();
+    if (!targetDir.exists() && !targetDir.mkpath(QStringLiteral("."))) {
+        failTransferWithMessage(tr("无法创建保存目录"));
+        return false;
+    }
+
+    m_file = new QFile(targetPath);
+    if (!m_file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        const QString error = tr("无法创建文件: %1").arg(m_file->errorString());
+        delete m_file;
+        m_file = nullptr;
+        failTransferWithMessage(error);
+        return false;
+    }
+
+    m_currentReceiveFilePath = targetPath;
+    m_receiveFileSize = fileSize;
+    m_receiveBytes = 0;
+    m_progress.fileName = QFileInfo(targetPath).fileName();
+    m_progress.fileSize = fileSize;
+    m_progress.bytesTransferred = 0;
+    m_progress.currentPacket = 0;
+    m_progress.totalPackets = static_cast<int>((fileSize + 1023) / 1024);
+    m_progress.errorMessage.clear();
+    return true;
+}
+
+bool YModemTransfer::writeReceivePayload(const QByteArray& payload)
+{
+    /*
+     * YMODEM 最后一包会用 CPMEOF 填充到 1024 字节。这里按头包声明的
+     * 文件大小截断写入，避免把填充字节保存到目标文件。
+     */
+    if (!m_file || !m_file->isOpen()) {
+        failTransferWithMessage(tr("接收文件未打开"));
+        return false;
+    }
+
+    const qint64 remaining = qMax<qint64>(0, m_receiveFileSize - m_receiveBytes);
+    const int bytesToWrite = static_cast<int>(qMin<qint64>(remaining, payload.size()));
+    if (bytesToWrite > 0) {
+        const QByteArray chunk = payload.left(bytesToWrite);
+        if (m_file->write(chunk) != chunk.size()) {
+            failTransferWithMessage(tr("写入文件失败: %1").arg(m_file->errorString()));
+            return false;
+        }
+        m_receiveBytes += bytesToWrite;
+    }
+
+    m_progress.bytesTransferred = m_receiveBytes;
+    m_progress.currentPacket = (m_packetNumber & 0xFF);
+    return true;
+}
+
+void YModemTransfer::finishCurrentReceiveFile()
+{
+    /*
+     * 关闭文件集中放在这里，保证成功完成、批量下一个文件、取消和析构
+     * 都不会重复关闭或泄漏 QFile。
+     */
+    if (!m_file) {
+        return;
+    }
+
+    m_file->flush();
+    m_file->close();
+    delete m_file;
+    m_file = nullptr;
+    ++m_receivedFileCount;
+}
+
+void YModemTransfer::completeReceiveBatch(const QString& message)
+{
+    /*
+     * 空 0 号头包表示 YMODEM 批次结束。完成时确保文件已关闭，状态与
+     * progress 同步，然后只发一次完成信号。
+     */
+    m_timeoutTimer->stop();
+    if (m_file) {
+        finishCurrentReceiveFile();
+    }
+    m_receiveState = ReceiveState::Done;
+    setState(TransferState::Completed);
+    updateProgress();
+    emit transferCompleted(true, message);
+}
+
+void YModemTransfer::failTransferWithMessage(const QString& message)
+{
+    /*
+     * 失败路径必须停止超时计时器并释放当前文件句柄，避免状态已经失败
+     * 但后台仍继续写入或超时回调再次触发。
+     */
+    m_timeoutTimer->stop();
+    if (m_streamTimer) {
+        m_streamTimer->stop();
+    }
+    closeActiveFile();
+    m_progress.errorMessage = message;
+    setState(TransferState::Failed);
+    updateProgress();
+    emit transferCompleted(false, message);
+}
+
+void YModemTransfer::abortYModemGReceiveWithMessage(const QString& message)
+{
+    /*
+     * YMODEM-G 无逐包重传，一旦接收端发现错误，继续接收只会让目标
+     * 文件处于不可恢复状态。因此发送多个 CAN 字节，提升对端在高速
+     * 流中识别取消的概率，然后按失败路径释放本地文件。
+     */
+    QByteArray cancelPacket;
+    cancelPacket.append(CAN);
+    cancelPacket.append(CAN);
+    cancelPacket.append(CAN);
+    emit sendData(cancelPacket);
+    failTransferWithMessage(message);
+}
+
+void YModemTransfer::sendControlByte(char value)
+{
+    /*
+     * 控制字节也通过 sendData 信号交给主窗口统一发送，保持与协议数据包
+     * 相同的出口和日志链路。
+     */
+    QByteArray packet;
+    packet.append(value);
+    emit sendData(packet);
+}
+
+bool YModemTransfer::isTerminalState() const
+{
+    /*
+     * 终止状态下忽略后续串口残留字节，避免完成/失败后又被旧数据推进。
+     */
+    return m_state == TransferState::Completed ||
+           m_state == TransferState::Cancelled ||
+           m_state == TransferState::Failed;
+}
+
+void YModemTransfer::closeActiveFile()
+{
+    /*
+     * YMODEM 发送和接收共用 m_file：发送时它是源文件，接收时它是目标
+     * 文件。统一释放可以让批量切换、完成、失败、取消和析构都走同一条
+     * 资源路径，避免 Windows 文件句柄滞留。
+     */
+    if (!m_file) {
+        return;
+    }
+
+    m_file->close();
+    delete m_file;
+    m_file = nullptr;
+}
+
 void YModemTransfer::onTimeout()
 {
     m_retryCount++;
+    m_progress.retryCount = m_retryCount;
+    updateProgress();
+
     if (m_retryCount > m_maxRetries) {
-        setState(TransferState::Error);
-        emit transferCompleted(false, tr("传输超时"));
+        failTransferWithMessage(tr("传输超时"));
         return;
     }
 
     LOG_WARN(QString("YMODEM timeout, retry %1").arg(m_retryCount));
+    if (m_direction == TransferDirection::Receive) {
+        if (m_receiveState == ReceiveState::Starting ||
+            m_receiveState == ReceiveState::WaitingHeader) {
+            sendControlByte(m_useG ? 'G' : CRC_START);
+        } else if (m_receiveState == ReceiveState::ReceivingData) {
+            if (m_useG) {
+                abortYModemGReceiveWithMessage(tr("YMODEM-G 接收超时，已中止传输"));
+                return;
+            }
+            sendControlByte(NAK);
+        } else if (m_receiveState == ReceiveState::WaitingSecondEot) {
+            sendControlByte(NAK);
+        }
+    } else {
+        /*
+         * 发送模式超时按当前阶段重发最后一个协议包或 EOT。数据包重发
+         * 使用 m_lastPacket，不访问源文件，因此与流式读取兼容。
+         */
+        if (m_sendState == SendState::SendingData && m_useG) {
+            /*
+             * G 模式数据阶段由 m_streamTimer 推进，不依赖超时重发；若这里
+             * 触发，说明接收端长期没有 EOT ACK 或连接异常，按失败处理。
+             */
+            failTransferWithMessage(tr("YMODEM-G 发送超时"));
+            return;
+        } else if (m_sendState == SendState::WaitingHeaderAck) {
+            emit sendData(buildHeaderPacket(m_progress.fileName, m_progress.fileSize));
+        } else if (m_sendState == SendState::WaitingDataAck && !m_lastPacket.isEmpty()) {
+            emit sendData(m_lastPacket);
+        } else if (m_sendState == SendState::WaitingEOTAck) {
+            sendControlByte(EOT);
+        }
+    }
     m_timeoutTimer->start(m_timeoutMs);
 }
 

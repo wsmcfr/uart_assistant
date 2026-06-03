@@ -141,9 +141,7 @@ qint64 HidDevice::bytesAvailable() const
 void HidDevice::setBufferSize(int size)
 {
     m_bufferSize = qMax(0, size);
-    if (m_bufferSize > 0 && m_readBuffer.size() > m_bufferSize) {
-        m_readBuffer = m_readBuffer.right(m_bufferSize);
-    }
+    trimReceiveBuffer(m_readBuffer);
 }
 
 int HidDevice::bufferSize() const
@@ -324,10 +322,7 @@ void HidDevice::handleInputReport(const QByteArray& report)
         return;
     }
 
-    m_readBuffer.append(payload);
-    if (m_bufferSize > 0 && m_readBuffer.size() > m_bufferSize) {
-        m_readBuffer = m_readBuffer.right(m_bufferSize);
-    }
+    appendToReceiveBuffer(m_readBuffer, payload);
     emit dataReceived(payload);
 }
 

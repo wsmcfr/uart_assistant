@@ -38,6 +38,7 @@ struct SendQueueItem
     qint64 id = 0;              ///< 队列分配的单调递增任务编号。
     QByteArray payload;         ///< 待发送原始字节。
     QString source;             ///< 发送来源，例如 manual/script/file。
+    qint64 bytesWritten = 0;    ///< 当前任务已被底层 write() 接受的前缀字节数。
     int attemptCount = 0;       ///< 当前任务已经失败重试或失败记录的次数。
     QString lastError;          ///< 当前任务最近一次失败原因。
 };
@@ -129,6 +130,19 @@ public:
      * @return 队首任务引用；调用前必须确保 hasPending() 为 true。
      */
     const SendQueueItem& peek() const;
+
+    /**
+     * @brief 获取队首任务尚未写入的剩余 payload。
+     * @return 队首 payload 从 bytesWritten 开始的尾部；无队首时返回空数组。
+     */
+    QByteArray headRemainingPayload() const;
+
+    /**
+     * @brief 标记队首任务又有一段字节被底层成功接受。
+     * @param bytes 本次底层 write() 接受的字节数，必须大于 0 且不能超过剩余长度。
+     * @return 成功推进队首偏移返回 true；参数非法或无队首返回 false。
+     */
+    bool markHeadBytesWritten(qint64 bytes);
 
     /**
      * @brief 获取待发送任务条数。

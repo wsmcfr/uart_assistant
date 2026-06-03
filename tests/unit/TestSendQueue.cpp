@@ -87,9 +87,40 @@ void TestSendQueue::testQueueKeepsFailedHeadUntilSuccess()
     QCOMPARE(queue.peek().lastError, QStringLiteral("write failed"));
     QCOMPARE(queue.peek().attemptCount, 1);
 
+    QVERIFY(queue.markHeadBytesWritten(queue.peek().payload.size()));
     QVERIFY(queue.completeHead(SendCompletion::success()));
     QCOMPARE(queue.size(), 1);
     QCOMPARE(queue.peek().id, second.itemId);
+}
+
+void TestSendQueue::testQueueTracksHeadWriteProgress()
+{
+    /*
+     * SendQueue 现在不仅保存待发送任务，还保存队首已经被底层接受的
+     * 字节偏移。这样调度器在部分写入后遇到失败时，可以保留原始任务
+     * 用于信号和诊断，同时只重试未写完的尾部。
+     */
+    SendQueue queue;
+    const SendEnqueueResult first = queue.enqueue(QByteArray("partial"), QStringLiteral("manual"));
+    QVERIFY(first.accepted);
+
+    QCOMPARE(queue.headRemainingPayload(), QByteArray("partial"));
+    QCOMPARE(queue.queuedBytes(), static_cast<qint64>(7));
+    QVERIFY(queue.markHeadBytesWritten(3));
+    QCOMPARE(queue.peek().bytesWritten, static_cast<qint64>(3));
+    QCOMPARE(queue.headRemainingPayload(), QByteArray("tial"));
+    QCOMPARE(queue.queuedBytes(), static_cast<qint64>(4));
+
+    QVERIFY(!queue.markHeadBytesWritten(100));
+    QCOMPARE(queue.peek().bytesWritten, static_cast<qint64>(3));
+    QCOMPARE(queue.queuedBytes(), static_cast<qint64>(4));
+    QVERIFY(queue.peek().lastError.contains(QStringLiteral("超过")));
+
+    QVERIFY(queue.markHeadBytesWritten(4));
+    QCOMPARE(queue.headRemainingPayload(), QByteArray());
+    QCOMPARE(queue.queuedBytes(), static_cast<qint64>(0));
+    QVERIFY(queue.completeHead(SendCompletion::success()));
+    QVERIFY(!queue.hasPending());
 }
 
 void TestSendQueue::testQueueCancelAllClearsPendingItems()
@@ -130,6 +161,153 @@ void TestSendQueue::testDispatcherCompletesSuccessfulWrite()
     QCOMPARE(dispatcher.pendingCount(), 0);
     QCOMPARE(completedSpy.count(), 1);
     QCOMPARE(completedSpy.takeFirst().at(1).toByteArray(), QByteArray("hello"));
+}
+
+void TestSendQueue::testDispatcherCompletesOnlyAfterAllPartialWritesFinish()
+{
+    /*
+     * 串口、TCP 和部分系统 Socket API 都可能只接受 payload 的前半段。
+     * 调度器必须记录已写偏移，并在同一次调度中继续把剩余字节写完；
+     * 如果把第一次部分写入当成完成，文件块和脚本长命令都会丢尾包。
+     */
+    SendDispatcher dispatcher;
+    QVector<QByteArray> writeCalls;
+    dispatcher.setWriteHandler([&writeCalls](const QByteArray& payload) {
+        writeCalls.append(payload);
+
+        /*
+         * 第一次只接受 "ABC"，第二次只接受 "DE"，第三次接受最后的
+         * "FG"。测试关注调度器传入的剩余片段，而不是底层自行缓存。
+         */
+        if (writeCalls.size() == 1) {
+            return static_cast<qint64>(3);
+        }
+        if (writeCalls.size() == 2) {
+            return static_cast<qint64>(2);
+        }
+        return static_cast<qint64>(payload.size());
+    });
+
+    QSignalSpy completedSpy(&dispatcher, SIGNAL(itemCompleted(qint64,QByteArray)));
+    QSignalSpy failedSpy(&dispatcher, SIGNAL(itemFailed(qint64,QByteArray,QString)));
+
+    QVERIFY(dispatcher.enqueue(QByteArray("ABCDEFG"), QStringLiteral("manual")).accepted);
+    dispatcher.dispatchPending();
+
+    QCOMPARE(writeCalls.size(), 3);
+    QCOMPARE(writeCalls.at(0), QByteArray("ABCDEFG"));
+    QCOMPARE(writeCalls.at(1), QByteArray("DEFG"));
+    QCOMPARE(writeCalls.at(2), QByteArray("FG"));
+    QCOMPARE(dispatcher.pendingCount(), 0);
+    QCOMPARE(completedSpy.count(), 1);
+    QCOMPARE(completedSpy.takeFirst().at(1).toByteArray(), QByteArray("ABCDEFG"));
+    QCOMPARE(failedSpy.count(), 0);
+}
+
+void TestSendQueue::testDispatcherRetriesRemainingBytesAfterPartialWriteFailure()
+{
+    /*
+     * 部分写入后如果下一次 write() 失败，已经被底层接受的前缀不能在
+     * 重试时再次发送，否则接收端会看到重复字节。调度器应保留原始队首
+     * 用于完成/失败信号，同时内部只重试未写完的尾部。
+     */
+    SendDispatcher dispatcher;
+    QVector<QByteArray> writeCalls;
+    dispatcher.setWriteHandler([&writeCalls](const QByteArray& payload) {
+        writeCalls.append(payload);
+        if (writeCalls.size() == 1) {
+            return static_cast<qint64>(2);
+        }
+        if (writeCalls.size() == 2) {
+            return static_cast<qint64>(-1);
+        }
+        return static_cast<qint64>(payload.size());
+    });
+    dispatcher.setErrorProvider([]() {
+        return QStringLiteral("temporary transport error");
+    });
+
+    QSignalSpy completedSpy(&dispatcher, SIGNAL(itemCompleted(qint64,QByteArray)));
+    QSignalSpy failedSpy(&dispatcher, SIGNAL(itemFailed(qint64,QByteArray,QString)));
+
+    const SendEnqueueResult result = dispatcher.enqueue(QByteArray("HELLO"), QStringLiteral("manual"));
+    QVERIFY(result.accepted);
+
+    dispatcher.dispatchPending();
+    QCOMPARE(dispatcher.pendingCount(), 1);
+    QVERIFY(dispatcher.hasPending());
+    QCOMPARE(dispatcher.peekPending().id, result.itemId);
+    QCOMPARE(dispatcher.peekPending().payload, QByteArray("HELLO"));
+    QCOMPARE(dispatcher.peekPending().attemptCount, 1);
+    QCOMPARE(writeCalls.size(), 2);
+    QCOMPARE(writeCalls.at(0), QByteArray("HELLO"));
+    QCOMPARE(writeCalls.at(1), QByteArray("LLO"));
+    QCOMPARE(failedSpy.count(), 1);
+    QCOMPARE(failedSpy.takeFirst().at(1).toByteArray(), QByteArray("HELLO"));
+    QCOMPARE(completedSpy.count(), 0);
+
+    dispatcher.dispatchPending();
+    QCOMPARE(writeCalls.size(), 3);
+    QCOMPARE(writeCalls.at(2), QByteArray("LLO"));
+    QCOMPARE(dispatcher.pendingCount(), 0);
+    QCOMPARE(completedSpy.count(), 1);
+    QCOMPARE(completedSpy.takeFirst().at(1).toByteArray(), QByteArray("HELLO"));
+}
+
+void TestSendQueue::testDispatcherTreatsZeroByteWriteAsStalledFailure()
+{
+    /*
+     * 0 字节写入既不是成功，也不是可推进的部分写入。若继续 while 循环
+     * 会卡死；若按成功处理则直接丢整包。因此它应作为“写入停滞”失败，
+     * 保留队首给上层恢复连接后重试。
+     */
+    SendDispatcher dispatcher;
+    int writeCallCount = 0;
+    dispatcher.setWriteHandler([&writeCallCount](const QByteArray&) {
+        ++writeCallCount;
+        return static_cast<qint64>(0);
+    });
+
+    QSignalSpy completedSpy(&dispatcher, SIGNAL(itemCompleted(qint64,QByteArray)));
+    QSignalSpy failedSpy(&dispatcher, SIGNAL(itemFailed(qint64,QByteArray,QString)));
+
+    QVERIFY(dispatcher.enqueue(QByteArray("stalled"), QStringLiteral("manual")).accepted);
+    dispatcher.dispatchPending();
+
+    QCOMPARE(writeCallCount, 1);
+    QCOMPARE(dispatcher.pendingCount(), 1);
+    QCOMPARE(dispatcher.peekPending().payload, QByteArray("stalled"));
+    QCOMPARE(dispatcher.peekPending().attemptCount, 1);
+    QVERIFY(dispatcher.lastError().contains(QStringLiteral("0"))
+            || dispatcher.lastError().contains(QStringLiteral("停滞"))
+            || dispatcher.lastError().contains(QStringLiteral("未写入")));
+    QCOMPARE(completedSpy.count(), 0);
+    QCOMPARE(failedSpy.count(), 1);
+}
+
+void TestSendQueue::testDispatcherRejectsWriteCountLargerThanRemainingPayload()
+{
+    /*
+     * 合法 write() 返回值不能超过本次传入的 payload 长度。若底层返回
+     * 这种异常值，调度器不能为了“完成发送”而信任它，否则队列偏移和
+     * 进度统计会被破坏。
+     */
+    SendDispatcher dispatcher;
+    dispatcher.setWriteHandler([](const QByteArray& payload) {
+        return static_cast<qint64>(payload.size() + 1);
+    });
+
+    QSignalSpy completedSpy(&dispatcher, SIGNAL(itemCompleted(qint64,QByteArray)));
+    QSignalSpy failedSpy(&dispatcher, SIGNAL(itemFailed(qint64,QByteArray,QString)));
+
+    QVERIFY(dispatcher.enqueue(QByteArray("overflow"), QStringLiteral("manual")).accepted);
+    dispatcher.dispatchPending();
+
+    QCOMPARE(dispatcher.pendingCount(), 1);
+    QCOMPARE(dispatcher.peekPending().bytesWritten, static_cast<qint64>(0));
+    QVERIFY(dispatcher.lastError().contains(QStringLiteral("超过")));
+    QCOMPARE(completedSpy.count(), 0);
+    QCOMPARE(failedSpy.count(), 1);
 }
 
 void TestSendQueue::testDispatcherKeepsHeadWhenWriteFails()

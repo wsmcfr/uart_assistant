@@ -137,18 +137,8 @@ void DataTableWidget::setupTable()
     m_tableView->verticalHeader()->setVisible(false);
     m_tableView->verticalHeader()->setDefaultSectionSize(22);
 
-    // 创建数据模型
-    m_model = new QStandardItemModel(0, ColCount, this);
-    m_model->setHorizontalHeaderLabels({
-        tr("序号"),
-        tr("时间"),
-        tr("方向"),
-        tr("HEX"),
-        tr("ASCII"),
-        tr("解析数值"),
-        tr("协议"),
-        tr("描述")
-    });
+    // 创建数据模型。表头通过 helper 统一生成，清空重建模型和语言切换时复用。
+    m_model = createEmptyTableModel();
 
     // 创建代理模型用于过滤和排序
     m_proxyModel = new QSortFilterProxyModel(this);
@@ -180,6 +170,9 @@ void DataTableWidget::retranslateUi()
     m_clearAction->setText(tr("清空"));
     m_autoScrollCheck->setText(tr("自动滚动"));
     m_filterEdit->setPlaceholderText(tr("输入关键字过滤..."));
+    if (m_model) {
+        m_model->setHorizontalHeaderLabels(tableHeaderLabels());
+    }
     updateStatusLabel();
 }
 
@@ -370,15 +363,113 @@ void DataTableWidget::trimRecords()
     m_tableView->setUpdatesEnabled(true);
 }
 
+QStringList DataTableWidget::tableHeaderLabels() const
+{
+    /*
+     * 表头文本在首次创建模型、清空后重建模型、语言切换三处都需要保持一致。
+     * 集中生成可以避免清空重建模型后漏掉某一列标题或翻译。
+     */
+    return {
+        tr("序号"),
+        tr("时间"),
+        tr("方向"),
+        tr("HEX"),
+        tr("ASCII"),
+        tr("解析数值"),
+        tr("协议"),
+        tr("描述")
+    };
+}
+
+QStandardItemModel* DataTableWidget::createEmptyTableModel()
+{
+    /*
+     * 创建一个带完整表头的空模型。clearAll() 会替换旧模型而不是只
+     * removeRows()，原因是 QStandardItemModel/QStandardItem 内部可能
+     * 保留历史分配；替换成新模型能让旧模型随 deleteLater() 释放。
+     */
+    QStandardItemModel* model = new QStandardItemModel(0, ColCount, this);
+    model->setHorizontalHeaderLabels(tableHeaderLabels());
+    return model;
+}
+
+void DataTableWidget::replaceTableModelWithEmptyModel()
+{
+    /*
+     * 替换模型时要维护代理模型和视图的连接关系。先保存排序/过滤状态，
+     * 再把代理 source 指向新模型，最后恢复排序；旧模型延迟删除，避免
+     * 当前调用栈中仍有 Qt 内部信号引用旧对象时发生悬空访问。
+     */
+    if (!m_proxyModel || !m_tableView) {
+        return;
+    }
+
+    const bool sortingEnabled = m_tableView->isSortingEnabled();
+    const int sortColumn = m_tableView->horizontalHeader()->sortIndicatorSection();
+    const Qt::SortOrder sortOrder = m_tableView->horizontalHeader()->sortIndicatorOrder();
+    const bool dynamicSortFilter = m_proxyModel->dynamicSortFilter();
+
+    m_tableView->setUpdatesEnabled(false);
+    m_tableView->setSortingEnabled(false);
+    m_proxyModel->setDynamicSortFilter(false);
+
+    QStandardItemModel* oldModel = m_model;
+    m_model = createEmptyTableModel();
+    m_proxyModel->setSourceModel(m_model);
+    m_proxyModel->setDynamicSortFilter(dynamicSortFilter);
+    m_proxyModel->invalidate();
+
+    m_tableView->setSortingEnabled(sortingEnabled);
+    if (sortingEnabled && sortColumn >= 0) {
+        m_tableView->sortByColumn(sortColumn, sortOrder);
+    }
+    m_tableView->setUpdatesEnabled(true);
+
+    if (oldModel) {
+        oldModel->deleteLater();
+    }
+}
+
 void DataTableWidget::clearAll()
 {
-    QMutexLocker locker(&m_mutex);
-    m_records.clear();
-    m_pendingRecords.clear();
-    m_model->removeRows(0, m_model->rowCount());
+    {
+        QMutexLocker locker(&m_mutex);
+        /*
+         * clear() 只把 QVector 的 size 归零，不一定释放历史 capacity。
+         * 用户点击“清空”通常发生在大批量抓包之后，应主动 squeeze 两个
+         * 记录容器，让清屏后工作集有机会从峰值回落。
+         */
+        m_records.clear();
+        m_pendingRecords.clear();
+        m_records.squeeze();
+        m_pendingRecords.squeeze();
+    }
+
+    replaceTableModelWithEmptyModel();
     m_recordIndex = 0;
     updateStatusLabel();
 }
+
+#ifdef COMASSISTANT_TESTS
+QString DataTableWidget::sourceCellTextForTest(int row, int column) const
+{
+    /*
+     * 该访问器只服务单元测试，不参与生产逻辑。通过源模型读取文本，
+     * 可以避开代理排序/过滤带来的行号变化，稳定验证 clearAll() 后
+     * 表格模型是否仍能正常接收新数据。
+     */
+    if (!m_model) {
+        return QString();
+    }
+
+    const QModelIndex index = m_model->index(row, column);
+    if (!index.isValid()) {
+        return QString();
+    }
+
+    return m_model->data(index).toString();
+}
+#endif
 
 void DataTableWidget::setMaxRecords(int maxRecords)
 {

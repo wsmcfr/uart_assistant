@@ -18,6 +18,7 @@
 #include "unit/TestAnsiParser.h"
 #include "unit/TestFFTUtils.h"
 #include "unit/TestFilterUtils.h"
+#include "unit/TestConfigManager.h"
 #include "unit/TestDisplaySettingsPolicy.h"
 #include "unit/TestMemoryUtils.h"
 #include "unit/TestMemoryAwareUiBehavior.h"
@@ -28,15 +29,19 @@
 #include "unit/TestPlotterAnalysisService.h"
 #include "unit/TestPlotterStatisticsCalculator.h"
 #include "unit/TestPlotterManagerLifecycle.h"
+#include "unit/TestDataWindow.h"
 #include "unit/TestTabbedReceiveWidget.h"
 #include "unit/TestTerminalModeWidget.h"
 #include "unit/TestTranslationCompleteness.h"
 #include "unit/TestHidCommunication.h"
+#include "unit/TestCommunicationReceiveBuffers.h"
 #include "unit/TestCommunicationWorkspaces.h"
 #include "unit/TestReleaseMetadata.h"
 #include "unit/TestThemeCoverage.h"
 #include "unit/TestSettingsDialogLayout.h"
 #include "unit/TestToolboxDialogLayout.h"
+#include "unit/TestDataExporter.h"
+#include "unit/TestExportDialog.h"
 #include "unit/TestFileTransfer.h"
 #include "unit/TestDocumentationLinks.h"
 #include "unit/TestSendQueue.h"
@@ -53,6 +58,7 @@
 #include "unit/TestMainWindowPlotDataRouter.h"
 #include "unit/TestMainWindowSessionCoordinator.h"
 #include "unit/TestMainWindowLazyLoading.h"
+#include "unit/TestMainWindowExportIntegration.h"
 
 int main(int argc, char *argv[])
 {
@@ -124,6 +130,11 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] ConfigManager";
+        TestConfigManager test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] DisplaySettingsPolicy";
         TestDisplaySettingsPolicy test;
         status |= QTest::qExec(&test, filteredArgs);
@@ -174,6 +185,11 @@ int main(int argc, char *argv[])
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
+        qDebug() << "\n[TEST] DataWindow";
+        TestDataWindow test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
         qDebug() << "\n[TEST] TabbedReceiveWidget";
         TestTabbedReceiveWidget test;
         status |= QTest::qExec(&test, filteredArgs);
@@ -191,6 +207,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] HidCommunication";
         TestHidCommunication test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] CommunicationReceiveBuffers";
+        TestCommunicationReceiveBuffers test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
@@ -216,6 +237,16 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] ToolboxDialogLayout";
         TestToolboxDialogLayout test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] DataExporter";
+        TestDataExporter test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] ExportDialog";
+        TestExportDialog test;
         status |= QTest::qExec(&test, filteredArgs);
     }
     {
@@ -296,6 +327,11 @@ int main(int argc, char *argv[])
     {
         qDebug() << "\n[TEST] MainWindowLazyLoading";
         TestMainWindowLazyLoading test;
+        status |= QTest::qExec(&test, filteredArgs);
+    }
+    {
+        qDebug() << "\n[TEST] MainWindowExportIntegration";
+        TestMainWindowExportIntegration test;
         status |= QTest::qExec(&test, filteredArgs);
     }
 

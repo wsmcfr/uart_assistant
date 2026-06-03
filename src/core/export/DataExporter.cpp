@@ -6,9 +6,9 @@
  */
 
 #include "DataExporter.h"
-#include "utils/Logger.h"
 #include <QFile>
-#include <QTextStream>
+#include <QFileInfo>
+#include <QTextCodec>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -17,6 +17,233 @@
 #include <QElapsedTimer>
 
 namespace ComAssistant {
+
+namespace {
+
+/**
+ * @brief 判断单条记录是否满足当前导出过滤选项。
+ * @param record 待检查的原始收发记录。
+ * @param options 导出对话框或调用方设置的过滤选项。
+ * @param contentRegex 已编译的内容过滤正则。
+ * @param contentFilterActive 内容过滤是否应生效。
+ * @return true 表示该记录应进入导出、预览或过滤统计。
+ */
+bool recordMatchesExportOptions(const DataRecord& record,
+                                const ExportOptions& options,
+                                const QRegularExpression& contentRegex,
+                                bool contentFilterActive)
+{
+    // 方向过滤：根据用户选择只保留 RX 或 TX。
+    if (options.filterByDirection) {
+        if (options.receiveOnly && !record.isReceive) {
+            return false;
+        }
+        if (!options.receiveOnly && record.isReceive) {
+            return false;
+        }
+    }
+
+    // 时间过滤：边界包含起止时间，便于用户精确导出某一段抓包。
+    if (options.filterByTime) {
+        if (record.timestamp < options.startTime) {
+            return false;
+        }
+        if (record.timestamp > options.endTime) {
+            return false;
+        }
+    }
+
+    /*
+     * 内容过滤只在正则合法时生效。非法正则不丢弃数据，避免用户输入
+     * 半截表达式时统计突然变成 0，真实导出路径也保持同样语义。
+     */
+    if (contentFilterActive) {
+        const QString dataStr = QString::fromUtf8(record.data);
+        bool matches = contentRegex.match(dataStr).hasMatch();
+        if (options.invertContentFilter) {
+            matches = !matches;
+        }
+        if (!matches) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief 为内容过滤准备正则对象和生效标记。
+ * @param options 导出选项。
+ * @param contentRegex 输出的正则对象。
+ * @return true 表示内容过滤应参与匹配。
+ */
+bool prepareContentFilter(const ExportOptions& options,
+                          QRegularExpression& contentRegex)
+{
+    if (!options.filterByContent || options.contentFilter.isEmpty()) {
+        return false;
+    }
+
+    contentRegex = QRegularExpression(options.contentFilter);
+    return contentRegex.isValid();
+}
+
+/**
+ * @brief 统计一次流式导出所需的过滤结果。
+ *
+ * 真实导出需要提前知道进度条总数和 HTML/JSON/XML 头部中的记录数。
+ * 这里仅做计数和字节累计，不复制 DataRecord，也不生成导出内容。
+ */
+struct StreamExportPlan {
+    QRegularExpression contentRegex; ///< 已编译的内容过滤正则，非法正则时不参与匹配。
+    bool contentFilterActive = false; ///< true 表示内容过滤可用于匹配。
+    int exportedRecords = 0;          ///< 过滤后真正写出的记录数量。
+    qint64 totalBytes = 0;            ///< 原始记录载荷总字节数，用于统计显示。
+};
+
+/**
+ * @brief 创建流式导出的过滤计划。
+ * @param records 全量原始收发记录。
+ * @param options 当前导出选项。
+ * @return 只包含计数、字节数和已编译过滤条件的导出计划。
+ */
+StreamExportPlan buildStreamExportPlan(const QVector<DataRecord>& records,
+                                       const ExportOptions& options)
+{
+    StreamExportPlan plan;
+    plan.contentFilterActive = prepareContentFilter(options, plan.contentRegex);
+
+    for (const auto& record : records) {
+        plan.totalBytes += record.data.size();
+        if (recordMatchesExportOptions(record,
+                                      options,
+                                      plan.contentRegex,
+                                      plan.contentFilterActive)) {
+            ++plan.exportedRecords;
+        }
+    }
+
+    return plan;
+}
+
+/**
+ * @brief 将字符串编码成 JSON 字符串字面量。
+ * @param text 待转义文本。
+ * @return 包含双引号的 JSON 字符串。
+ */
+QString toJsonStringLiteral(const QString& text)
+{
+    return QString::fromUtf8(QJsonDocument(QJsonArray{text}).toJson(QJsonDocument::Compact))
+        .mid(1)
+        .chopped(1);
+}
+
+/**
+ * @brief 把文本按用户配置编码后写入 QIODevice，并累计真实写入字节数。
+ *
+ * QTextStream 不方便精确统计编码后的每次写入字节数，也容易让测试无法
+ * 区分“完整拼接后一次写入”和“逐条写入”。该类用 QTextCodec 的状态化
+ * 转换器手动编码，再通过 writeAll 处理部分写入。
+ */
+class EncodedDeviceWriter
+{
+public:
+    /**
+     * @brief 构造一个编码写入器。
+     * @param device 已打开且可写的目标设备。
+     * @param options 当前导出选项，用于解析文本编码。
+     * @param bytesWritten 成功写入的字节数累计位置。
+     * @param errorString 写入失败时填充的错误说明。
+     */
+    EncodedDeviceWriter(QIODevice* device,
+                        const ExportOptions& options,
+                        qint64* bytesWritten,
+                        QString* errorString)
+        : m_device(device)
+        , m_codec(QTextCodec::codecForName(options.encoding.toUtf8()))
+        , m_bytesWritten(bytesWritten)
+        , m_errorString(errorString)
+    {
+        // 编码名称不存在时回退 UTF-8，保持导出不中断且与旧 QTextStream 默认行为接近。
+        if (!m_codec) {
+            m_codec = QTextCodec::codecForName("UTF-8");
+        }
+        /*
+         * QTextCodec 的状态化转换默认可能为 UTF-8/UTF-16 写入 BOM。
+         * 旧导出路径未主动写 BOM；流式导出保持这一行为，避免导出文件
+         * 开头多出隐藏字节，也让统计值对应用户实际看到的内容。
+         */
+        m_encodingState.flags = QTextCodec::IgnoreHeader;
+    }
+
+    /**
+     * @brief 写入一段文本。
+     * @param text 待写入文本。
+     * @return true 表示完整写入；false 表示底层设备写入失败。
+     */
+    bool writeString(const QString& text)
+    {
+        if (text.isEmpty()) {
+            return true;
+        }
+
+        const QByteArray encoded =
+            m_codec->fromUnicode(text.constData(), text.size(), &m_encodingState);
+        return writeBytes(encoded);
+    }
+
+    /**
+     * @brief 写入一段原始字节。
+     * @param bytes 待写入字节。
+     * @return true 表示完整写入；false 表示底层设备写入失败。
+     */
+    bool writeBytes(const QByteArray& bytes)
+    {
+        if (bytes.isEmpty()) {
+            return true;
+        }
+
+        qint64 offset = 0;
+        while (offset < bytes.size()) {
+            const qint64 written = m_device->write(bytes.constData() + offset,
+                                                   bytes.size() - offset);
+            if (written <= 0) {
+                if (m_errorString) {
+                    *m_errorString = QObject::tr("写入文件失败: %1")
+                                         .arg(m_device ? m_device->errorString() : QString());
+                }
+                return false;
+            }
+            offset += written;
+        }
+
+        if (m_bytesWritten) {
+            *m_bytesWritten += bytes.size();
+        }
+        return true;
+    }
+
+    /**
+     * @brief 返回真实使用的文本编码名称。
+     * @return Qt 编码器的规范名称；编码器缺失时返回 UTF-8。
+     */
+    QString encodingName() const
+    {
+        if (!m_codec) {
+            return QStringLiteral("UTF-8");
+        }
+        return QString::fromLatin1(m_codec->name());
+    }
+
+private:
+    QIODevice* m_device = nullptr;                         ///< 目标设备，不拥有生命周期。
+    QTextCodec* m_codec = nullptr;                         ///< 文本编码器，由 Qt 管理生命周期。
+    QTextCodec::ConverterState m_encodingState;            ///< 保持 UTF-16 等状态化编码连续性。
+    qint64* m_bytesWritten = nullptr;                       ///< 导出统计中的真实写入字节数。
+    QString* m_errorString = nullptr;                       ///< 失败时返回给调用方的错误文本。
+};
+
+} // namespace
 
 // ============== DataRecord ==============
 
@@ -65,98 +292,130 @@ void DataExporter::addRecords(const QVector<DataRecord>& records)
 void DataExporter::clearRecords()
 {
     m_records.clear();
+    m_records.squeeze();
 }
 
-QVector<DataRecord> DataExporter::filterRecords() const
+QVector<DataRecord> DataExporter::filteredRecords(int maxRecords) const
 {
+    /*
+     * 过滤逻辑集中在 DataExporter 中，ExportDialog、文件导出和未来流式导出
+     * 都复用同一套规则，避免预览/统计与真实导出结果出现分叉。
+     */
     QVector<DataRecord> filtered;
-    QRegularExpression contentRegex;
-
-    if (m_options.filterByContent && !m_options.contentFilter.isEmpty()) {
-        contentRegex = QRegularExpression(m_options.contentFilter);
+    if (maxRecords != 0) {
+        const int reserveCount = maxRecords > 0
+            ? qMin(maxRecords, m_records.size())
+            : m_records.size();
+        filtered.reserve(reserveCount);
     }
 
+    QRegularExpression contentRegex;
+    const bool contentFilterActive = prepareContentFilter(m_options, contentRegex);
+
     for (const auto& record : m_records) {
-        // 方向过滤
-        if (m_options.filterByDirection) {
-            if (m_options.receiveOnly && !record.isReceive) continue;
-            if (!m_options.receiveOnly && record.isReceive) continue;
+        if (!recordMatchesExportOptions(record,
+                                        m_options,
+                                        contentRegex,
+                                        contentFilterActive)) {
+            continue;
         }
 
-        // 时间过滤
-        if (m_options.filterByTime) {
-            if (record.timestamp < m_options.startTime) continue;
-            if (record.timestamp > m_options.endTime) continue;
+        if (maxRecords != 0) {
+            filtered.append(record);
+            if (maxRecords > 0 && filtered.size() >= maxRecords) {
+                break;
+            }
         }
-
-        // 内容过滤
-        if (m_options.filterByContent && contentRegex.isValid()) {
-            QString dataStr = QString::fromUtf8(record.data);
-            bool matches = contentRegex.match(dataStr).hasMatch();
-            if (m_options.invertContentFilter) matches = !matches;
-            if (!matches) continue;
-        }
-
-        filtered.append(record);
     }
 
     return filtered;
 }
 
+int DataExporter::filteredRecordCount() const
+{
+    /*
+     * 统计路径只计数不生成记录副本，也不拼接导出字符串。这样导出对话框
+     * 刷新过滤条件时不会因为大量历史记录产生额外峰值内存。
+     */
+    QRegularExpression contentRegex;
+    const bool contentFilterActive = prepareContentFilter(m_options, contentRegex);
+
+    int count = 0;
+    for (const auto& record : m_records) {
+        if (recordMatchesExportOptions(record,
+                                      m_options,
+                                      contentRegex,
+                                      contentFilterActive)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 bool DataExporter::exportToFile(const QString& filePath)
 {
+    /*
+     * 文件导出是用户导出大量历史记录时的关键路径，因此这里不再先
+     * filteredRecords() 复制匹配记录，也不再 exportRecordsToString()
+     * 拼接完整文件内容，而是打开文件后委托流式核心逐条写出。
+     */
     QElapsedTimer timer;
     timer.start();
 
-    m_statistics = ExportStatistics();
-    m_statistics.totalRecords = m_records.size();
-
-    QVector<DataRecord> records = filterRecords();
-    m_statistics.exportedRecords = records.size();
-    m_statistics.filteredRecords = m_statistics.totalRecords - m_statistics.exportedRecords;
-
-    for (const auto& record : m_records) {
-        m_statistics.totalBytes += record.data.size();
-    }
-
     QFile file(filePath);
-    bool success = false;
-
-    if (m_options.format == ExportFormat::Binary) {
-        if (!file.open(QIODevice::WriteOnly)) {
-            emit exportFinished(false, tr("无法打开文件: %1").arg(file.errorString()));
-            return false;
-        }
-        QByteArray data = exportBinary(records);
-        file.write(data);
-        m_statistics.exportedBytes = data.size();
-        success = true;
-    } else {
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            emit exportFinished(false, tr("无法打开文件: %1").arg(file.errorString()));
-            return false;
-        }
-
-        QString content = exportToString();
-        QTextStream stream(&file);
-        stream.setCodec(m_options.encoding.toUtf8().constData());
-        stream << content;
-        m_statistics.exportedBytes = content.toUtf8().size();
-        success = true;
+    /*
+     * 这里不使用 QIODevice::Text。流式写入器会先按用户选择的编码生成
+     * 字节，再直接写入设备；若让 QFile 在字节层面做换行转换，UTF-16LE
+     * 等多字节编码会被破坏。
+     */
+    const QIODevice::OpenMode openMode = QIODevice::WriteOnly;
+    if (!file.open(openMode)) {
+        emit exportFinished(false, tr("无法打开文件: %1").arg(file.errorString()));
+        return false;
     }
 
+    QString errorString;
+    const bool success = exportToDeviceInternal(&file, &errorString);
     file.close();
+
     m_statistics.fileSizeBytes = QFileInfo(filePath).size();
     m_statistics.duration = QString::number(timer.elapsed()) + " ms";
 
-    emit exportFinished(success, tr("导出完成"));
+    emit exportFinished(success, success ? tr("导出完成") : errorString);
+    return success;
+}
+
+bool DataExporter::exportToDevice(QIODevice* device)
+{
+    /*
+     * QIODevice 入口用于测试和未来扩展。它与文件导出共享同一套流式
+     * 写入逻辑，避免文件路径和内存设备路径出现过滤或格式差异。
+     */
+    QElapsedTimer timer;
+    timer.start();
+
+    QString errorString;
+    const bool success = exportToDeviceInternal(device, &errorString);
+    if (device && device->isOpen()) {
+        m_statistics.fileSizeBytes = device->size();
+    }
+    m_statistics.duration = QString::number(timer.elapsed()) + " ms";
+
+    emit exportFinished(success, success ? tr("导出完成") : errorString);
     return success;
 }
 
 QString DataExporter::exportToString()
 {
-    QVector<DataRecord> records = filterRecords();
+    return exportRecordsToString(filteredRecords());
+}
 
+QString DataExporter::exportRecordsToString(const QVector<DataRecord>& records)
+{
+    /*
+     * 文件导出、字符串导出和预览都走同一个格式分发函数。调用方可先完成
+     * 过滤后再传入 records，避免同一次导出反复扫描完整历史。
+     */
     switch (m_options.format) {
     case ExportFormat::PlainText:
         return exportPlainText(records);
@@ -178,9 +437,380 @@ QString DataExporter::exportToString()
 QByteArray DataExporter::exportToBytes()
 {
     if (m_options.format == ExportFormat::Binary) {
-        return exportBinary(filterRecords());
+        return exportBinary(filteredRecords());
     }
     return exportToString().toUtf8();
+}
+
+bool DataExporter::exportToDeviceInternal(QIODevice* device, QString* errorString)
+{
+    /*
+     * 真实导出统一走该函数。实现分两次线性扫描：第一次只构建统计和进度
+     * 总数，第二次逐条写出匹配记录。这样既能保留准确统计，又不会在内存
+     * 中复制过滤结果或聚合完整文件内容。
+     */
+    m_statistics = ExportStatistics();
+    m_statistics.totalRecords = m_records.size();
+
+    if (!device) {
+        if (errorString) {
+            *errorString = tr("导出目标无效");
+        }
+        return false;
+    }
+
+    if (!device->isOpen() || !device->isWritable()) {
+        if (errorString) {
+            *errorString = tr("导出目标未打开或不可写");
+        }
+        return false;
+    }
+
+    const StreamExportPlan plan = buildStreamExportPlan(m_records, m_options);
+    m_statistics.totalBytes = plan.totalBytes;
+    m_statistics.exportedRecords = plan.exportedRecords;
+    m_statistics.filteredRecords = m_statistics.totalRecords - m_statistics.exportedRecords;
+
+    EncodedDeviceWriter writer(device, m_options, &m_statistics.exportedBytes, errorString);
+
+    int writtenRecords = 0;
+    int globalOffset = 0;
+
+    auto emitProgressForRecord = [&]() {
+        ++writtenRecords;
+        emit exportProgress(writtenRecords, plan.exportedRecords);
+    };
+
+    switch (m_options.format) {
+    case ExportFormat::PlainText: {
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QString line;
+            if (m_options.includeLineNumber) {
+                line += QString("%1: ").arg(writtenRecords + 1, 6);
+            }
+            if (m_options.includeTimestamp) {
+                line += "[" + record.timestamp.toString(m_options.timestampFormat) + "] ";
+            }
+            if (m_options.includeDirection) {
+                line += record.isReceive ? "[RX] " : "[TX] ";
+            }
+            if (m_options.includeSource && !record.source.isEmpty()) {
+                line += "[" + record.source + "] ";
+            }
+            line += formatData(record.data);
+            line += m_options.lineSeparator;
+
+            if (!writer.writeString(line)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+        return true;
+    }
+    case ExportFormat::Csv: {
+        QStringList headers;
+        if (m_options.includeLineNumber) headers << "序号";
+        if (m_options.includeTimestamp) headers << "时间戳";
+        if (m_options.includeDirection) headers << "方向";
+        if (m_options.includeSource) headers << "来源";
+        headers << "数据";
+        if (m_options.hexFormat) headers << "HEX";
+        headers << "长度";
+
+        if (!writer.writeString(headers.join(m_options.csvSeparator) + m_options.lineSeparator)) {
+            return false;
+        }
+
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QStringList fields;
+            if (m_options.includeLineNumber) {
+                fields << QString::number(writtenRecords + 1);
+            }
+            if (m_options.includeTimestamp) {
+                fields << escapeCsv(record.timestamp.toString(m_options.timestampFormat));
+            }
+            if (m_options.includeDirection) {
+                fields << (record.isReceive ? "RX" : "TX");
+            }
+            if (m_options.includeSource) {
+                fields << escapeCsv(record.source);
+            }
+            fields << escapeCsv(QString::fromUtf8(record.data));
+            if (m_options.hexFormat) {
+                fields << escapeCsv(record.data.toHex(' ').toUpper());
+            }
+            fields << QString::number(record.data.size());
+
+            if (!writer.writeString(fields.join(m_options.csvSeparator) + m_options.lineSeparator)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+        return true;
+    }
+    case ExportFormat::Html: {
+        const bool isDark = (m_options.htmlTheme == "dark");
+        QString header;
+        header += "<!DOCTYPE html>\n<html>\n<head>\n";
+        header += "    <meta charset=\"" + escapeHtml(writer.encodingName()) + "\">\n";
+        header += "    <title>" + escapeHtml(m_options.htmlTitle) + "</title>\n";
+        header += "    <style>\n";
+        if (isDark) {
+            header += "        body { font-family: 'Consolas', monospace; margin: 20px; "
+                      "background: #1e1e1e; color: #d4d4d4; }\n";
+            header += "        table { border-collapse: collapse; width: 100%; }\n";
+            header += "        th, td { border: 1px solid #444; padding: 8px; text-align: left; }\n";
+            header += "        th { background-color: #2d2d2d; }\n";
+            header += "        tr:nth-child(even) { background-color: #252526; }\n";
+            header += "        .tx { color: #569cd6; }\n";
+            header += "        .rx { color: #4ec9b0; }\n";
+        } else {
+            header += "        body { font-family: 'Consolas', monospace; margin: 20px; }\n";
+            header += "        table { border-collapse: collapse; width: 100%; }\n";
+            header += "        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }\n";
+            header += "        th { background-color: #4CAF50; color: white; }\n";
+            header += "        tr:nth-child(even) { background-color: #f2f2f2; }\n";
+            header += "        .tx { color: #2196F3; }\n";
+            header += "        .rx { color: #4CAF50; }\n";
+        }
+        header += "        .hex { font-family: 'Consolas', monospace; font-size: 12px; }\n";
+        header += "        .timestamp { font-size: 12px; opacity: 0.8; }\n";
+        header += "    </style>\n</head>\n<body>\n";
+        header += "    <h1>" + escapeHtml(m_options.htmlTitle) + "</h1>\n";
+        header += "    <p>导出时间: " + QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss") + "</p>\n";
+        header += "    <p>记录数量: " + QString::number(plan.exportedRecords) + "</p>\n";
+        header += "    <table>\n        <tr>\n";
+        if (m_options.includeLineNumber) header += "            <th>#</th>\n";
+        if (m_options.includeTimestamp) header += "            <th>时间戳</th>\n";
+        if (m_options.includeDirection) header += "            <th>方向</th>\n";
+        if (m_options.includeSource) header += "            <th>来源</th>\n";
+        header += "            <th>数据</th>\n";
+        if (m_options.hexFormat) header += "            <th>HEX</th>\n";
+        header += "            <th>长度</th>\n";
+        header += "        </tr>\n";
+
+        if (!writer.writeString(header)) {
+            return false;
+        }
+
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QString row;
+            row += "        <tr>\n";
+            if (m_options.includeLineNumber) {
+                row += "            <td>" + QString::number(writtenRecords + 1) + "</td>\n";
+            }
+            if (m_options.includeTimestamp) {
+                row += "            <td class=\"timestamp\">" +
+                       escapeHtml(record.timestamp.toString(m_options.timestampFormat)) + "</td>\n";
+            }
+            if (m_options.includeDirection) {
+                const QString cls = record.isReceive ? "rx" : "tx";
+                const QString dir = record.isReceive ? "RX" : "TX";
+                row += "            <td class=\"" + cls + "\">" + dir + "</td>\n";
+            }
+            if (m_options.includeSource) {
+                row += "            <td>" + escapeHtml(record.source) + "</td>\n";
+            }
+            row += "            <td>" + escapeHtml(QString::fromUtf8(record.data)) + "</td>\n";
+            if (m_options.hexFormat) {
+                row += "            <td class=\"hex\">" +
+                       escapeHtml(QString::fromLatin1(record.data.toHex(' ').toUpper())) + "</td>\n";
+            }
+            row += "            <td>" + QString::number(record.data.size()) + "</td>\n";
+            row += "        </tr>\n";
+
+            if (!writer.writeString(row)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+
+        return writer.writeString("    </table>\n</body>\n</html>\n");
+    }
+    case ExportFormat::Json: {
+        QString header;
+        header += "{\n";
+        header += "    \"exportTime\": " +
+                  toJsonStringLiteral(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)) +
+                  ",\n";
+        header += "    \"recordCount\": " + QString::number(plan.exportedRecords) + ",\n";
+        header += "    \"options\": {\n";
+        header += "        \"encoding\": " + toJsonStringLiteral(writer.encodingName()) + ",\n";
+        header += QString("        \"hexFormat\": %1\n")
+                      .arg(m_options.hexFormat ? "true" : "false");
+        header += "    },\n";
+        header += "    \"records\": [\n";
+        if (!writer.writeString(header)) {
+            return false;
+        }
+
+        bool first = true;
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QJsonObject obj;
+            if (m_options.includeTimestamp) {
+                obj["timestamp"] = record.timestamp.toString(Qt::ISODateWithMs);
+            }
+            if (m_options.includeDirection) {
+                obj["direction"] = record.isReceive ? "RX" : "TX";
+            }
+            if (m_options.includeSource && !record.source.isEmpty()) {
+                obj["source"] = record.source;
+            }
+            obj["data"] = QString::fromUtf8(record.data);
+            if (m_options.hexFormat) {
+                obj["hex"] = QString::fromLatin1(record.data.toHex(' ').toUpper());
+            }
+            obj["length"] = record.data.size();
+            if (!record.note.isEmpty()) {
+                obj["note"] = record.note;
+            }
+
+            QJsonDocument doc(obj);
+            QString recordJson = QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
+            recordJson.replace("\n", "\n        ");
+            QString chunk = first ? "        " : ",\n        ";
+            chunk += recordJson.trimmed();
+            if (!writer.writeString(chunk)) {
+                return false;
+            }
+
+            first = false;
+            emitProgressForRecord();
+        }
+
+        return writer.writeString("\n    ]\n}\n");
+    }
+    case ExportFormat::Xml: {
+        QString header;
+        header += "<?xml version=\"1.0\" encoding=\"" +
+                  escapeXml(writer.encodingName()) +
+                  "\"?>\n";
+        header += "<SerialDataExport exportTime=\"" +
+                  escapeXml(QDateTime::currentDateTime().toString(Qt::ISODateWithMs)) +
+                  "\" recordCount=\"" + QString::number(plan.exportedRecords) + "\">\n";
+        if (!writer.writeString(header)) {
+            return false;
+        }
+
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QString chunk;
+            chunk += "    <Record index=\"" + QString::number(writtenRecords + 1) + "\">\n";
+            if (m_options.includeTimestamp) {
+                chunk += "        <Timestamp>" +
+                         escapeXml(record.timestamp.toString(Qt::ISODateWithMs)) +
+                         "</Timestamp>\n";
+            }
+            if (m_options.includeDirection) {
+                chunk += "        <Direction>";
+                chunk += record.isReceive ? "RX" : "TX";
+                chunk += "</Direction>\n";
+            }
+            if (m_options.includeSource && !record.source.isEmpty()) {
+                chunk += "        <Source>" + escapeXml(record.source) + "</Source>\n";
+            }
+            chunk += "        <Data>" + escapeXml(QString::fromUtf8(record.data)) + "</Data>\n";
+            if (m_options.hexFormat) {
+                chunk += "        <Hex>" +
+                         escapeXml(QString::fromLatin1(record.data.toHex(' ').toUpper())) +
+                         "</Hex>\n";
+            }
+            chunk += "        <Length>" + QString::number(record.data.size()) + "</Length>\n";
+            chunk += "    </Record>\n";
+
+            if (!writer.writeString(chunk)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+
+        return writer.writeString("</SerialDataExport>\n");
+    }
+    case ExportFormat::Binary: {
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+            if (!writer.writeBytes(record.data)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+        return true;
+    }
+    case ExportFormat::HexDump: {
+        for (const auto& record : m_records) {
+            if (!recordMatchesExportOptions(record,
+                                            m_options,
+                                            plan.contentRegex,
+                                            plan.contentFilterActive)) {
+                continue;
+            }
+
+            QString chunk;
+            if (m_options.includeTimestamp || m_options.includeDirection) {
+                chunk += "--- ";
+                if (m_options.includeTimestamp) {
+                    chunk += "[" + record.timestamp.toString(m_options.timestampFormat) + "] ";
+                }
+                if (m_options.includeDirection) {
+                    chunk += record.isReceive ? "[RX]" : "[TX]";
+                }
+                chunk += " ---" + m_options.lineSeparator;
+            }
+            chunk += formatHexDump(record.data, globalOffset);
+            globalOffset += record.data.size();
+
+            if (!writer.writeString(chunk)) {
+                return false;
+            }
+            emitProgressForRecord();
+        }
+        return true;
+    }
+    }
+
+    if (errorString) {
+        *errorString = tr("不支持的导出格式");
+    }
+    return false;
 }
 
 QString DataExporter::exportPlainText(const QVector<DataRecord>& records)

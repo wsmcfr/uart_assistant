@@ -105,6 +105,14 @@ private slots:
 private:
     void setupUi();
     void retranslateUi();
+    /**
+     * @brief 按字符数裁剪文本区头部，覆盖无换行长流场景。
+     *
+     * QTextDocument 的 maximumBlockCount 只能限制换行后的 block 数；如果设备
+     * 持续输出没有换行的大块数据，整段内容会停留在一个 block 内。该函数
+     * 主动按字符数删除最早内容，保证分窗长期运行时仍只保留最近数据。
+     */
+    void trimTextDocument();
     void showSmartScrollIndicator(const QString& message);
     void hideSmartScrollIndicator();
 
@@ -123,6 +131,7 @@ private:
     bool m_needTimestamp = true;
     int m_lineCount = 0;
     int m_maxLines = 5000;           ///< 独立分窗只做辅助观察，限制历史行数避免长时间运行占用过高内存
+    int m_maxTextChars = 2 * 1024 * 1024; ///< 文本区最大字符数，覆盖无换行长流导致单 block 膨胀的场景
 };
 
 } // namespace ComAssistant

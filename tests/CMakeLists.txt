@@ -21,6 +21,7 @@ set(TEST_SOURCES
     unit/TestAnsiParser.cpp
     unit/TestFFTUtils.cpp
     unit/TestFilterUtils.cpp
+    unit/TestConfigManager.cpp
     unit/TestDisplaySettingsPolicy.cpp
     unit/TestMemoryUtils.cpp
     unit/TestMemoryAwareUiBehavior.cpp
@@ -31,15 +32,19 @@ set(TEST_SOURCES
     unit/TestPlotterAnalysisService.cpp
     unit/TestPlotterStatisticsCalculator.cpp
     unit/TestPlotterManagerLifecycle.cpp
+    unit/TestDataWindow.cpp
     unit/TestTabbedReceiveWidget.cpp
     unit/TestTerminalModeWidget.cpp
     unit/TestTranslationCompleteness.cpp
     unit/TestHidCommunication.cpp
+    unit/TestCommunicationReceiveBuffers.cpp
     unit/TestCommunicationWorkspaces.cpp
     unit/TestReleaseMetadata.cpp
     unit/TestThemeCoverage.cpp
     unit/TestSettingsDialogLayout.cpp
     unit/TestToolboxDialogLayout.cpp
+    unit/TestDataExporter.cpp
+    unit/TestExportDialog.cpp
     unit/TestFileTransfer.cpp
     unit/TestDocumentationLinks.cpp
     unit/TestSendQueue.cpp
@@ -56,6 +61,7 @@ set(TEST_SOURCES
     unit/TestMainWindowPlotDataRouter.cpp
     unit/TestMainWindowSessionCoordinator.cpp
     unit/TestMainWindowLazyLoading.cpp
+    unit/TestMainWindowExportIntegration.cpp
 )
 
 # 创建测试可执行文件
@@ -121,6 +127,7 @@ target_include_directories(ComAssistant_tests PRIVATE
 
 target_compile_definitions(ComAssistant_tests PRIVATE
     COMASSISTANT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/.."
+    COMASSISTANT_TESTS
 )
 
 # 链接库
@@ -152,14 +159,12 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/ConversionUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/EncodingUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/CrashHandler.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/AutoSaveManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/config/DisplaySettingsPolicy.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/MemoryUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/Logger.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/utils/FilterUtils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/theme/ThemeManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaSandbox.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/script/LuaEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/export/DataExporter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/macro/MacroRecorder.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/PlotterDataPolicy.cpp
@@ -242,7 +247,6 @@ target_sources(ComAssistant_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/ProtocolFactory.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/protocol/PlotProtocolDetector.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/transfer/FileTransfer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/upgrade/IAPUpgrader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/upgrade/AppUpdateChecker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/SendWidget.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/ui/widgets/DataStatistics.cpp
