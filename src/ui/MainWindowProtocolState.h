@@ -65,6 +65,15 @@ public:
     FrameResult parseNonPlotData(const QByteArray& data);
 
     /**
+     * @brief 清空当前协议运行期缓存。
+     *
+     * 用户点击“清屏/清除”时，不应只擦掉界面文本；当前协议对象可能还
+     * 持有半包、解析上下文或最近错误。该函数把这些状态一并重置，
+     * 让下一次接收从干净边界开始。
+     */
+    void resetRuntimeState();
+
+    /**
      * @brief 当前稳定协议 ID。
      * @return 已校验的协议 ID；未知协议会显示为 raw。
      */

@@ -38,6 +38,11 @@ private slots:
      * @brief 离开串口工作台释放高级模式时，不应丢失用户上次选择的串口模式。
      */
     void testLeavingSerialWorkspaceKeepsLastSerialDisplaySelection();
+
+    /**
+     * @brief 数据表格窗口关闭后应真正销毁，避免隐藏窗口继续持有表格模型和历史记录。
+     */
+    void testDataTableWindowIsDestroyedWhenClosed();
 };
 
 #endif // TESTMAINWINDOWLAZYLOADING_H

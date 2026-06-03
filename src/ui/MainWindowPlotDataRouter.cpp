@@ -90,6 +90,7 @@ void MainWindowPlotDataRouter::reset()
 {
     // 协议状态切换时主动清空残留，避免上一协议的半行污染新协议。
     m_pendingBuffer.clear();
+    m_pendingBuffer.squeeze();
 }
 
 QByteArray MainWindowPlotDataRouter::pendingBuffer() const

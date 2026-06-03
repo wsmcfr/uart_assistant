@@ -819,6 +819,15 @@ void MainWindow::destroyCommunication()
     if (m_commController) {
         m_commController->closeCurrent();
     }
+
+    /*
+     * 断开连接后用户通常已经结束本轮抓包。这里不清空主接收区，避免用户
+     * 失去刚收到的可见内容；但增强导出历史只保留最近一小段，防止为导出
+     * 准备的 DataRecord 副本继续占用 MB 级内存。
+     */
+    trimExportHistoryAfterDisconnect();
+    releaseClosedAuxiliaryWindows();
+    MemoryUtils::trimProcessMemory();
 }
 
 void MainWindow::onConnectClicked()
@@ -1630,26 +1639,65 @@ void MainWindow::appendExportHistoryRecord(const QByteArray& data,
  */
 void MainWindow::trimExportHistory()
 {
+    trimExportHistoryToLimits(kMaxExportHistoryRecords,
+                              kMaxExportHistoryBytes,
+                              false);
+}
+
+/**
+ * @brief 按指定上限裁剪增强导出历史。
+ * @param maxRecords 最多保留记录数。
+ * @param maxBytes 最多保留 payload 字节数。
+ * @param releaseCapacity true 表示裁剪后主动释放 QVector 历史容量。
+ */
+void MainWindow::trimExportHistoryToLimits(int maxRecords,
+                                           qint64 maxBytes,
+                                           bool releaseCapacity)
+{
     /*
      * 记录条数和 payload 字节数双上限同时生效：小包高频场景靠条数裁剪，
      * 大包低频场景靠字节裁剪。裁剪时只删除最旧记录，保留最近上下文。
      */
+    const int safeMaxRecords = qMax(0, maxRecords);
+    const qint64 safeMaxBytes = qMax<qint64>(0, maxBytes);
     int removeCount = 0;
     qint64 bytesAfterRemoval = m_exportHistoryBytes;
     while (removeCount < m_exportHistoryRecords.size() &&
-           (m_exportHistoryRecords.size() - removeCount > kMaxExportHistoryRecords ||
-            bytesAfterRemoval > kMaxExportHistoryBytes)) {
+           (m_exportHistoryRecords.size() - removeCount > safeMaxRecords ||
+            bytesAfterRemoval > safeMaxBytes)) {
         bytesAfterRemoval -= m_exportHistoryRecords.at(removeCount).data.size();
         ++removeCount;
     }
 
     if (removeCount <= 0) {
+        if (releaseCapacity) {
+            m_exportHistoryRecords.squeeze();
+        }
         return;
     }
 
     m_exportHistoryRecords.erase(m_exportHistoryRecords.begin(),
                                  m_exportHistoryRecords.begin() + removeCount);
     m_exportHistoryBytes = qMax<qint64>(0, bytesAfterRemoval);
+    if (releaseCapacity) {
+        m_exportHistoryRecords.squeeze();
+    }
+    refreshExportDialogRecords();
+}
+
+/**
+ * @brief 断开连接后裁剪增强导出历史到轻量最近片段。
+ */
+void MainWindow::trimExportHistoryAfterDisconnect()
+{
+    /*
+     * 断开时不清屏，保留最近记录给用户快速导出/回看；但把默认 16MB 的
+     * 抓包历史降到 256KB/256 条，并 squeeze 容器，让 Windows 工作集更
+     * 容易从高峰回落。
+     */
+    trimExportHistoryToLimits(kDisconnectExportHistoryRecords,
+                              kDisconnectExportHistoryBytes,
+                              true);
 }
 
 /**
@@ -1679,6 +1727,24 @@ void MainWindow::refreshExportDialogRecords()
     }
 }
 
+/**
+ * @brief 释放导出对话框中复制的历史记录和预览文本。
+ */
+void MainWindow::releaseExportDialogCache()
+{
+    if (!m_exportDialog) {
+        return;
+    }
+
+    /*
+     * ExportDialog::setRecords() 会把主窗口历史复制到对话框和 DataExporter。
+     * 关闭导出窗口后继续保留这个对象，会让一份大历史多占一份内存。
+     * 因此在清屏、断开和辅助资源回收时直接销毁，下次导出再重建。
+     */
+    m_exportDialog->deleteLater();
+    m_exportDialog = nullptr;
+}
+
 void MainWindow::onExportData()
 {
     syncCurrentWorkspaceToConfig();
@@ -1693,8 +1759,10 @@ void MainWindow::onExportData()
 
     if (!m_exportDialog) {
         m_exportDialog = new ExportDialog(this);
+        m_exportDialog->setAttribute(Qt::WA_DeleteOnClose, true);
         connect(m_exportDialog, &QObject::destroyed, this, [this]() {
             m_exportDialog = nullptr;
+            MemoryUtils::trimProcessMemory();
         });
     }
 
@@ -1704,15 +1772,66 @@ void MainWindow::onExportData()
 
 void MainWindow::onClearAll()
 {
-    // 清空当前通信工作台或串口显示模式，保持用户点击“清空”时只清当前可见数据面板。
-    if (m_currentCommType != CommType::Serial) {
-        if (CommunicationWorkspaceWidget* workspace = currentCommunicationWorkspace()) {
-            workspace->clear();
-        }
-    } else if (m_currentModeWidget) {
-        m_currentModeWidget->clear();
+    clearAllUserDataCaches();
+}
+
+/**
+ * @brief 清空所有用户数据缓存并尽量释放峰值容量。
+ */
+void MainWindow::clearAllUserDataCaches()
+{
+    /*
+     * “清屏/清除”必须是数据级清除，而不只是把当前可见 QTextEdit 擦白。
+     * 因此这里覆盖当前显示模式、已创建的网络/HID 工作台、导出历史、
+     * 数据表格、数据分窗、绘图窗口、协议半包缓冲和通信兼容缓存。
+     */
+    if (m_serialModeWidget) {
+        m_serialModeWidget->clear();
     }
+    if (m_terminalModeWidget) {
+        m_terminalModeWidget->clear();
+    }
+    if (m_frameModeWidget) {
+        m_frameModeWidget->clear();
+    }
+    if (m_debugModeWidget) {
+        m_debugModeWidget->clear();
+    }
+
+    if (m_tcpClientWorkspace) {
+        m_tcpClientWorkspace->clear();
+    }
+    if (m_tcpServerWorkspace) {
+        m_tcpServerWorkspace->clear();
+    }
+    if (m_udpWorkspace) {
+        m_udpWorkspace->clear();
+    }
+    if (m_hidWorkspace) {
+        m_hidWorkspace->clear();
+    }
+
     clearExportHistory();
+    releaseExportDialogCache();
+
+    if (m_dataTableWidget) {
+        m_dataTableWidget->clearAll();
+    }
+    if (m_dataWindowManager) {
+        m_dataWindowManager->clearAllData();
+    }
+
+    PlotterManager::instance()->syncClearAll();
+    m_plotDataRouter.reset();
+    m_protocolState.resetRuntimeState();
+    if (m_plotDetector) {
+        m_plotDetector->reset();
+    }
+    if (m_commController && m_commController->communication()) {
+        m_commController->communication()->clearBuffer();
+    }
+
+    MemoryUtils::trimProcessMemory();
 }
 
 void MainWindow::onSettings()
@@ -2779,9 +2898,23 @@ void MainWindow::releaseTransientUiResources()
         m_dataTableWidget->deleteLater();
         m_dataTableWidget = nullptr;
     }
+    releaseExportDialogCache();
 
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     MemoryUtils::trimProcessMemory();
+}
+
+/**
+ * @brief 释放已经关闭或可重建的辅助窗口。
+ */
+void MainWindow::releaseClosedAuxiliaryWindows()
+{
+    /*
+     * 断开连接是一次低频生命周期边界。这里销毁导出对话框这类可重建
+     * 对象，避免隐藏/已关闭窗口继续保留记录副本和富文本预览。
+     */
+    releaseExportDialogCache();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }
 
 /**
@@ -3551,6 +3684,7 @@ void MainWindow::onDataTableToggled()
     if (!m_dataTableWidget) {
         m_dataTableWidget = new DataTableWidget();
         m_dataTableWidget->setWindowFlags(Qt::Window);
+        m_dataTableWidget->setAttribute(Qt::WA_DeleteOnClose, true);
         m_dataTableWidget->setWindowTitle(tr("数据表格视图 - 实时数据监控"));
         m_dataTableWidget->resize(900, 500);
         /*
@@ -3558,6 +3692,10 @@ void MainWindow::onDataTableToggled()
          * 这里沿用组件内部的有界记录策略，避免用户开启表格后把整段抓包
          * 同时复制到 QVector 和 QStandardItemModel 里。
          */
+        connect(m_dataTableWidget, &QObject::destroyed, this, [this]() {
+            m_dataTableWidget = nullptr;
+            MemoryUtils::trimProcessMemory();
+        });
     }
 
     m_dataTableWidget->show();

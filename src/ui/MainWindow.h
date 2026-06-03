@@ -99,6 +99,26 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
+#ifdef COMASSISTANT_TESTS
+    /**
+     * @brief 测试专用：读取增强导出历史记录数。
+     * @return 当前内存中保留的增强导出历史记录数量。
+     *
+     * 该接口只在测试目标中编译，用于验证清屏和断开连接后的历史裁剪策略；
+     * 正式程序不暴露主窗口内部缓存结构。
+     */
+    int exportHistoryRecordCountForTest() const { return m_exportHistoryRecords.size(); }
+
+    /**
+     * @brief 测试专用：读取增强导出历史 payload 总字节数。
+     * @return 当前增强导出历史中 payload 字节总量。
+     *
+     * 断开连接后的内存回落优化不能只看界面是否清空，必须能证明底层
+     * DataRecord 缓存已经被裁剪到轻量上限以内。
+     */
+    qint64 exportHistoryBytesForTest() const { return m_exportHistoryBytes; }
+#endif
+
 protected:
     void closeEvent(QCloseEvent* event) override;
     void changeEvent(QEvent* event) override;
@@ -244,8 +264,15 @@ private:
     void recordAuxiliaryReceivedData(const QByteArray& data,
                                      const QString& note = QString()); ///< 记录不进入普通接收解析链路的接收数据
     void trimExportHistory(); ///< 按记录数和字节数裁剪导出历史
+    void trimExportHistoryToLimits(int maxRecords,
+                                   qint64 maxBytes,
+                                   bool releaseCapacity); ///< 按指定轻量上限裁剪导出历史
+    void trimExportHistoryAfterDisconnect(); ///< 断开连接后只保留最近一小段导出历史，帮助内存回落
     void clearExportHistory(); ///< 清空导出历史并释放历史峰值容量
     void refreshExportDialogRecords(); ///< 把最新导出历史同步到已打开的导出对话框
+    void releaseExportDialogCache(); ///< 释放导出对话框内复制的记录和预览文本
+    void clearAllUserDataCaches(); ///< 清空所有用户可见/可导出的数据缓存
+    void releaseClosedAuxiliaryWindows(); ///< 释放关闭后可重建的辅助窗口对象
 
     // 应用更新
     void scheduleAutoUpdateCheck();
@@ -356,6 +383,8 @@ private:
     QString m_pendingReceiveExportSource;        ///< 当前待聚合 RX 行第一段数据的来源标签
     static constexpr int kMaxExportHistoryRecords = 10000;      ///< 导出历史最多保留最近 10000 条记录
     static constexpr qint64 kMaxExportHistoryBytes = 16 * 1024 * 1024; ///< 导出历史最多保留最近 16MB payload
+    static constexpr int kDisconnectExportHistoryRecords = 256; ///< 断开连接后最多保留最近 256 条导出记录
+    static constexpr qint64 kDisconnectExportHistoryBytes = 256 * 1024; ///< 断开连接后最多保留最近 256KB payload
     static constexpr int kMaxPendingReceiveExportLineBytes = 64 * 1024; ///< 无换行 RX 导出缓冲上限，避免长二进制流无限等待
 
     // 接收协议相关

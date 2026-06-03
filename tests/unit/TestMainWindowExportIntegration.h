@@ -33,6 +33,16 @@ private slots:
      * 的“记录”应和接收区显示的一行一致，不能把同一条设备日志导出成多条。
      */
     void testExportHistoryMergesReceiveChunksIntoCompleteTextLine();
+
+    /**
+     * @brief 断开连接后增强导出历史应自动裁剪到轻量上限，避免大抓包后内存长期停留峰值。
+     */
+    void testDisconnectTrimsExportHistoryToSmallRecentSlice();
+
+    /**
+     * @brief 关闭增强导出对话框后应销毁对话框，释放其中复制的历史记录和预览文本。
+     */
+    void testExportDialogReleasesCopiedRecordsAfterClose();
 };
 
 #endif // TESTMAINWINDOWEXPORTINTEGRATION_H

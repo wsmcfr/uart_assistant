@@ -373,8 +373,8 @@
     <h2>7. 数据导出 Data Export</h2>
     <p><strong>中文：</strong>通过 <code>文件 -&gt; 导出数据</code> 打开增强导出对话框。主窗口会记录最近的结构化 RX/TX 历史，覆盖串口、TCP Client、TCP Server、UDP、HID Input/Output/Feature Report，可导出为多种格式。</p>
     <p><strong>English:</strong> Open the enhanced export dialog from <code>File -&gt; Export Data</code>. The main window records recent structured RX/TX history for serial, TCP Client, TCP Server, UDP and HID Input/Output/Feature reports, then exports it in multiple formats.</p>
-    <p><strong>中文：</strong>导出历史按记录数和 payload 字节数双上限保留最近数据；清空当前数据时会同步释放导出历史。过滤统计使用与真实导出相同的方向、时间和内容正则规则。</p>
-    <p><strong>English:</strong> Export history keeps recent data using both record-count and payload-byte limits, and clearing current data releases the export history. Filter statistics use the same direction, time and content-regex rules as the actual export.</p>
+    <p><strong>中文：</strong>导出历史按记录数和 payload 字节数双上限保留最近数据；关闭导出对话框会销毁其中复制的记录和预览文本，清空当前数据时会同步释放导出历史，断开连接时会自动裁剪到最近 256KB/256 条。过滤统计使用与真实导出相同的方向、时间和内容正则规则。</p>
+    <p><strong>English:</strong> Export history keeps recent data using both record-count and payload-byte limits. Closing the export dialog destroys copied records and preview text; clearing current data releases the export history; disconnecting trims it to the latest 256 KB/256 records. Filter statistics use the same direction, time and content-regex rules as the actual export.</p>
     <p><strong>中文：</strong>串口和 TCP 接收历史会按完整文本行合并底层分片，避免一条设备日志因为 readyRead 拆包被导出成多条；如果长时间没有换行，缓冲达到上限后会按当前片段提交，保证内存有界。UDP 和 HID 保持按数据报或 Report 粒度记录。</p>
     <p><strong>English:</strong> Serial and TCP receive history merges low-level chunks into complete text lines, preventing one device log from being exported as several readyRead fragments. If no line break arrives for a long stream, the bounded buffer is committed as a chunk. UDP and HID keep datagram/report granularity.</p>
     <p><strong>中文：</strong>保存到文件时，TXT、CSV、HTML、JSON、XML、二进制和十六进制转储都会按匹配记录流式写入目标文件；导出器只提前统计数量和字节数，不会先复制全部过滤结果或拼接完整导出内容。</p>

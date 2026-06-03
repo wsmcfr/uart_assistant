@@ -13,6 +13,7 @@
 #include "ui/modes/SerialModeWidget.h"
 #include "ui/modes/TerminalModeWidget.h"
 #include "ui/widgets/HidReportWorkspaceWidget.h"
+#include "ui/widgets/DataTableWidget.h"
 #include "ui/widgets/TcpClientWorkspaceWidget.h"
 #include "ui/widgets/UdpWorkspaceWidget.h"
 
@@ -38,6 +39,27 @@ T* requireChild(QWidget& root, const char* objectName)
         qFatal("Missing child widget: %s", objectName);
     }
     return child;
+}
+
+/**
+ * @brief 在当前应用顶层窗口里查找指定类型窗口。
+ * @tparam T 顶层窗口类型。
+ * @return 找到的窗口指针；没有找到时返回 nullptr。
+ *
+ * 数据表格这类工具窗口使用 Qt::Window 独立显示，并不挂在 MainWindow
+ * 的 QObject 子树下，因此测试需要从 QApplication 顶层窗口列表中查找。
+ */
+template <typename T>
+T* findTopLevelWindow()
+{
+    const QWidgetList widgets = QApplication::topLevelWidgets();
+    for (QWidget* widget : widgets) {
+        T* typedWindow = qobject_cast<T*>(widget);
+        if (typedWindow && typedWindow->isVisible()) {
+            return typedWindow;
+        }
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -166,4 +188,33 @@ void TestMainWindowLazyLoading::testLeavingSerialWorkspaceKeepsLastSerialDisplay
              "离开串口工作台后仍应释放终端模式组件。");
     QCOMPARE(displayModeCombo->currentData().toInt(),
              static_cast<int>(DisplayMode::Terminal));
+}
+
+void TestMainWindowLazyLoading::testDataTableWindowIsDestroyedWhenClosed()
+{
+    MainWindow window;
+    window.resize(1200, 760);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDataTableToggled",
+                                      Qt::DirectConnection));
+
+    QPointer<DataTableWidget> tableProbe(findTopLevelWindow<DataTableWidget>());
+    QVERIFY2(!tableProbe.isNull(), "打开数据表格后应创建表格窗口。");
+
+    /*
+     * 表格窗口会保存 QStandardItemModel 和 m_records。用户点击窗口关闭时，
+     * 旧实现只是隐藏窗口，下一次打开复用旧对象，导致“打开关闭某些东西”
+     * 后内存仍被模型和记录容器占用。
+     */
+    tableProbe->close();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QTest::qWait(30);
+
+    QVERIFY2(tableProbe.isNull(),
+             "关闭数据表格窗口后应销毁对象，释放表格模型和历史记录。");
+    QVERIFY2(findTopLevelWindow<DataTableWidget>() == nullptr,
+             "关闭后不应继续存在可复用的数据表格顶层窗口。");
 }

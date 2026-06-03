@@ -177,3 +177,74 @@ void TestMainWindowExportIntegration::testExportHistoryMergesReceiveChunksIntoCo
     QVERIFY2(preview.contains(QString::fromUtf8(line).trimmed()),
              "导出预览应包含完整的设备日志行，而不是串口底层分片。");
 }
+
+void TestMainWindowExportIntegration::testDisconnectTrimsExportHistoryToSmallRecentSlice()
+{
+    MainWindow window;
+    window.resize(1200, 760);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    /*
+     * 构造超过 1MB 的增强导出历史。旧实现断开连接只会 flush 半行和关闭
+     * 通信对象，不会裁剪 m_exportHistoryRecords，因此历史字节数会继续
+     * 保持在高位，和用户观察到的“关闭串口后内存不降”一致。
+     */
+    const QByteArray chunk(16 * 1024, 'M');
+    for (int index = 0; index < 96; ++index) {
+        QVERIFY(QMetaObject::invokeMethod(&window,
+                                          "onDataReceived",
+                                          Qt::DirectConnection,
+                                          Q_ARG(QByteArray, chunk)));
+    }
+
+    QVERIFY2(window.exportHistoryBytesForTest() > 1024 * 1024,
+             "测试前应先构造足够大的导出历史，确保断开裁剪测试有效。");
+
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDisconnectClicked",
+                                      Qt::DirectConnection));
+
+    QVERIFY2(window.exportHistoryBytesForTest() <= 256 * 1024,
+             "断开连接后导出历史应只保留最近一小段，避免继续占用 MB 级内存。");
+    QVERIFY2(window.exportHistoryRecordCountForTest() <= 256,
+             "断开连接后导出历史记录数也应有轻量上限，避免小包高频场景保留过多对象。");
+}
+
+void TestMainWindowExportIntegration::testExportDialogReleasesCopiedRecordsAfterClose()
+{
+    MainWindow window;
+    window.resize(1200, 760);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    /*
+     * 导出对话框会复制主窗口历史并生成预览文本。用户打开后取消/关闭时，
+     * 如果对话框对象继续留在主窗口下，就会多保留一份历史数据。
+     */
+    QVERIFY(QMetaObject::invokeMethod(&window,
+                                      "onDataReceived",
+                                      Qt::DirectConnection,
+                                      Q_ARG(QByteArray, QByteArray("dialog-memory-release\n"))));
+
+    bool sawExportDialog = false;
+    QPointer<ExportDialog> dialogProbe;
+    QTimer::singleShot(0, &window, [&window]() {
+        QMetaObject::invokeMethod(&window, "onExportData", Qt::DirectConnection);
+    });
+    QTimer::singleShot(200, &window, [&sawExportDialog, &dialogProbe]() {
+        ExportDialog* exportDialog = findVisibleDialog<ExportDialog>();
+        if (exportDialog) {
+            sawExportDialog = true;
+            dialogProbe = exportDialog;
+            exportDialog->reject();
+            return;
+        }
+
+        rejectVisibleDialogs();
+    });
+
+    QTRY_VERIFY_WITH_TIMEOUT(sawExportDialog, 1000);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QTRY_VERIFY_WITH_TIMEOUT(dialogProbe.isNull(), 1000);
+}

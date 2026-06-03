@@ -96,6 +96,18 @@ FrameResult MainWindowProtocolState::parseNonPlotData(const QByteArray& data)
     return result;
 }
 
+void MainWindowProtocolState::resetRuntimeState()
+{
+    /*
+     * IProtocol::reset() 是协议层约定的运行期清理入口。这里不重建协议对象，
+     * 避免丢失用户配置；只清内部半包、最近错误等可再生状态。
+     */
+    if (m_protocol) {
+        m_protocol->reset();
+    }
+    m_recentProtocolError.clear();
+}
+
 ProtocolDiagnosticsContext MainWindowProtocolState::diagnosticsContext() const
 {
     ProtocolDiagnosticsContext context;
